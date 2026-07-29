@@ -217,6 +217,13 @@ ico_dir = os.path.join(os.path.dirname(__file__), "module", "ico")
 if os.path.exists(ico_dir):
     app.mount("/module/ico", StaticFiles(directory=ico_dir), name="ico")
 
+# шрифты и прочая статика раздаются с этого же домена: внешний блокирующий
+# <link> на fonts.googleapis.com не давал странице отрендериться там, откуда
+# до Google не дозвониться
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
 def _format_remaining_details(remaining: timedelta) -> str:
     total_seconds = int(remaining.total_seconds())
     if total_seconds <= 0:
@@ -820,8 +827,11 @@ def validate_telegram_data(init_data: str, bot_token: str) -> dict | None:
 async def api_request_auth_token():
     token = str(uuid.uuid4())[:36]
     TEMP_AUTH_TOKENS[token] = None
-    bot_username = get_setting("telegram_bot_username")
-    auth_url = f"tg://resolve?domain={bot_username}&start=auth_{token}"
+    bot_username = (get_setting("telegram_bot_username") or "").lstrip("@")
+    # универсальная ссылка, а не tg://resolve: кастомную схему iOS во встроенных
+    # браузерах и в SFSafariViewController не открывает вовсе — тап не делал
+    # ничего, и человек до бота не доходил
+    auth_url = f"https://t.me/{bot_username}?start=auth_{token}"
     return {"ok": True, "token": token, "auth_url": auth_url}
 
 @app.get("/api/auth/check-token/{token}")
