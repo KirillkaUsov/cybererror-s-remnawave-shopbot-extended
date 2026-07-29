@@ -1133,10 +1133,10 @@
                             </div>
                             <div class="text-primary/70 mb-1"># Запустить установщик (загружает свежую версию)</div>
                             <div class="text-white/90 break-all select-all pr-8">curl -sSL
-                                https://raw.githubusercontent.com/CyberERROR/remnawave-shopbot/main/install.sh | bash
+                                https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/main/install.sh | bash
                             </div>
                             <button
-                                onclick="navigator.clipboard.writeText('curl -sSL https://raw.githubusercontent.com/CyberERROR/remnawave-shopbot/main/install.sh | bash'); showToast('success', 'Команда скопирована')"
+                                onclick="navigator.clipboard.writeText('curl -sSL https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/main/install.sh | bash'); showToast('success', 'Команда скопирована')"
                                 class="absolute right-3 bottom-3 text-white/20 hover:text-primary transition-colors p-1.5 rounded-lg hover:bg-white/5">
                                 <span class="material-symbols-outlined text-sm">content_copy</span>
                             </button>
@@ -1149,12 +1149,12 @@
                         'text-white', 'text-white/50'),
                         (project_info.links.releases, 'deployed_code', 'Список изменений', 'История версий и релизы',
                         'text-blue-400', 'text-blue-400/50'),
-                        (project_info.links.telegram, 'groups', 'Telegram сообщество', 'Чат поддержки и обсуждения',
+                        (project_info.links.upstream, 'call_split', 'Апстрим-проект', 'Оригинальный Remnawave ShopBot',
                         'text-sky-400', 'text-sky-400/50'),
                         (project_info.links.developer, 'person', 'Разработчик', 'Автор проекта', 'text-purple-400',
                         'text-purple-400/50')
                         ] %}
-                        {% for url, icon, title, desc, icon_color, desc_color in links %}
+                        {% for url, icon, title, desc, icon_color, desc_color in links if url %}
                         <a href="{{ url }}" target="_blank"
                             class="flex items-center gap-4 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all group">
                             <div

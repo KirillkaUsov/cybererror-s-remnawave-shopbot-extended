@@ -11,7 +11,9 @@ PURPLE='\033[0;35m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# Настройки проекта
+# Настройки проекта.
+# Каталог и имя конфига nginx совпадают с install.sh — иначе скрипт не найдёт
+# уже развёрнутую установку и не вычистит её
 PROJECT_DIR="remnawave-shopbot"
 NGINX_CONF="/etc/nginx/sites-available/${PROJECT_DIR}.conf"
 NGINX_LINK="/etc/nginx/sites-enabled/${PROJECT_DIR}.conf"
@@ -29,16 +31,15 @@ REMOVE_ALL=false
 show_header() {
     clear
     echo -e "${PURPLE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${PURPLE}${BOLD}        REMNAWAVE SHOPBOT UNINSTALLER (Удаление)             ${NC}"
+    echo -e "${PURPLE}${BOLD}     REMNAWAVE SHOPBOT EXTENDED - UNINSTALLER (Удаление)      ${NC}"
     echo -e "${PURPLE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
 
 show_footer() {
     echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${CYAN}Репозиторий:${NC}  https://github.com/CyberERROR/remnawave-shopbot"
-    echo -e "${CYAN}Telegram:${NC}      https://t.me/+7hUhNxAdzBpjNWRi"
-    echo -e "${CYAN}Разработчик:${NC}   https://github.com/CyberERROR"
+    echo -e "${CYAN}Репозиторий:${NC}  https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended"
+    echo -e "${CYAN}Форк проекта:${NC} https://github.com/CyberERROR/remnawave-shopbot"
     echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
