@@ -12,9 +12,7 @@
 <link rel="icon" href="{{ webapp_icon }}">
 <title>{{ panel_brand_title }} — вход</title>
 <script src="/js/telegram-web-app.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="/static/fonts/fonts.css" rel="stylesheet">
 <style>
 :root{
   --font:'Golos Text',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Ubuntu,sans-serif;
@@ -366,6 +364,10 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
         </div>
 
         <div class="status-line hidden" id="statusLine"><span class="status-dot"></span><span>Ожидание подтверждения…</span></div>
+        <div id="authFailPanel" class="panel hidden">
+          <p class="hint" id="authFailText"></p>
+          <button id="authRetryBtn" class="btn btn--soft"><span>Попробовать снова</span></button>
+        </div>
       </div>
     </section>
   </main>
@@ -446,6 +448,9 @@ document.addEventListener('DOMContentLoaded', function(){
   /* строка «ожидание подтверждения» появляется только после того, как человек
      нажал «Войти через Telegram» — до этого ждать нечего */
   const statusLine = document.getElementById('statusLine');
+  const authFailPanel = document.getElementById('authFailPanel');
+  const authFailText = document.getElementById('authFailText');
+  const authRetryBtn = document.getElementById('authRetryBtn');
   let awaitingTelegram = false;
   authTelegramLink.addEventListener('click', () => {
     awaitingTelegram = true;
@@ -459,7 +464,7 @@ document.addEventListener('DOMContentLoaded', function(){
   }
 
   showEmailBtn.addEventListener('click', () => {
-    hide(authHeader); hide(authMethods); hide(statusLine);
+    hide(authHeader); hide(authMethods); hide(statusLine); hide(authFailPanel);
     show(emailPanel, 'flex'); hide(emailError);
     setTimeout(() => emailInput.focus(), 60);
   });
@@ -474,7 +479,7 @@ document.addEventListener('DOMContentLoaded', function(){
   const backFromSubBtn = document.getElementById('backFromSubBtn');
 
   showSubBtn.addEventListener('click', () => {
-    hide(authHeader); hide(authMethods); hide(statusLine);
+    hide(authHeader); hide(authMethods); hide(statusLine); hide(authFailPanel);
     show(subPanel, 'flex'); hide(subError);
     setTimeout(() => subUrlInput.focus(), 60);
   });
@@ -714,13 +719,45 @@ document.addEventListener('DOMContentLoaded', function(){
   const savedToken = getAuthToken();
   if(savedToken){ window.location.href = '/?token=' + savedToken; return; }
 
+  /* опрос обязан заканчиваться: раньше он крутился вечно и при любом сбое
+     человек до конца жизни смотрел на «Ожидание подтверждения…» */
+  const AUTH_POLL_TIMEOUT_MS = 120000;
+  let authPollInterval = null;
+
+  function stopAuthPolling(){
+    if(authPollInterval){ clearInterval(authPollInterval); authPollInterval = null; }
+  }
+
+  function showAuthFailure(msg){
+    stopAuthPolling();
+    hide(loader);
+    hide(statusLine);
+    show(authCard, 'flex');
+    authFailText.textContent = msg;
+    show(authFailPanel, 'flex');
+  }
+
+  authRetryBtn.addEventListener('click', () => {
+    hide(authFailPanel);
+    awaitingTelegram = false;
+    show(loader, 'flex');
+    hide(authCard);
+    handleExternalAuth();
+  });
+
   async function startAuthPolling(token){
-    const interval = setInterval(async () => {
+    const startedAt = Date.now();
+    stopAuthPolling();
+    authPollInterval = setInterval(async () => {
+      if(Date.now() - startedAt > AUTH_POLL_TIMEOUT_MS){
+        showAuthFailure('Подтверждение из Telegram так и не пришло. Нажмите «Войти через Telegram» ещё раз или войдите по Email.');
+        return;
+      }
       try{
         const response = await fetch('/api/auth/check-token/' + token);
         const data = await response.json();
         if(data.authorized){
-          clearInterval(interval);
+          stopAuthPolling();
           const finalToken = data.token || token;
           setAuthToken(finalToken);
           window.location.href = '/?token=' + finalToken;
@@ -730,16 +767,22 @@ document.addEventListener('DOMContentLoaded', function(){
   }
 
   async function handleExternalAuth(){
+    /* лоадер снимаем на любом исходе, иначе страница выглядит как вечная
+       загрузка — именно на это жаловались пользователи */
     try{
       const response = await fetch('/api/auth/request-token');
       const data = await response.json();
-      if(data.ok){
+      if(data && data.ok){
         authTelegramLink.href = data.auth_url;
         hide(loader);
         show(authCard, 'flex');
         startAuthPolling(data.token);
+      } else {
+        showAuthFailure('Не удалось начать вход через Telegram. Попробуйте снова или войдите по Email.');
       }
-    }catch(e){}
+    }catch(e){
+      showAuthFailure('Нет связи с сервером. Проверьте интернет и попробуйте снова.');
+    }
   }
 
   function loginWithToken(token){
