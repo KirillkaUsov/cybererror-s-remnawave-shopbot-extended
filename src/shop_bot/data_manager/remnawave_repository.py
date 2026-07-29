@@ -81,6 +81,97 @@ def get_key_by_remnawave_uuid(remnawave_uuid: str) -> dict | None:
     return database.get_key_by_remnawave_uuid(remnawave_uuid)
 
 
+def get_key_by_short_uuid(short_uuid: str) -> dict | None:
+    return database.get_key_by_short_uuid(short_uuid)
+
+
+# Модуль-реэкспорт не должен падать на импорте, если database.py
+# ещё старой версии (например, выложили не все файлы) — иначе не
+# поднимется весь проект. Поэтому мягкая деградация.
+RESET_SUBSCRIPTION_COOLDOWN_SECONDS = getattr(
+    database, "RESET_SUBSCRIPTION_COOLDOWN_SECONDS", 3600
+)
+
+
+def get_subscription_reset_wait(key_id: int, *, cooldown: int | None = None) -> int:
+    fn = getattr(database, "get_subscription_reset_wait", None)
+    if fn is None:
+        logger.warning(
+            "database.get_subscription_reset_wait отсутствует — "
+            "ограничение частоты пересоздания подписки отключено. "
+            "Обновите data_manager/database.py."
+        )
+        return 0
+    return fn(key_id, cooldown=cooldown)
+
+
+def mark_subscription_reset(key_id: int, ts: int | None = None) -> bool:
+    fn = getattr(database, "mark_subscription_reset", None)
+    if fn is None:
+        logger.warning(
+            "database.mark_subscription_reset отсутствует — "
+            "момент пересоздания подписки не сохранён. "
+            "Обновите data_manager/database.py."
+        )
+        return False
+    return fn(key_id, ts)
+
+
+def get_key_by_subscription_url(subscription_url: str) -> dict | None:
+    return database.get_key_by_subscription_url(subscription_url)
+
+
+# ---- имена пользователей и их история ----
+NO_USERNAME_LABEL = getattr(database, "NO_USERNAME_LABEL", "Безымянный пользователь")
+
+
+def normalize_username(username: str | None) -> str | None:
+    fn = getattr(database, "normalize_username", None)
+    if fn is None:
+        if username is None:
+            return None
+        value = str(username).strip().lstrip("@").strip()
+        return value or None
+    return fn(username)
+
+
+def format_username(username: str | None) -> str:
+    fn = getattr(database, "format_username", None)
+    if fn is None:
+        value = normalize_username(username)
+        return f"@{value}" if value else NO_USERNAME_LABEL
+    return fn(username)
+
+
+def set_username(user_id: int, username: str | None, source: str = "telegram") -> dict:
+    fn = getattr(database, "set_username", None)
+    if fn is None:
+        logger.warning("database.set_username отсутствует — обновите data_manager/database.py")
+        return {"changed": False, "previous": None, "current": None, "found": False}
+    return fn(user_id, username, source)
+
+
+def get_username_history(user_id: int, limit: int = 50) -> list[dict]:
+    fn = getattr(database, "get_username_history", None)
+    if fn is None:
+        return []
+    return fn(user_id, limit)
+
+
+def get_all_user_ids() -> list[int]:
+    fn = getattr(database, "get_all_user_ids", None)
+    if fn is None:
+        return []
+    return fn()
+
+
+def get_matching_user_ids(q: str | None = None) -> list[int]:
+    fn = getattr(database, "get_matching_user_ids", None)
+    if fn is None:
+        return get_all_user_ids()
+    return fn(q)
+
+
 def record_key(
     user_id: int,
     squad_uuid: str,
@@ -277,6 +368,14 @@ _LEGACY_FORWARDERS = (
     "get_support_badge_counts",
     "get_daily_stats_for_charts",
     "get_host",
+    "get_key_by_short_uuid",
+    "get_key_by_subscription_url",
+    "get_subscription_reset_wait",
+    "get_username_history",
+    "format_username",
+    "normalize_username",
+    "set_username",
+    "mark_subscription_reset",
     "get_keys_for_host",
     "get_keys_for_user",
     "get_latest_speedtest",

@@ -61,12 +61,12 @@ async def send_subscription_notification(bot: Bot, user_id: int, key_id: int, ti
             f"⚠️ **Внимание!** ⚠️\n\n"
             f"Срок действия вашей подписки истекает через **{time_text}**.\n"
             f"Дата окончания: **{expiry_str}**\n\n"
-            f"Продлите подписку, чтобы не остаться без доступа к VPN!"
+            f"Продлите подписку, чтобы не остаться без доступа к свободному интернету!"
         )
         
         builder = InlineKeyboardBuilder()
-        builder.button(text="🔑 Мои ключи", callback_data="manage_keys")
-        builder.button(text="➕ Продлить ключ", callback_data=f"extend_key_{key_id}")
+        builder.button(text="🛒 Перейти к тарифам", callback_data="buy_new_key")
+        builder.button(text="🔄 Продлить эту подписку", callback_data=f"extend_key_{key_id}")
         builder.adjust(2)
         
         await bot.send_message(chat_id=user_id, text=message, reply_markup=builder.as_markup(), parse_mode='Markdown')

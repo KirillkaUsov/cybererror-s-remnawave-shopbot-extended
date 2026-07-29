@@ -8,7 +8,67 @@
             {{ ticket.username or 'Пользователь' }}
         </div>
         {% endif %}
-        <div class="text-sm leading-relaxed whitespace-pre-wrap">{{ m.content }}</div>
+        {% set body = m.content | strip_media_label(m.media) %}
+        {% if body %}
+        <div class="text-sm leading-relaxed whitespace-pre-wrap">{{ body }}</div>
+        {% endif %}
+
+        {% if m.media %}
+        <div class="mt-2 flex flex-col gap-2">
+            {% for a in m.media %}
+            {% if a.kind == 'photo' %}
+            <a href="{{ url_for('support_media_file', media_id=a.media_id) }}" target="_blank"
+                class="block rounded-xl overflow-hidden border border-white/10 hover:border-primary/40 transition-colors">
+                <img src="{{ url_for('support_media_file', media_id=a.media_id) }}" loading="lazy"
+                    alt="Вложение" class="max-h-64 w-auto object-cover">
+            </a>
+            {% elif a.kind == 'video' %}
+            <video controls preload="metadata" class="max-h-64 rounded-xl border border-white/10">
+                <source src="{{ url_for('support_media_file', media_id=a.media_id) }}"
+                    type="{{ a.mime_type or 'video/mp4' }}">
+            </video>
+            {% elif a.kind == 'video_note' %}
+            <div class="circle-player" data-circle>
+                <video playsinline preload="metadata"
+                    src="{{ url_for('support_media_file', media_id=a.media_id) }}"></video>
+                <svg class="circle-ring" viewBox="0 0 100 100">
+                    <circle class="rail" cx="50" cy="50" r="48"></circle>
+                    <circle class="bar" cx="50" cy="50" r="48"></circle>
+                </svg>
+                <div class="circle-knob"></div>
+                <button class="circle-overlay" type="button">
+                    <span class="material-symbols-outlined">play_arrow</span>
+                </button>
+                <div class="circle-time">0:00</div>
+            </div>
+            {% elif a.kind in ['voice', 'audio'] %}
+            <div class="voice-player" data-voice>
+                <button class="voice-play" type="button">
+                    <span class="material-symbols-outlined">play_arrow</span>
+                </button>
+                <div class="voice-body">
+                    <div class="voice-track">
+                        <div class="voice-rail">
+                            <div class="voice-fill"></div>
+                            <div class="voice-knob"></div>
+                        </div>
+                    </div>
+                    <div class="voice-time">0:00</div>
+                </div>
+                <audio preload="metadata"
+                    src="{{ url_for('support_media_file', media_id=a.media_id) }}"></audio>
+            </div>
+            {% else %}
+            <a href="{{ url_for('support_media_file', media_id=a.media_id) }}?download=1"
+                class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors text-xs font-bold">
+                <span class="material-symbols-outlined text-sm text-primary">attach_file</span>
+                <span class="truncate max-w-[180px]">{{ a.file_name or 'Файл' }}</span>
+            </a>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
         <div class="text-[9px] mt-2 font-bold opacity-30 text-right uppercase tracking-widest msg-rel-time"
             data-timestamp="{{ m.updated_at or m.created_at }}">
             {{ (m.updated_at or m.created_at or "").split(' ')[1][:5] }}
@@ -214,6 +274,11 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
         <textarea name="message" class="mobile-input" rows="1" placeholder="Ваш ответ..." {% if ticket.status=='closed'
             %}disabled{% endif %}></textarea>
+        <button type="button" class="w-11 h-11 rounded-full bg-white/5 flex items-center justify-center text-white/70"
+            onclick="document.getElementById('ticket-file-input').click()" title="Прикрепить файл"
+            {% if ticket.status=='closed' %}disabled{% endif %}>
+            <span class="material-symbols-outlined">attach_file</span>
+        </button>
         <button type="button" class="w-11 h-11 rounded-full bg-white/5 flex items-center justify-center text-primary"
             onclick="generateGeminiResponse('m', event)">
             <span class="material-symbols-outlined">auto_awesome</span>
@@ -224,6 +289,8 @@
         </button>
     </form>
 </div>
+
+<input type="file" id="ticket-file-input" class="hidden">
 
 <!-- ========== DESKTOP VIEW ========== -->
 <div class="desktop-chat-view" id="ticket-root" data-ticket-id="{{ ticket.ticket_id }}"
@@ -307,6 +374,12 @@
                     class="flex-1 bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm focus:ring-1 focus:ring-primary/50 outline-none transition-all resize-none"
                     placeholder="Ответить..." rows="1" {% if ticket.status=='closed' %}disabled{% endif %}></textarea>
                 <div class="flex gap-2">
+                    <button type="button" id="ticket-attach-btn"
+                        class="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-all"
+                        onclick="document.getElementById('ticket-file-input').click()" title="Прикрепить файл"
+                        {% if ticket.status=='closed' %}disabled{% endif %}>
+                        <span class="material-symbols-outlined text-2xl">attach_file</span>
+                    </button>
                     <button type="button"
                         class="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-primary hover:bg-primary hover:text-black transition-all"
                         onclick="generateGeminiResponse('d', event)">
@@ -326,6 +399,54 @@
 </div>
 
 <script>
+    // ---- Отправка файла пользователю ----
+    document.getElementById('ticket-file-input')?.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const ticketId = document.getElementById('ticket-root')?.getAttribute('data-ticket-id');
+        if (!ticketId) { showToast('danger', 'Не удалось определить тикет'); return; }
+
+        // Подпись берём из поля ответа, чтобы можно было отправить файл с текстом
+        const areas = document.querySelectorAll('textarea[name="message"]');
+        let caption = '';
+        areas.forEach(a => { if (a.value.trim()) caption = a.value.trim(); });
+
+        const btn = document.getElementById('ticket-attach-btn');
+        const icon = btn?.querySelector('.material-symbols-outlined');
+        if (btn) btn.disabled = true;
+        if (icon) { icon.textContent = 'progress_activity'; icon.classList.add('animate-spin'); }
+
+        try {
+            const form = new FormData();
+            form.append('file', file);
+            form.append('message', caption);
+
+            const resp = await fetch(`/support/${ticketId}/attach`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCsrfToken() },
+                credentials: 'same-origin',
+                body: form
+            });
+            const data = await resp.json();
+
+            if (data.ok) {
+                showToast(data.delivered ? 'success' : 'warning', data.message || 'Файл отправлен');
+                areas.forEach(a => { a.value = ''; });
+                if (typeof loadMessages === 'function') loadMessages();
+                else setTimeout(() => window.location.reload(), 700);
+            } else {
+                showToast('danger', data.error || 'Не удалось отправить файл');
+            }
+        } catch (_) {
+            showToast('danger', 'Ошибка сети');
+        }
+
+        if (btn) btn.disabled = false;
+        if (icon) { icon.textContent = 'attach_file'; icon.classList.remove('animate-spin'); }
+        e.target.value = '';
+    });
+
     async function handleReplySubmit(event, type) {
         event.preventDefault();
         const form = event.target;
@@ -370,6 +491,12 @@
 
                 if (mBox) mBox.innerHTML = html;
                 if (dBox) dBox.innerHTML = html;
+
+                // Разметка заменилась целиком — поднимаем плееры заново
+                if (window.initMediaPlayers) {
+                    if (mBox) window.initMediaPlayers(mBox);
+                    if (dBox) window.initMediaPlayers(dBox);
+                }
 
                 if (wasAtBottom) scrollChat();
                 else document.querySelectorAll('.msg-rel-time').forEach(el => el.textContent = formatMessageRelativeTime(el.dataset.timestamp));
@@ -461,5 +588,276 @@
         }
     });
 </script>
+<style>
+    /* Свои плееры вложений: единый вид вместо браузерных элементов */
+    .voice-player { display:flex; align-items:center; gap:9px; min-width:210px; max-width:260px; padding:3px 0; }
+    .voice-play { width:32px; height:32px; flex-shrink:0; border:0; border-radius:50%; display:grid;
+        place-items:center; cursor:pointer; background:#34d399; color:#04120c; transition:transform .15s; }
+    .voice-play:active { transform:scale(.93); }
+    .voice-play .material-symbols-outlined { font-size:19px; }
+    .voice-body { flex:1; min-width:0; }
+    .voice-track { position:relative; height:18px; display:flex; align-items:center; cursor:pointer; touch-action:none; }
+    .voice-rail { position:relative; width:100%; height:3px; border-radius:999px; background:rgba(255,255,255,.2); }
+    .voice-fill { position:absolute; inset:0 auto 0 0; width:0%; border-radius:999px; background:#34d399; }
+    .voice-knob { position:absolute; top:50%; left:0%; width:10px; height:10px; border-radius:50%;
+        background:#34d399; transform:translate(-50%,-50%); box-shadow:0 1px 5px rgba(0,0,0,.5); pointer-events:none; }
+    .voice-time { margin-top:2px; font-size:9.5px; font-weight:700; color:rgba(255,255,255,.45);
+        font-variant-numeric:tabular-nums; }
+
+    .circle-player { position:relative; width:170px; height:170px; touch-action:none; }
+    .circle-player video { width:100%; height:100%; border-radius:50%; object-fit:cover; background:#000; display:block; }
+    .circle-ring { position:absolute; inset:-4px; width:calc(100% + 8px); height:calc(100% + 8px);
+        transform:rotate(-90deg); pointer-events:none; }
+    .circle-ring .rail { fill:none; stroke:rgba(255,255,255,.22); stroke-width:2.5; }
+    .circle-ring .bar { fill:none; stroke:#fff; stroke-width:2.5; stroke-linecap:round;
+        transition:stroke-dashoffset .1s linear; }
+    .circle-knob { position:absolute; width:12px; height:12px; border-radius:50%; background:#fff;
+        box-shadow:0 1px 6px rgba(0,0,0,.6); transform:translate(-50%,-50%); pointer-events:none;
+        opacity:0; transition:opacity .2s; }
+    .circle-player.is-playing .circle-knob, .circle-player.is-seeking .circle-knob { opacity:1; }
+    .circle-overlay { position:absolute; inset:0; border:0; background:transparent; border-radius:50%;
+        display:grid; place-items:center; cursor:pointer; }
+    .circle-overlay .material-symbols-outlined { font-size:42px; color:#fff;
+        text-shadow:0 2px 12px rgba(0,0,0,.7); transition:opacity .2s; }
+    .circle-player.is-playing .circle-overlay .material-symbols-outlined { opacity:0; }
+    .circle-player.is-playing:hover .circle-overlay .material-symbols-outlined { opacity:.85; }
+    .circle-time { position:absolute; left:50%; bottom:6px; transform:translateX(-50%); padding:2px 8px;
+        border-radius:999px; background:rgba(0,0,0,.55); font-size:10px; font-weight:700; color:#fff;
+        font-variant-numeric:tabular-nums; pointer-events:none; }
+</style>
+
+<script>
+(function () {
+    'use strict';
+    function fixDuration(media, onReady) {
+        if (isFinite(media.duration) && media.duration > 0) { onReady(); return; }
+
+        // Трюк нужен только при duration === Infinity (ogg/opus из
+        // Telegram). При NaN метаданные просто ещё не пришли — тогда
+        // перемотка в конец сломала бы позицию, поэтому просто ждём.
+        if (!(media.duration === Infinity)) return;
+
+        // Запускаем ровно один раз: второй зонд ловил бы чужие
+        // timeupdate и сбрасывал позицию при перемотке
+        if (media.dataset.durFix) return;
+        media.dataset.durFix = '1';
+
+        const cleanup = () => media.removeEventListener('timeupdate', probe);
+        const probe = () => {
+            if (isFinite(media.duration) && media.duration > 0) {
+                cleanup();
+                media.currentTime = 0;
+                onReady();
+            }
+        };
+
+        media.addEventListener('timeupdate', probe);
+        try {
+            media.currentTime = 1e6;   // заведомо больше длины
+        } catch (_) {
+            cleanup();
+        }
+        // страховка: если браузер так и не посчитал, не зависаем
+        setTimeout(cleanup, 3000);
+    }
+
+    function fmt(sec) {
+        if (!isFinite(sec) || sec < 0) sec = 0;
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return m + ':' + String(s).padStart(2, '0');
+    }
+
+    // Одновременно играет только одно вложение
+    function stopOthers(current) {
+        document.querySelectorAll('audio, video').forEach(el => {
+            if (el !== current && !el.paused) el.pause();
+        });
+    }
+
+    /* ---------------- Голосовое ---------------- */
+    function initVoice(root) {
+        if (root.dataset.ready) return;
+        root.dataset.ready = '1';
+
+        const audio = root.querySelector('audio');
+        const btn = root.querySelector('.voice-play');
+        const icon = btn.querySelector('.material-symbols-outlined');
+        const track = root.querySelector('.voice-track');
+        const fill = root.querySelector('.voice-fill');
+        const knob = root.querySelector('.voice-knob');
+        const time = root.querySelector('.voice-time');
+
+        let dragging = false;
+
+        const paint = () => {
+            const d = audio.duration;
+            const pct = (isFinite(d) && d > 0) ? (audio.currentTime / d) * 100 : 0;
+            fill.style.width = pct + '%';
+            knob.style.left = pct + '%';
+            time.textContent = fmt(audio.currentTime) +
+                (isFinite(d) && d > 0 ? ' / ' + fmt(d) : '');
+        };
+
+        btn.addEventListener('click', () => {
+            if (audio.paused) { stopOthers(audio); audio.play().catch(() => { }); }
+            else audio.pause();
+        });
+
+        audio.addEventListener('play', () => { icon.textContent = 'pause'; });
+        audio.addEventListener('pause', () => { icon.textContent = 'play_arrow'; });
+        audio.addEventListener('ended', () => {
+            icon.textContent = 'play_arrow';
+            audio.currentTime = 0;
+            paint();
+        });
+        audio.addEventListener('timeupdate', () => { if (!dragging) paint(); });
+        audio.addEventListener('loadedmetadata', () => fixDuration(audio, paint));
+        fixDuration(audio, paint);
+
+        const seekFrom = (clientX) => {
+            const r = track.getBoundingClientRect();
+            const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+            if (isFinite(audio.duration) && audio.duration > 0) {
+                audio.currentTime = ratio * audio.duration;
+            }
+            fill.style.width = (ratio * 100) + '%';
+            knob.style.left = (ratio * 100) + '%';
+        };
+
+        track.addEventListener('pointerdown', e => {
+            dragging = true;
+            track.setPointerCapture(e.pointerId);
+            seekFrom(e.clientX);
+        });
+        track.addEventListener('pointermove', e => { if (dragging) seekFrom(e.clientX); });
+        track.addEventListener('pointerup', e => {
+            dragging = false;
+            try { track.releasePointerCapture(e.pointerId); } catch (_) { }
+            paint();
+        });
+        track.addEventListener('pointercancel', () => { dragging = false; });
+
+        paint();
+    }
+
+    /* ---------------- Кружок ---------------- */
+    function initCircle(root) {
+        if (root.dataset.ready) return;
+        root.dataset.ready = '1';
+
+        const video = root.querySelector('video');
+        const bar = root.querySelector('.circle-ring .bar');
+        const knob = root.querySelector('.circle-knob');
+        const overlay = root.querySelector('.circle-overlay');
+        const icon = overlay.querySelector('.material-symbols-outlined');
+        const time = root.querySelector('.circle-time');
+
+        const R = 48;
+        const LEN = 2 * Math.PI * R;
+        bar.style.strokeDasharray = LEN.toFixed(2);
+        bar.style.strokeDashoffset = LEN.toFixed(2);
+
+        let dragging = false;
+
+        const paint = () => {
+            const d = video.duration;
+            const ratio = (isFinite(d) && d > 0) ? video.currentTime / d : 0;
+            bar.style.strokeDashoffset = (LEN * (1 - ratio)).toFixed(2);
+
+            // Ручка идёт по кольцу от 12 часов по часовой стрелке
+            const angle = ratio * 2 * Math.PI - Math.PI / 2;
+            const box = root.getBoundingClientRect();
+            const rad = (box.width / 2) + 4;
+            knob.style.left = ((box.width / 2) + rad * Math.cos(angle)) + 'px';
+            knob.style.top = ((box.height / 2) + rad * Math.sin(angle)) + 'px';
+
+            time.textContent = fmt(isFinite(d) && d > 0 ? d - video.currentTime : 0);
+        };
+
+        const toggle = () => {
+            if (video.paused) { stopOthers(video); video.play().catch(() => { }); }
+            else video.pause();
+        };
+
+        overlay.addEventListener('click', e => {
+            if (root.classList.contains('is-seeking')) return;
+            toggle();
+        });
+
+        video.addEventListener('play', () => {
+            root.classList.add('is-playing');
+            icon.textContent = 'pause';
+        });
+        video.addEventListener('pause', () => {
+            root.classList.remove('is-playing');
+            icon.textContent = 'play_arrow';
+        });
+        video.addEventListener('ended', () => {
+            root.classList.remove('is-playing');
+            icon.textContent = 'play_arrow';
+            video.currentTime = 0;
+            paint();
+        });
+        video.addEventListener('timeupdate', () => { if (!dragging) paint(); });
+        video.addEventListener('loadedmetadata', () => fixDuration(video, paint));
+        fixDuration(video, paint);
+
+        // Перемотка тянущим жестом по кольцу
+        const seekFromPoint = (clientX, clientY) => {
+            const box = root.getBoundingClientRect();
+            const cx = box.left + box.width / 2;
+            const cy = box.top + box.height / 2;
+            let a = Math.atan2(clientY - cy, clientX - cx) + Math.PI / 2;
+            if (a < 0) a += 2 * Math.PI;
+            const ratio = Math.min(1, Math.max(0, a / (2 * Math.PI)));
+            if (isFinite(video.duration) && video.duration > 0) {
+                video.currentTime = ratio * video.duration;
+                paint();
+            }
+        };
+
+        // Тянем только у края круга, чтобы обычный тап оставался play/pause
+        const nearRing = (clientX, clientY) => {
+            const box = root.getBoundingClientRect();
+            const cx = box.left + box.width / 2;
+            const cy = box.top + box.height / 2;
+            const dist = Math.hypot(clientX - cx, clientY - cy);
+            return dist > box.width * 0.34;
+        };
+
+        root.addEventListener('pointerdown', e => {
+            if (!nearRing(e.clientX, e.clientY)) return;
+            dragging = true;
+            root.classList.add('is-seeking');
+            root.setPointerCapture(e.pointerId);
+            seekFromPoint(e.clientX, e.clientY);
+        });
+        root.addEventListener('pointermove', e => {
+            if (dragging) seekFromPoint(e.clientX, e.clientY);
+        });
+        const stop = e => {
+            if (!dragging) return;
+            dragging = false;
+            try { root.releasePointerCapture(e.pointerId); } catch (_) { }
+            setTimeout(() => root.classList.remove('is-seeking'), 0);
+        };
+        root.addEventListener('pointerup', stop);
+        root.addEventListener('pointercancel', stop);
+
+        paint();
+    }
+
+
+    window.initMediaPlayers = function (scope) {
+        const root = scope || document;
+        root.querySelectorAll('[data-voice]').forEach(initVoice);
+        root.querySelectorAll('[data-circle]').forEach(initCircle);
+    };
+    document.addEventListener('DOMContentLoaded', () => window.initMediaPlayers());
+    window.initMediaPlayers();
+})();
+</script>
+
 {% endblock %}
-{% endif %}
+{% endif %}

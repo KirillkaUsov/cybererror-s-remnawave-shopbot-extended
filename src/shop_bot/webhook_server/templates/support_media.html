@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Вложения поддержки{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+
+    <div class="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div>
+            <h2 class="text-2xl font-black text-white tracking-[-0.03em]">Вложения поддержки</h2>
+            <p class="text-white/40 text-xs mt-1">Файлы из обращений: локальные копии и ссылки на Telegram</p>
+        </div>
+        <a href="{{ url_for('settings_page') }}"
+            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/80 text-xs font-bold uppercase tracking-wider hover:bg-white/10 transition-all">
+            <span class="material-symbols-outlined text-base">tune</span>
+            Настройки
+        </a>
+    </div>
+
+    <!-- Сводка -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-4">
+            <div class="text-[10px] uppercase tracking-widest text-white/40 font-bold">Записей в базе</div>
+            <div class="text-2xl font-black text-white mt-1">{{ stats.count or 0 }}</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-4">
+            <div class="text-[10px] uppercase tracking-widest text-white/40 font-bold">Файлов на диске</div>
+            <div class="text-2xl font-black text-white mt-1">{{ disk.files or 0 }}</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-4">
+            <div class="text-[10px] uppercase tracking-widest text-white/40 font-bold">Занято места</div>
+            <div class="text-2xl font-black text-primary mt-1">{{ human(disk.bytes or 0) }}</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-4">
+            <div class="text-[10px] uppercase tracking-widest text-white/40 font-bold">Осиротевших</div>
+            <div class="text-2xl font-black {% if stats.orphan %}text-amber-400{% else %}text-white{% endif %} mt-1">
+                {{ stats.orphan or 0 }}</div>
+        </div>
+    </div>
+
+    <!-- Очистка -->
+    <div class="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6">
+        <h3 class="text-white font-bold text-sm mb-1">Очистка</h3>
+        <p class="text-white/40 text-[11px] mb-4 leading-relaxed">
+            Удаление необратимо. Файлы, у которых остался file_id, при необходимости
+            подтянутся из Telegram заново.
+        </p>
+
+        <div class="flex flex-wrap items-center gap-2">
+            <button data-cleanup="orphan"
+                class="cleanup-btn inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 text-[11px] font-bold uppercase tracking-wider hover:bg-amber-400/15 hover:border-amber-400/30 transition-all">
+                <span class="material-symbols-outlined text-sm">link_off</span>
+                Осиротевшие ({{ stats.orphan or 0 }})
+            </button>
+
+            <button data-cleanup="stray"
+                class="cleanup-btn inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 text-[11px] font-bold uppercase tracking-wider hover:bg-white/10 transition-all">
+                <span class="material-symbols-outlined text-sm">cleaning_services</span>
+                Файлы без записи
+            </button>
+
+            <div class="inline-flex items-center gap-2 ml-auto">
+                <input type="number" id="cleanup-days" min="1" value="{{ cfg.keep_days or 30 }}"
+                    class="w-20 bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-xs outline-none focus:ring-1 focus:ring-primary/40" />
+                <button data-cleanup="old"
+                    class="cleanup-btn inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-bold uppercase tracking-wider hover:bg-red-500/20 transition-all">
+                    <span class="material-symbols-outlined text-sm">auto_delete</span>
+                    Старше N дней
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Список -->
+    <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-white/10 flex items-center justify-between">
+            <h3 class="text-white font-bold text-sm">Последние вложения</h3>
+            <span class="text-[10px] text-white/30 uppercase tracking-widest">до 100 записей</span>
+        </div>
+
+        {% if items %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-white/5 bg-white/[0.02]">
+                        <th class="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/40">Превью</th>
+                        <th class="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/40">Тикет</th>
+                        <th class="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/40">Файл</th>
+                        <th class="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/40">Размер</th>
+                        <th class="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/40">Где лежит
+                        </th>
+                        <th class="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/40">Дата</th>
+                        <th class="px-4 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in items %}
+                    <tr class="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+                        <td class="px-4 py-2">
+                            {% if m.kind == 'photo' %}
+                            <a href="{{ url_for('support_media_file', media_id=m.media_id) }}" target="_blank">
+                                <img src="{{ url_for('support_media_file', media_id=m.media_id) }}" loading="lazy"
+                                    class="w-12 h-12 object-cover rounded-lg border border-white/10" alt="">
+                            </a>
+                            {% else %}
+                            <div
+                                class="w-12 h-12 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-white/40 text-lg">
+                                    {% if m.kind == 'video' %}movie{% else %}description{% endif %}
+                                </span>
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2">
+                            <a href="{{ url_for('support_ticket_page', ticket_id=m.ticket_id) }}"
+                                class="text-primary text-xs font-bold hover:underline">#{{ m.ticket_id }}</a>
+                        </td>
+                        <td class="px-4 py-2 text-white/70 text-xs max-w-[220px] truncate">
+                            {{ m.file_name or ('без имени · ' + (m.kind or '')) }}
+                        </td>
+                        <td class="px-4 py-2 text-white/50 text-xs whitespace-nowrap">{{ human(m.file_size or 0) }}</td>
+                        <td class="px-4 py-2 whitespace-nowrap">
+                            {% if m.local_path %}
+                            <span
+                                class="text-[9px] px-2 py-1 rounded-lg bg-primary/10 text-primary font-bold uppercase">диск</span>
+                            {% endif %}
+                            {% if m.file_id %}
+                            <span
+                                class="text-[9px] px-2 py-1 rounded-lg bg-white/5 text-white/50 font-bold uppercase">telegram</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-white/40 text-[11px] whitespace-nowrap">
+                            {{ (m.created_at or '')[:16] }}</td>
+                        <td class="px-4 py-2 text-right">
+                            <button data-delete-media="{{ m.media_id }}"
+                                class="w-8 h-8 inline-flex items-center justify-center rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all"
+                                title="Удалить вложение">
+                                <span class="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-10 text-center text-white/30 text-sm">Вложений пока нет</div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    (function () {
+        async function post(url, body) {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                credentials: 'same-origin',
+                body: JSON.stringify(body || {})
+            });
+            return resp.json();
+        }
+
+        document.querySelectorAll('.cleanup-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const mode = btn.getAttribute('data-cleanup');
+                const days = Number(document.getElementById('cleanup-days')?.value || 30);
+
+                const labels = {
+                    orphan: 'Удалить вложения удалённых тикетов?',
+                    stray: 'Удалить файлы, которых нет в базе?',
+                    old: `Удалить вложения старше ${days} дней?`
+                };
+                if (!confirm(labels[mode] + '\n\nДействие необратимо.')) return;
+
+                const original = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>Чищу...';
+
+                const data = await post('/support/media/cleanup', { mode, days });
+                if (data.ok) {
+                    showToast('success', data.message || 'Готово');
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    showToast('danger', data.error || 'Не удалось выполнить очистку');
+                    btn.disabled = false;
+                    btn.innerHTML = original;
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-delete-media]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.getAttribute('data-delete-media');
+                if (!confirm('Удалить это вложение?')) return;
+                const data = await post(`/support/media/${id}/delete`);
+                if (data.ok) {
+                    showToast('success', data.message || 'Удалено');
+                    btn.closest('tr')?.remove();
+                } else {
+                    showToast('danger', data.error || 'Не удалось удалить');
+                }
+            });
+        });
+    })();
+</script>
+{% endblock %}

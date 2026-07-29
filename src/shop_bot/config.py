@@ -18,19 +18,19 @@ from aiogram import html
 CHOOSE_PLAN_MESSAGE = "Выберите подходящий тариф:"
 CHOOSE_PAYMENT_METHOD_MESSAGE = "Выберите удобный способ оплаты:"
 VPN_INACTIVE_TEXT = "❌ <b>Статус VPN:</b> Неактивен (срок истек)"
-VPN_NO_DATA_TEXT = "ℹ️ <b>Статус VPN:</b> У вас пока нет активных ключей."
+VPN_NO_DATA_TEXT = "ℹ️ <b>Статус VPN:</b> У вас пока нет активных подписок."
 
 
 def get_profile_text(username, user_id, total_spent, total_months, vpn_status, vpn_remaining, main_balance, referral_count, total_ref_earned, seller_info=None):
     # Base Layout
     text = (
-        f"<b>👤 ПРОФИЛЬ:</b> {username} / <b>iD:</b> <code>{user_id}</code>\n\n"
-        f"<b>💎 ПОДПИСКА</b>\n"
+        f"<b>👤 Пользователь:</b> {username} / <b>iD:</b> <code>{user_id}</code>\n\n"
+        #f"<b>💎 Подписка</b>\n"
         f"<b>🛡 Статус VPN:</b> {vpn_status} ✅\n"
         f"<b>⏳ Осталось:</b> {vpn_remaining}\n"
-        f"<b>💲 Потрачено всего:</b> {total_spent:.0f} RUB\n"
+        #f"<b>💲 Потрачено всего:</b> {total_spent:.0f} RUB\n"
         f"<b>📅 Приобретено месяцев:</b> {total_months}\n\n"
-        f"<b>💼 ФИНАНСЫ</b>\n"
+        f"<b>💼 Кошелёк</b>\n"
         f"<b>💳 Основной баланс:</b> {main_balance:.0f} RUB\n"
         f"<b>🤝 Рефералов:</b> {referral_count}\n"
         f"<b>💰 Заработано:</b> {total_ref_earned:.2f} RUB"
@@ -125,23 +125,23 @@ def get_key_info_text(key_number, expiry_date, created_date, connection_string, 
         comment_block = f"💬 <b>Комментарий:</b> <blockquote>{html.quote(comment)}</blockquote>\n"
 
     return (
-        f"🔑 <b>Информация о ключе #{key_number}</b>\n\n"
-        f"📅 <b>Сроки действия:</b>\n"
-        f"{status_icon} <b>Статус:</b> {status_text}\n"
-        f"➕ <b>Куплен:</b> {created_date.strftime('%d.%m.%Y')}\n"
+        f"🔑 <b>Информация о подписке #{key_number}</b>\n\n"
+        #f"📅 <b>Сроки действия:</b>\n"
+        #f"{status_icon} <b>Статус:</b> {status_text}\n"
+        f"➕ <b>Приобретена:</b> {created_date.strftime('%d.%m.%Y')}\n"
         f"🕙 <b>Истекает:</b> {expiry_date.strftime('%d.%m.%Y %H:%M')}\n"
         f"⏳ <b>Осталось:</b> {remaining_str}\n"
-        f"💌 <b>ID ключа:</b> <code>{email}</code>\n\n"
-        f"📉 <b>Использование:</b>\n"
-        f"🛰 <b>Лимит трафика:</b> {traffic_block}\n" 
-        f"📱 <b>Лимит устройств:</b> {hwid_block}\n"
-        f"🗽 <b>Ваш ключ:</b>\n<code>{connection_string}</code>"
+        #f"💌 <b>ID ключа:</b> <code>{email}</code>\n\n"
+        #f"📉 <b>Использование:</b>\n"
+        #f"🛰 <b>Лимит трафика:</b> {traffic_block}\n" 
+        f"📱 <b>Лимит устройств:</b> {hwid_block}\n\n"
+        f"🗽 <b>Ваша подписка:</b>\n\n<tg-spoiler>{connection_string}</tg-spoiler>\n\n👆 Нажмите, чтобы подключиться"
         f"\n\n{comment_block}"
     )
 
 
 def get_purchase_success_text(action: str, key_number: int, expiry_date, connection_string: str, email: str = None):
-    action_text = "продлен" if action == "extend" else "готов"
+    action_text = "продлена" if action == "extend" else "готова"
     expiry_date_str = expiry_date.strftime('%d.%m %H:%M')
     
     # Обработка email для скрытия служебного суффикса @bot.local
@@ -150,10 +150,11 @@ def get_purchase_success_text(action: str, key_number: int, expiry_date, connect
     email_display = email if email else "Не указан"
 
     return (
-        f"🎉 <b>Ваш ключ #{key_number} {action_text}!</b>\n\n"
-        f"📅 <b>Сроки действия:</b>\n"
-        f"⏳ <b>Действует до: {expiry_date_str}</b>\n"
-        f"💌 <b>ID ключа:</b> <code>{email_display}</code>\n\n"
-        f"🗽 <b>Ваш ключ:</b>\n"
-        f"<code>{connection_string}</code>"
+        #f"🎉 <b>Ваша подписка #{key_number} {action_text}!</b>\n\n"
+        f"🎉 <b>У Вас новая подписка!</b>\n\n"
+        #f"📅 <b>Сроки действия:</b>\n"
+        f"⏳ <b>Действует до: {expiry_date_str}</b>\n\n"
+        #f"💌 <b>ID подписки:</b> <code>{email_display}</code>\n\n"
+        f"🗽 <b>Ваша подписка:</b>\n\n<tg-spoiler>{connection_string}</tg-spoiler>\n\n👆 Нажмите, чтобы подключиться"
+        #f"\n\n{comment_block}"
     )

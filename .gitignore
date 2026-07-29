@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Runtime data — never commit
+users.db
+users.db-journal
+*.sqlite3
+backups/
+logs/
+media/
+src/modules/
+.env

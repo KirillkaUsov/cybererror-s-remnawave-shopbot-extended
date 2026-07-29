@@ -95,6 +95,9 @@ user_command_times = {}
 user_blocked_until = {}
 user_spam_level = {}
 
+# Кулдаун пересоздания подписки хранится в БД (rw_repo), поэтому он общий
+# для бота, веб-приложения и админки и переживает перезапуск процесса.
+
 # ===== УТИЛИТА БЕЗОПАСНАЯ СТРОКА =====
 # Преобразует входное значение в строку, заменяя None на пустую строку
 def safe_str(val):
@@ -349,21 +352,21 @@ async def send_instruction_response(callback: types.CallbackQuery, os_type: str,
             "android": (
                 "<b>Подключение на Android</b>\n\n"
                 "1. <b>Установите V2RayTun:</b> Google Play.\n"
-                "2. <b>Скопируйте ключ:</b> В разделе «Моя подписка».\n"
+                "2. <b>Скопируйте ссылку подписки:</b> В разделе «Моя подписка».\n"
                 "3. <b>Импорт:</b> В приложении нажмите «+» -> «Импорт из буфера».\n"
                 "4. <b>Подключение:</b> Нажмите кнопку подключения."
             ),
             "ios": (
                 "<b>Подключение на iOS</b>\n\n"
                 "1. <b>Установите V2RayTun:</b> App Store.\n"
-                "2. <b>Скопируйте ключ:</b> В боте.\n"
+                "2. <b>Скопируйте ссылку подписки:</b> В боте.\n"
                 "3. <b>Импорт:</b> В приложении нажмите «+» -> «Импорт из буфера».\n"
                 "4. <b>Подключение:</b> Включите переключатель."
             ),
             "windows": (
                 "<b>Подключение на Windows</b>\n\n"
                 "1. <b>Скачайте Nekoray:</b> GitHub.\n"
-                "2. <b>Импорт:</b> Скопируйте ключ -> Server -> Import from clipboard.\n"
+                "2. <b>Импорт:</b> Скопируйте ссылку подписки -> Server -> Import from clipboard.\n"
                 "3. <b>Запуск:</b> Server -> Start."
             ),
             "linux": (
@@ -658,6 +661,47 @@ def get_user_router() -> Router:
                 await message.answer("✅ <b>Авторизация успешна!</b>\n\nМожете вернуться в браузер — страница обновится автоматически.")
                 return
 
+        # Привязка Telegram к веб-аккаунту из мини-аппа. Токен одноразовый,
+        # его выдаёт /api/tg-link/start — по нему нельзя войти, только привязаться.
+        if command.args and command.args.startswith('link_'):
+            from shop_bot.data_manager import database
+            try:
+                from shop_bot.webapp.handlers import TG_LINK_TOKENS
+            except ImportError:
+                TG_LINK_TOKENS = {}
+
+            link_token = command.args[5:]
+            data = TG_LINK_TOKENS.get(link_token)
+            if not data or data.get("expires", 0) < time.time():
+                TG_LINK_TOKENS.pop(link_token, None)
+                await message.answer("❌ Ссылка привязки устарела. Откройте кабинет и попробуйте ещё раз.")
+                return
+
+            web_user_id = data["user_id"]
+            web_user = get_user(web_user_id)
+            if not web_user:
+                TG_LINK_TOKENS.pop(link_token, None)
+                await message.answer("❌ Веб-аккаунт не найден.")
+                return
+            if database.is_telegram_account(web_user):
+                TG_LINK_TOKENS.pop(link_token, None)
+                await message.answer("⚠️ Этот аккаунт уже привязан к Telegram.")
+                return
+
+            res = database.link_telegram_to_email_user(web_user_id, user_id, message.from_user.username or "")
+            if res is True:
+                data["linked_to"] = user_id
+                logger.info(f"Привязка: веб-аккаунт {web_user_id} привязан к Telegram {user_id}.")
+                await message.answer(
+                    "✅ <b>Telegram привязан!</b>\n\n"
+                    "Подписки и баланс веб-аккаунта теперь здесь. "
+                    "Можете вернуться в кабинет — страница обновится сама."
+                )
+            else:
+                TG_LINK_TOKENS.pop(link_token, None)
+                await message.answer(f"❌ Не удалось привязать: {res}")
+            return
+
         if command.args and command.args.startswith('sync_'):
             sync_token = command.args.replace('sync_', '')
             from shop_bot.data_manager import database
@@ -701,7 +745,7 @@ def get_user_router() -> Router:
                             await _apply_uni_promo(message, user_id, keys[0]['key_id'], code, promo)
                         else:
                             kb = keyboards.create_uni_promo_keys_keyboard(keys, code)
-                            await message.answer("🎁 <b>Активация промокода</b>\nВыберите подписку (ключ):", reply_markup=kb)
+                            await message.answer("🎁 <b>Активация промокода</b>\nВыберите подписку:", reply_markup=kb)
                     else:
                         kb_buy = InlineKeyboardBuilder().button(text="🛒 Купить", callback_data="buy_new_key").as_markup()
                         await message.answer("❌ У вас нет активных подписок для применения промокода на дни.", reply_markup=kb_buy)
@@ -884,7 +928,7 @@ def get_user_router() -> Router:
             vpn_status = "Неактивен"
             vpn_remaining = "0 д. 0 ч."
         else: 
-            vpn_status = "Нет ключей"
+            vpn_status = "Нет подписок"
             vpn_remaining = "-"
         
         try: main_balance = get_balance(user_id)
@@ -2049,7 +2093,7 @@ def get_user_router() -> Router:
         user_keys = get_user_keys(user_id)
         keys_list_image = get_setting("keys_list_image")
         logger.info(f"Ключи: Пользователь {user_id} просмотрел список своих ключей.")
-        text = "🔑 <b>Ваши ключи доступа</b>\n\nНиже представлен список ваших активных и истекших ключей:" if user_keys else "🏷 <b>У вас пока нет активных ключей.</b>\nПриобретите подписку в главном меню, чтобы начать пользоваться."
+        text = "🔑 Ниже представлен список ваших активных и истёкших подписок:" if user_keys else "🏷 <b>У вас пока нет активных подписок.</b>\nОзнакомьтесь с тарифами, чтобы начать пользоваться."
         await smart_edit_message(callback.message, text, keyboards.create_keys_management_keyboard(user_keys), keys_list_image)
     # ===== Конец функции manage_keys_handler =====
 
@@ -2149,7 +2193,7 @@ def get_user_router() -> Router:
             else: await message.answer(text=final_text, reply_markup=keyboards.create_dynamic_key_info_keyboard(new_key_id, result['connection_string']))
         except Exception as e:
             logger.error(f"Ошибка создания пробного периода ({user_id} на {host_name}): {e}", exc_info=True)
-            await smart_edit_message(message, "⚠️ <b>Произошла ошибка</b>\nНе удалось завершить создание пробного ключа.")
+            await smart_edit_message(message, "⚠️ <b>Произошла ошибка</b>\nНе удалось завершить оформление пробной подписки.")
     # ===== Конец функции process_trial_key_creation =====
 
     # ===== ВНУТРЕННЕЕ ОБНОВЛЕНИЕ ИНФОРМАЦИИ О КЛЮЧЕ =====
@@ -2157,7 +2201,7 @@ def get_user_router() -> Router:
     async def refresh_key_info_internal(bot: Bot, chat_id: int, message_to_edit: types.Message, key_id: int, user_id: int, prompt_message_id: int = None, state: FSMContext = None):
         key_data = rw_repo.get_key_by_id(key_id)
         if not key_data or key_data['user_id'] != user_id:
-            error_text = "❌ <b>Доступ запрещен</b>\nДанный ключ не найден в вашей библиотеке."
+            error_text = "❌ <b>Доступ запрещен</b>\nДанная подписка не найдена в вашем аккаунте."
             if prompt_message_id:
                 try: await bot.edit_message_text(chat_id=chat_id, message_id=prompt_message_id, text=error_text)
                 except: pass
@@ -2216,6 +2260,99 @@ def get_user_router() -> Router:
         await refresh_key_info_internal(bot=bot, chat_id=callback.message.chat.id, message_to_edit=callback.message, key_id=kid, user_id=callback.from_user.id)
     # ===== Конец функции show_key_handler =====
 
+    # ===== ПОДТВЕРЖДЕНИЕ ПЕРЕСОЗДАНИЯ ПОДПИСКИ =====
+    # Предупреждает пользователя, что старая ссылка перестанет работать, и просит подтвердить сброс
+    @user_router.callback_query(F.data.startswith("reset_sub_confirm_"))
+    @anti_spam
+    @registration_required
+    async def reset_subscription_confirm_handler(callback: types.CallbackQuery):
+        try: kid = int(callback.data[len("reset_sub_confirm_"):])
+        except (IndexError, ValueError): return await callback.answer("⚠️ Ошибка ID.", show_alert=True)
+
+        key = rw_repo.get_key_by_id(kid)
+        if not key or key.get('user_id') != callback.from_user.id:
+            return await callback.answer("❌ Подписка не найдена.", show_alert=True)
+
+        await callback.answer()
+        await smart_edit_message(
+            callback.message,
+            (
+                "🔄 <b>Пересоздать ссылку подписки?</b>\n\n"
+                "Текущая ссылка перестанет работать на всех устройствах, где вы её использовали. "
+                "После пересоздания нужно будет заново импортировать новую ссылку в приложение.\n\n"
+                "Обычно это нужно, если старая ссылка кому-то стала известна или подключение "
+                "перестало работать и нужна «чистая» ссылка.\n\n"
+                "Продолжить?"
+            ),
+            keyboards.create_reset_subscription_confirm_keyboard(kid)
+        )
+    # ===== Конец функции reset_subscription_confirm_handler =====
+
+    # ===== ПЕРЕСОЗДАНИЕ ССЫЛКИ ПОДПИСКИ =====
+    # Отзывает текущую ссылку подписки в Remnawave и генерирует новую взамен неё
+    @user_router.callback_query(F.data.startswith("reset_sub_do_"))
+    @anti_spam
+    @registration_required
+    async def reset_subscription_do_handler(callback: types.CallbackQuery, bot: Bot):
+        user_id = callback.from_user.id
+        try: kid = int(callback.data[len("reset_sub_do_"):])
+        except (IndexError, ValueError): return await callback.answer("⚠️ Ошибка ID.", show_alert=True)
+
+        key = rw_repo.get_key_by_id(kid)
+        if not key or key.get('user_id') != user_id:
+            return await callback.answer("❌ Подписка не найдена.", show_alert=True)
+
+        wait_seconds = rw_repo.get_subscription_reset_wait(kid)
+        if wait_seconds > 0:
+            remaining_min = max(1, int(wait_seconds / 60))
+            return await callback.answer(f"⏳ Подождите ещё {remaining_min} мин. перед следующим пересозданием.", show_alert=True)
+
+        client_uuid = key.get('remnawave_user_uuid')
+        host_name = key.get('host_name')
+        if not client_uuid or not host_name:
+            return await callback.answer("❌ Не удалось определить сервер подписки. Обратитесь в поддержку.", show_alert=True)
+
+        await callback.answer("⏳ Пересоздаю ссылку...")
+        await smart_edit_message(callback.message, "⏳ <b>Пересоздаю подписку...</b>\nЭто займёт пару секунд.")
+
+        try:
+            result = await remnawave_api.revoke_subscription_on_host(client_uuid, host_name=host_name)
+        except Exception as e:
+            logger.error(f"Сброс подписки: ошибка вызова API для подписки {kid} пользователя {user_id}: {e}", exc_info=True)
+            result = None
+
+        if not result:
+            await smart_edit_message(
+                callback.message,
+                "❌ <b>Не удалось пересоздать подписку</b>\nПопробуйте ещё раз чуть позже или обратитесь в поддержку.",
+                keyboards.create_dynamic_key_info_keyboard(kid)
+            )
+            return
+
+        rw_repo.mark_subscription_reset(kid)
+
+        new_sub_url = remnawave_api.extract_subscription_url(result) or ''
+        try:
+            rw_repo.update_key(kid, subscription_url=new_sub_url)
+        except Exception as e:
+            logger.warning(f"Сброс подписки: не удалось сохранить новую ссылку в БД для подписки {kid}: {e}")
+
+        logger.info(f"Сброс подписки: пользователь {user_id} пересоздал ссылку подписки {kid} ({client_uuid})")
+
+        if new_sub_url:
+            text = (
+                "✅ <b>Подписка пересоздана</b>\n\n"
+                "Старая ссылка больше не работает. Импортируйте новую ссылку в приложение заново:\n\n"
+                f"<code>{new_sub_url}</code>"
+            )
+        else:
+            text = (
+                "✅ <b>Подписка пересоздана</b>\n\n"
+                "Старая ссылка больше не работает. Откройте карточку подписки, чтобы получить новую ссылку."
+            )
+        await smart_edit_message(callback.message, text, keyboards.create_dynamic_key_info_keyboard(kid, new_sub_url))
+    # ===== Конец функции reset_subscription_do_handler =====
+
     # ===== НАЧАЛО ПЕРЕНОСА КЛЮЧА НА ДРУГОЙ СЕРВЕР =====
     # Предоставляет выбор доступных серверов для миграции текущего ключа
     @user_router.callback_query(F.data.startswith("switch_server_"))
@@ -2227,12 +2364,12 @@ def get_user_router() -> Router:
         except ValueError: return await callback.answer("⚠️ Ошибка ID.", show_alert=True)
 
         key = rw_repo.get_key_by_id(kid)
-        if not key or key.get('user_id') != callback.from_user.id: return await callback.answer("❌ Ключ не найден.", show_alert=True)
+        if not key or key.get('user_id') != callback.from_user.id: return await callback.answer("❌ Подписка не найдена.", show_alert=True)
 
         hosts = [h for h in (get_all_hosts(visible_only=True) or []) if h.get('host_name') != key.get('host_name')]
         if not hosts: return await callback.answer("🌍 Другие серверы сейчас недоступны.", show_alert=True)
 
-        await smart_edit_message(callback.message, "🔄 <b>Смена сервера</b>\n\nВыберите новую локацию для вашего ключа. Все ваши настройки и время подписки будут сохранены.", keyboards.create_host_selection_keyboard(hosts, action=f"switch_{kid}"))
+        await smart_edit_message(callback.message, "🔄 <b>Смена сервера</b>\n\nВыберите новую локацию для вашей подписки. Все ваши настройки и оставшийся срок будут сохранены.", keyboards.create_host_selection_keyboard(hosts, action=f"switch_{kid}"))
     # ===== Конец функции switch_server_start =====
 
     # ===== ВЫПОЛНЕНИЕ ПЕРЕНОСА КЛЮЧА =====
@@ -2248,7 +2385,7 @@ def get_user_router() -> Router:
         except (ValueError, IndexError): return await callback.answer("⚠️ Ошибка данных.", show_alert=True)
 
         key = rw_repo.get_key_by_id(kid)
-        if not key or key.get('user_id') != callback.from_user.id: return await callback.answer("❌ Ключ не найден.", show_alert=True)
+        if not key or key.get('user_id') != callback.from_user.id: return await callback.answer("❌ Подписка не найдена.", show_alert=True)
         
         old_host = key.get('host_name')
         if not old_host or new_host == old_host: return await callback.answer("⚠️ Некоректный выбор сервера.", show_alert=True)
@@ -2265,7 +2402,7 @@ def get_user_router() -> Router:
             
             res = await remnawave_api.create_or_update_key_on_host(new_host, key.get('key_email'), expiry_timestamp_ms=expiry_ms, telegram_id=callback.from_user.id, hwid_limit=hw_lim, traffic_limit_gb=tr_lim_gb)
             if not res:
-                await smart_edit_message(callback.message, f"❌ <b>Ошибка миграции</b>\nНе удалось активировать ключ на сервере «{new_host}».")
+                await smart_edit_message(callback.message, f"❌ <b>Ошибка миграции</b>\nНе удалось активировать подписку на сервере «{new_host}».")
                 return
 
             try: await remnawave_api.delete_client_on_host(old_host, key.get('key_email'))
@@ -2289,8 +2426,8 @@ def get_user_router() -> Router:
                     return
             except: pass
 
-            logger.info(f"Перенос: Ключ {kid} пользователя {callback.from_user.id} успешно перенесен на {new_host}")
-            await smart_edit_message(callback.message, f"✅ <b>Готово!</b>\nКлюч успешно перенесен на сервер «{new_host}».", keyboards.create_back_to_menu_keyboard())
+            logger.info(f"Перенос: Подписка {kid} пользователя {callback.from_user.id} успешно перенесена на {new_host}")
+            await smart_edit_message(callback.message, f"✅ <b>Готово!</b>\nПодписка успешно перенесена на сервер «{new_host}».", keyboards.create_back_to_menu_keyboard())
         except Exception as e:
             logger.error(f"Ошибка смены хоста (ID {kid} на {new_host}): {e}", exc_info=True)
             await smart_edit_message(callback.message, "⚠️ <b>Сбой при переносе</b>\nНе удалось завершить операцию. Попробуйте позже.")
@@ -2340,7 +2477,7 @@ def get_user_router() -> Router:
         user_uuid = key.get('remnawave_user_uuid')
         
         if not user_uuid:
-            await smart_edit_message(message, "⚠️ Для этого ключа нет данных о пользователе.", keyboards.create_key_info_keyboard(key_id))
+            await smart_edit_message(message, "⚠️ Для этой подписки нет данных о пользователе.", keyboards.create_key_info_keyboard(key_id))
             return
         
         # Banner Image
@@ -2495,7 +2632,7 @@ def get_user_router() -> Router:
             await callback.answer("⏳ Загрузка тарифов...")
             return await _show_plans_for_host(callback, hosts[0]['host_name'])
 
-        await smart_edit_message(callback.message, "🌍 <b>Выбор сервера</b>\n\nВыберите страну и локацию для вашей новой подписки:", keyboards.create_host_selection_keyboard(hosts, action="new"), get_setting("buy_server_image"))
+        await smart_edit_message(callback.message, "🌍 <b>Наши тарифы</b>\n\nВыберите страну и тарифный план вашей новой подписки:", keyboards.create_host_selection_keyboard(hosts, action="new"), get_setting("buy_server_image"))
         logger.info(f"Покупка: Пользователь {callback.from_user.id} открыл выбор сервера для новой подписки.")
     # ===== Конец функции buy_new_key_handler =====
 
@@ -2550,13 +2687,13 @@ def get_user_router() -> Router:
     async def extend_key_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer()
         try: kid = int(callback.data.split("_")[2])
-        except: return await smart_edit_message(callback.message, "⚠️ Ошибка идентификации ключа.")
+        except: return await smart_edit_message(callback.message, "⚠️ Ошибка идентификации подписки.")
 
         key = rw_repo.get_key_by_id(kid)
-        if not key or key['user_id'] != callback.from_user.id: return await smart_edit_message(callback.message, "❌ Ключ не найден или доступ к нему ограничен.")
+        if not key or key['user_id'] != callback.from_user.id: return await smart_edit_message(callback.message, "❌ Подписка не найдена или доступ к ней ограничен.")
         
         host_name = key.get('host_name')
-        if not host_name: return await smart_edit_message(callback.message, "⚠️ Ошибка сервера ключа. Обратитесь в поддержку.")
+        if not host_name: return await smart_edit_message(callback.message, "⚠️ Ошибка сервера подписки. Обратитесь в поддержку.")
 
         host_data = get_host(host_name)
         if host_data and host_data.get('device_mode') == 'tiers':
@@ -2977,7 +3114,7 @@ def get_user_router() -> Router:
                 metadata["tier_device_count"] = p[11] if p[11] != 'None' else None
             
             await process_successful_payment(bot, metadata)
-            await callback.message.answer("✅ <b>Оплата подтверждена!</b> Ваш ключ/баланс успешно обновлены.")
+            await callback.message.answer("✅ <b>Оплата подтверждена!</b> Ваша подписка/баланс успешно обновлены.")
         except Exception as e:
             logger.error(f"Ошибка ручной проверки Crypto: {e}")
             await callback.answer("⚠️ Сбой при обработке платежа. Обратитесь в поддержку.")
@@ -3041,10 +3178,10 @@ def get_user_router() -> Router:
         try: kid = int(callback.data.split("_")[2])
         except: return
         key = rw_repo.get_key_by_id(kid)
-        if not key or key['user_id'] != callback.from_user.id: return await smart_edit_message(callback.message, "❌ Ключ не найден.")
+        if not key or key['user_id'] != callback.from_user.id: return await smart_edit_message(callback.message, "❌ Подписка не найдена.")
 
         cur = key.get('comment_key')
-        txt = f"<b>✏️ Комментарий к ключу #{kid}</b>\n\n" + (f"💬 Текущий: <b>{html.quote(cur)}</b>\n\n" if cur else "") + "Комментарий помогает различать ключи в общем списке. Виден только вам.\n\n💡 <i>Напр.: Телефон, Мама, Ноутбук</i>\n\n👇 <b>Введите новый текст:</b>"
+        txt = f"<b>✏️ Комментарий к подписке #{kid}</b>\n\n" + (f"💬 Текущий: <b>{html.quote(cur)}</b>\n\n" if cur else "") + "Комментарий помогает различать подписки в общем списке. Виден только вам.\n\n💡 <i>Напр.: Телефон, Мама, Ноутбук</i>\n\n👇 <b>Введите новый текст:</b>"
         
         kb = InlineKeyboardBuilder().button(text="🗑 Удалить", callback_data=f"delete_comment_{kid}").button(text="⬅️ Назад", callback_data=f"show_key_{kid}").adjust(2).as_markup()
         msg = await smart_edit_message(callback.message, txt, kb, get_setting("key_comments_image"))
@@ -3062,7 +3199,7 @@ def get_user_router() -> Router:
         try: kid = int(callback.data.split("_")[2])
         except: return
         key = rw_repo.get_key_by_id(kid)
-        if not key or key.get('user_id') != callback.from_user.id: return await callback.answer("❌ Ключ не найден.", show_alert=True)
+        if not key or key.get('user_id') != callback.from_user.id: return await callback.answer("❌ Подписка не найдена.", show_alert=True)
 
         rw_repo.update_key(kid, comment_key=""); await callback.answer("🗑 Удалено!"); await state.clear()
         await refresh_key_info_internal(bot=bot, chat_id=callback.message.chat.id, message_to_edit=callback.message, key_id=kid, user_id=callback.from_user.id)
@@ -3195,7 +3332,7 @@ def get_user_router() -> Router:
         else:
             await state.clear()
             kb = keyboards.create_uni_promo_keys_keyboard(keys, code)
-            await _show_result(" Выберите подписку (ключ), к которой нужно применить промокод:", True, kb)
+            await _show_result(" Выберите подписку, к которой нужно применить промокод:", True, kb)
 
     @user_router.callback_query(F.data.startswith("apply_uni_"))
     async def apply_uni_promo_callback(callback: types.CallbackQuery):
@@ -3268,7 +3405,7 @@ def get_user_router() -> Router:
             
             key = rw_repo.get_key_by_id(key_id)
             if not key or key['user_id'] != uid:
-                await _edit("🎁 <b>Активация бонусного промокода</b>\n\n❌ Ключ не найден.", InlineKeyboardBuilder().button(text="⬅️ Назад", callback_data="show_profile").as_markup())
+                await _edit("🎁 <b>Активация бонусного промокода</b>\n\n❌ Подписка не найдена.", InlineKeyboardBuilder().button(text="⬅️ Назад", callback_data="show_profile").as_markup())
                 return
                 
             days_to_add = int(promo.get('reward_value') or 0)
@@ -3290,7 +3427,7 @@ def get_user_router() -> Router:
                 return
                 
             if not rw_repo.update_key(key_id, remnawave_user_uuid=res['client_uuid'], expire_at_ms=res['expiry_timestamp_ms']):
-                await _edit("🎁 <b>Активация бонусного промокода</b>\n\n❌ Ошибка обновления данных ключа локально.", InlineKeyboardBuilder().button(text="⬅️ Назад", callback_data="show_profile").as_markup())
+                await _edit("🎁 <b>Активация бонусного промокода</b>\n\n❌ Ошибка обновления данных подписки локально.", InlineKeyboardBuilder().button(text="⬅️ Назад", callback_data="show_profile").as_markup())
                 return
                 
             redeem_res = redeem_universal_promo(code, uid)
@@ -3311,8 +3448,9 @@ def get_user_router() -> Router:
 # Отправляет детальный отчет о совершенной транзакции в админ-чат
 async def notify_admin_of_purchase(bot: Bot, metadata: dict):
     try:
-        aid = get_setting("admin_telegram_id")
-        if not aid: return
+        # Уведомление уходит всем администраторам: и главному, и дополнительным.
+        admin_ids = rw_repo.get_admin_ids()
+        if not admin_ids: return
         
         user_id, host, months, price, action = metadata.get('user_id'), metadata.get('host_name'), metadata.get('months'), metadata.get('price'), metadata.get('action')
         
@@ -3337,7 +3475,7 @@ async def notify_admin_of_purchase(bot: Bot, metadata: dict):
             f"📦 Тариф: {plan_name} ({months} мес.)\n"
             f"💳 Метод: {method}\n"
             f"💰 Сумма: {float(price):.2f} RUB\n"
-            f"⚙️ Тип: {'Новый ключ ➕' if action == 'new' else 'Продление ♻️'}\n\n"
+            f"⚙️ Тип: {'Новая подписка ➕' if action == 'new' else 'Продление ♻️'}\n\n"
             f"<blockquote>💵 Касса за сегодня ₽: {today_rub:,.2f} \n"
             f"💵 Касса за вчера ₽: {yesterday_rub:,.2f}\n"
             f"💎 Касса за сегодня $: {today_crypto:,.2f} </blockquote>"
@@ -3353,7 +3491,11 @@ async def notify_admin_of_purchase(bot: Bot, metadata: dict):
             if metadata.get('promo_usage_per_user_limit'): stats.append(f"На юзера: {metadata.get('promo_usage_per_user_used') or 0}/{metadata.get('promo_usage_per_user_limit')}")
             if stats: txt += "\n📊 " + " | ".join(stats)
 
-        await bot.send_message(int(aid), txt, parse_mode="HTML")
+        for aid in admin_ids:
+            try:
+                await bot.send_message(int(aid), txt, parse_mode="HTML")
+            except Exception as e:
+                logger.warning(f"Не удалось уведомить админа {aid} о покупке: {e}")
     except Exception as e: logger.warning(f"Ошибка уведомления админа: {e}")
 # ===== Конец функции notify_admin_of_purchase =====
 
@@ -3487,7 +3629,7 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
                 key = rw_repo.get_key_by_id(kid)
                 if not key:
                     logger.error(f"Ошибка: Ключ #{kid} для продления пользователем {uid} не найден в БД.")
-                    if proc_msg and bot: await proc_msg.edit_text("❌ Ключ для продления не найден.")
+                    if proc_msg and bot: await proc_msg.edit_text("❌ Подписка для продления не найдена.")
                     return False
                 c_email = key['key_email']
 
@@ -3518,7 +3660,7 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
             if not res:
                 add_to_balance(uid, float(price))
                 logger.error(f"Возврат средств: {price} RUB возвращено пользователю {uid} (ошибка API VPN на хосте {host})")
-                if proc_msg and bot: await proc_msg.edit_text("❌ <b>Ошибка на стороне VPN-сервера</b>\nКлюч не был выдан. Средства возвращены на ваш баланс в боте.")
+                if proc_msg and bot: await proc_msg.edit_text("❌ <b>Ошибка на стороне VPN-сервера</b>\nПодписка не была выдана. Средства возвращены на ваш баланс в боте.")
                 return False
 
             if action == "new":
@@ -3526,16 +3668,28 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
                 if not kid: 
                     add_to_balance(uid, float(price))
                     logger.error(f"Возврат средств: {price} RUB возвращено пользователю {uid} (ошибка БД нового ключа)")
-                    if proc_msg and bot: await proc_msg.edit_text("❌ При сохранении ключа произошла системная ошибка. Средства возвращены на баланс.")
+                    if proc_msg and bot: await proc_msg.edit_text("❌ При сохранении подписки произошла системная ошибка. Средства возвращены на баланс.")
                     return False
             else:
                 if not rw_repo.update_key(kid, remnawave_user_uuid=res['client_uuid'], expire_at_ms=res['expiry_timestamp_ms']): 
                     add_to_balance(uid, float(price))
                     logger.error(f"Возврат средств: {price} RUB возвращено пользователю {uid} (ошибка обновления БД)")
-                    if proc_msg and bot: await proc_msg.edit_text("❌ Ошибка обновления данных ключа в системе. Средства возвращены на баланс.")
+                    if proc_msg and bot: await proc_msg.edit_text("❌ Ошибка обновления данных подписки в системе. Средства возвращены на баланс.")
                     return False
 
             p_log_id = metadata.get('payment_id') or str(uuid.uuid4())
+
+            # Часть заказа оплачена балансом (мини-апп): списываем только сейчас,
+            # когда подписка уже выдана — брошенный счёт баланс не трогает.
+            try:
+                balance_spend = float(metadata.get('balance_spend') or 0)
+            except (TypeError, ValueError):
+                balance_spend = 0.0
+            if balance_spend > 0:
+                if deduct_from_balance(uid, balance_spend):
+                    logger.info(f"Баланс: списано {balance_spend} RUB у {uid} как часть оплаты заказа {p_log_id}")
+                else:
+                    logger.warning(f"Баланс: не удалось списать {balance_spend} RUB у {uid} по заказу {p_log_id} — средств не хватило")
 
             # Реферальные начисления за покупку
             if (pay_method or '').lower() != 'balance':
@@ -3643,7 +3797,7 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
             logger.error(f"Ошибка логики VPN ({uid}): {e}", exc_info=True)
             if not str(uid).startswith("999"):
                 try:
-                    if bot: await bot.send_message(uid, "❌ <b>Ошибка при выдаче ключа</b>\nВаша оплата зафиксирована, но произошел сбой при создании конфигурации. Свяжитесь с поддержкой.")
+                    if bot: await bot.send_message(uid, "❌ <b>Ошибка при выдаче подписки</b>\nВаша оплата зафиксирована, но произошел сбой при создании конфигурации. Свяжитесь с поддержкой.")
                 except Exception: pass
             return False
     except Exception as e:

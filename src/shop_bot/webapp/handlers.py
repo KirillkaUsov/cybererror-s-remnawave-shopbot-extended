@@ -1,5 +1,19 @@
 from typing import Any
 from fastapi import FastAPI, Request
+
+# Загрузка файлов требует python-multipart. Если пакета нет, приложение
+# должно продолжать работать без вложений, а не падать целиком на импорте.
+try:
+    import python_multipart  # noqa: F401
+    from fastapi import UploadFile, File, Form
+    MULTIPART_AVAILABLE = True
+except Exception:
+    try:
+        import multipart  # noqa: F401  (старое имя пакета)
+        from fastapi import UploadFile, File, Form
+        MULTIPART_AVAILABLE = True
+    except Exception:
+        MULTIPART_AVAILABLE = False
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 import aiohttp
@@ -41,6 +55,36 @@ logger = logging.getLogger(__name__)
 # In-memory storage for temporary auth tokens: {token: user_id}
 TEMP_AUTH_TOKENS = {}
 
+# Привязка Telegram к веб-аккаунту: {token: {"user_id": int, "expires": float,
+# "linked_to": int | None}}. Токен одноразовый и живёт 15 минут — по нему
+# нельзя войти, он только разрешает боту приклеить свой чат к аккаунту.
+TG_LINK_TOKENS = {}
+TG_LINK_TTL_SECONDS = 900
+
+
+def _purge_tg_link_tokens():
+    import time as _time
+    now = _time.time()
+    for key in [k for k, v in TG_LINK_TOKENS.items() if v.get("expires", 0) < now]:
+        TG_LINK_TOKENS.pop(key, None)
+
+# Простая защита от спама в чат поддержки: {user_id: last_call_monotonic_ts}.
+# Не переживает рестарт/несколько воркеров, но это и не нужно — цель просто
+# не дать боту-скрипту засыпать админов сообщениями через мини-апп.
+SUPPORT_COOLDOWN = {}
+SUPPORT_COOLDOWN_SECONDS = 2.0
+SUPPORT_MESSAGE_MAX_LEN = 4000
+
+
+def _support_cooldown_hit(user_id: int) -> bool:
+    import time
+    now = time.monotonic()
+    last = SUPPORT_COOLDOWN.get(user_id, 0.0)
+    if now - last < SUPPORT_COOLDOWN_SECONDS:
+        return True
+    SUPPORT_COOLDOWN[user_id] = now
+    return False
+
 
 # ===== Utility Functions =====
 def get_transaction_comment(user_data: dict, action_type: str, value: any, host_name: str = None) -> str:
@@ -72,7 +116,7 @@ def calculate_webapp_price(price: float, user_id: int) -> float:
                 price -= price * (discount_percent / 100)
                 logger.info(f"[WEBAPP] - Применена скидка продавца {discount_percent}% для {user_id}")
         
-        if user.get('referred_by') and user.get('total_spent', 0) == 0 and not [k for k in get_user_keys(user_id) if not (k.get('key_email') or '').startswith('trial_')]:
+        if user.get('referred_by') and user.get('total_spent', 0) == 0 and not get_user_keys(user_id):
             ref_discount = get_setting("referral_discount")
             if ref_discount:
                 try:
@@ -215,52 +259,37 @@ def _format_bytes(size: Any) -> str:
     return f"{size:.2f} {power_labels[n]}"
 
 def _process_template_placeholders(html: str, user_id: int, webapp_settings: dict, context_data: dict) -> str:
+    """
+    app.html — чистый SPA-шаблон: он подставляет только эти 6 плейсхолдеров,
+    остальное (профиль, ключи, каталог) клиент забирает через /api/*.
+    """
     title = webapp_settings.get("webapp_title") or get_setting("panel_brand_title") or "CABINET VPN"
     support_username = get_setting("support_bot_username") or ""
-    
+
     replacements = {
         "{{ panel_brand_title }}": title,
-        "{{ user_profile_card }}": context_data.get("profile_card", ""),
-        "{{ key_info_section }}": context_data.get("key_section", ""),
-        "{{ profile_keys_list }}": context_data.get("profile_keys_list", ""),
-        "{{ setup_keys_list }}": context_data.get("setup_keys_list", ""),
-        "{{ renew_keys_dropdown_options }}": context_data.get("renew_keys_options", ""),
-        "{{ renew_plans_grid }}": context_data.get("renew_plans_html_data", ""),
         "{{ support_bot_username }}": support_username,
-        "{{ min_price }}": context_data.get("min_price", "0 ₽"),
         "{{ webapp_logo }}": context_data.get("webapp_logo", ""),
         "{{ webapp_icon }}": context_data.get("webapp_icon", ""),
-        "{{ logo_hidden }}": "hidden" if not context_data.get("webapp_logo") else "",
         "{{ user_id }}": str(user_id),
+        # В полноэкранном режиме Telegram рисует свои контролы поверх страницы —
+        # резервируем место сверху через ту же переменную, что использует вся вёрстка.
         "{{ tg_fullscreen_css }}": """
-    <style>
-        .tg-miniapp #main-page,
-        .tg-miniapp #purchase-page,
-        .tg-miniapp #renew-page,
-        .tg-miniapp #setup-page,
-        .tg-miniapp #profile-page,
-        .tg-miniapp #support-page {
-            padding-top: max(env(safe-area-inset-top), 70px) !important;
-        }
-    </style>
+    <style>:root{ --safe-t: max(env(safe-area-inset-top), 70px) !important; }</style>
         """ if webapp_settings.get("tg_fullscreen") else "",
     }
-    
-    # Selected key display variants
-    display_val = context_data.get("renew_selected_display", "Нет активных ключей")
-    replacements["{{ renew_selected_key_display }}"] = display_val
-    replacements["{{\n                                renew_selected_key_display }}"] = display_val
 
     for placeholder, value in replacements.items():
         html = html.replace(placeholder, value)
-    
-    server_options, server_plans = _get_servers_and_plans_html(user_id)
-    html = html.replace("{{ server_dropdown_options }}", server_options)
-    html = html.replace("{{ server_plans_grid }}", server_plans)
-    
+
     return html
 
-def _process_key_data(key: dict) -> dict:
+# Подписки с технической датой окончания далеко в будущем (2094, 4764 и т.п.)
+# показывали «24933 дней». Всё, что дальше этого порога, считаем бессрочным.
+UNLIMITED_DAYS_THRESHOLD = 1825  # 5 лет
+
+
+def _process_key_data(key: dict, number: int | None = None) -> dict:
     # 1. Calculate expiry
     try:
         expire_dt = datetime.strptime(key['expiry_date'], "%Y-%m-%d %H:%M:%S")
@@ -278,8 +307,12 @@ def _process_key_data(key: dict) -> dict:
     days_left = delta.days
     if days_left < 0:
         days_left = 0
-        
-    remaining_str = _format_remaining_details(delta) if delta.total_seconds() > 0 else "Истек"
+
+    is_unlimited = days_left > UNLIMITED_DAYS_THRESHOLD
+
+    remaining_str = "Бессрочно" if is_unlimited else (
+        _format_remaining_details(delta) if delta.total_seconds() > 0 else "Истекла"
+    )
 
     # 3. Progress
     total_duration = (expire_dt - created_dt).total_seconds()
@@ -298,23 +331,34 @@ def _process_key_data(key: dict) -> dict:
     # 4. Display Name
     key_name = key.get('name')
     if not key_name:
-        # User requested: Key #email_username (sannilo@bot.local -> Ключ #sannilo)
+        # Везде в интерфейсе — «подписка», а не «ключ»
         email = key.get('email') or key.get('key_email') or ""
         if email.endswith("@bot.local"):
             email = email[:-10]
         
-        if email:
-            key_name = f"Ключ #{email}"
+        if number:
+            key_name = f"Подписка №{number}"
+        elif email:
+            key_name = f"Подписка #{email}"
         elif key.get('short_uuid'):
-            key_name = f"Ключ #{key.get('short_uuid')}"
+            key_name = f"Подписка #{key.get('short_uuid')}"
         else:
-            key_name = f"Ключ #{key.get('key_id')}"
+            key_name = f"Подписка #{key.get('key_id')}"
+
+    # Подпись над названием подписки — локация. Протокол тут писать незачем:
+    # отдельно он не продаётся, а название подписки и так стоит рядом.
+    subtitle = key.get('host_name') or ""
         
     # 5. Subscription URL
     sub_url = key.get('subscription_url') or key.get('key') or ""
 
     # 6. Limits
+    # limit_bytes приходит из Remnawave, но если панель недоступна —
+    # берём лимит из базы: колонка traffic_limit_bytes заполняется при
+    # выдаче ключа и для тарифов с ограничением там реальное значение.
     traffic_limit = key.get('limit_bytes')
+    if traffic_limit in (None, ''):
+        traffic_limit = key.get('traffic_limit_bytes')
     traffic_used = key.get('used_bytes', 0)
     
     formatted_used = _format_bytes(traffic_used)
@@ -345,28 +389,45 @@ def _process_key_data(key: dict) -> dict:
             limit_display = "∞"
 
     hwid_str = f"{hwid_usage} / {limit_display}"
+
+    # Для билета в мини-аппе «0 / ∞ уст.» и «0 B / ∞» читаются как ошибка.
+    # Когда лимита нет, честнее написать словами, а когда есть — показать
+    # использование в виде «3 / 6».
+    traffic_unlimited = traffic_str == "∞"
+    hwid_unlimited = limit_display == "∞"
+
+    traffic_display = "Без лимита" if traffic_unlimited else f"{formatted_used} / {traffic_str}"
+    hwid_display = "Без лимита" if hwid_unlimited else f"{hwid_usage} / {limit_display}"
     
     # Safety: Created Date String
     created_date_str = created_dt.strftime("%d.%m.%Y")
 
     if days_left > 5:
-        status_text = "Активен"
+        # статус относится к подписке — женский род
+        status_text = "Бессрочная" if is_unlimited else "Активна"
         status_color = "text-emerald-500"
         status_bg = "bg-emerald-500/10"
     elif days_left > 0:
-        status_text = "Скоро"
+        status_text = "Истекает"
         status_color = "text-yellow-500"
         status_bg = "bg-yellow-500/10"
     else:
-        status_text = "Истек"
+        status_text = "Истекла"
         status_color = "text-red-500"
         status_bg = "bg-red-500/10"
 
     return {
         "key_id": key.get('key_id'),
         "name": key_name,
-        "expire_date_str": expire_date_str,
+        "number": number or 0,
+        "subtitle": subtitle,
+        "expire_date_str": "Бессрочно" if is_unlimited else expire_date_str,
         "days_left": days_left,
+        "is_unlimited": is_unlimited,
+        "traffic_display": traffic_display,
+        "hwid_display": hwid_display,
+        "traffic_unlimited": traffic_unlimited,
+        "hwid_unlimited": hwid_unlimited,
         "percent_str": percent_str,
         "sub_url": sub_url,
         "expiry_dt": expire_dt,
@@ -381,552 +442,6 @@ def _process_key_data(key: dict) -> dict:
         "comment_key": key.get('comment_key') or "",
         "host_name": key.get('host_name') or "",
     }
-
-def _get_key_html(key: dict) -> str:
-    data = _process_key_data(key)
-    
-    html = f"""
-        <section
-            class="bg-white dark:bg-surface-dark border border-gray-200 dark:border-surface-highlight-dark rounded-2xl p-5 shadow-sm relative overflow-hidden group">
-            <div class="absolute -top-10 -right-10 w-32 h-32 bg-primary/20 rounded-full blur-3xl dark:block hidden">
-            </div>
-            <div class="flex flex-col gap-1 mb-4">
-                <!-- Row 1: Status & Date -->
-                <div class="flex justify-between items-center h-6">
-                    <div class="flex items-center gap-2">
-                        <span class="relative flex h-3 w-3">
-                            <span
-                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
-                        </span>
-                        <span class="font-bold text-lg text-gray-900 dark:text-white leading-none">Активна</span>
-                    </div>
-                    <div class="font-semibold text-sm leading-none text-right">{data['expire_date_str']}</div>
-                </div>
-
-                <!-- Row 2: Key Name & Days Left Badge -->
-                <div class="flex justify-between items-center h-6">
-                    <div class="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-sm">
-                        <span class="material-icons-round text-base">vpn_key</span>
-                        <span>{data['name']}</span>
-                    </div>
-                    <div
-                        class="bg-surface-highlight-dark/10 dark:bg-surface-highlight-dark px-2 py-0.5 rounded text-[10px] font-medium text-gray-600 dark:text-gray-300">
-                        {data['days_left']} дн.
-                    </div>
-                </div>
-            </div>
-            <div class="mt-6">
-                <div class="flex justify-between text-xs mb-2">
-                    <span class="text-gray-500 dark:text-gray-400">Использовано</span>
-                    <span class="font-bold text-primary">{data['percent_str']}</span>
-                </div>
-                <div class="w-full bg-gray-100 dark:bg-black rounded-full h-2 overflow-hidden">
-                    <div class="bg-primary h-2 rounded-full progress-bar shadow-[0_0_10px_rgba(16,185,129,0.5)]" style="width: {data['percent_str']}"></div>
-                </div>
-            </div>
-        </section>
-    """
-    return html
-
-def _get_profile_card_html(user: dict | None, referral_count: int, keys_count: int, referral_earned: float = 0.0) -> str:
-    if not user:
-        return ""
-        
-    user_id = user.get("telegram_id")
-    balance = user.get("balance") or 0.0
-    reg_date = user.get("registration_date")
-    
-    # Format currency: 1 240,50 ₽
-    balance_str = f"{balance:,.2f}".replace(",", " ").replace(".", ",") + " ₽"
-    earned_str = f"{referral_earned:,.2f}".replace(",", " ").replace(".", ",") + " ₽"
-    bot_username_raw = (get_setting("telegram_bot_username") or "bot").strip().lstrip("@")
-    bot_username = re.sub(r"[^A-Za-z0-9_]", "", bot_username_raw) or "bot"
-    referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
-    
-    # Format date and calculate time since
-    reg_date_str = "Unknown"
-    time_since_str = ""
-    if reg_date:
-        try:
-             if isinstance(reg_date, str):
-                 try:
-                    dt = datetime.strptime(reg_date, "%Y-%m-%d %H:%M:%S")
-                 except ValueError:
-                    dt = datetime.fromisoformat(reg_date)
-             else:
-                 dt = reg_date
-                 
-             reg_date_str = dt.strftime("%d.%m.%Y")
-             
-             # Calculate relative time
-             now = get_msk_time().replace(tzinfo=None)
-             diff = now - dt.replace(tzinfo=None)
-             days = max(0, diff.days)
-             
-             if days < 31:
-                 time_since_str = f"{days} д."
-             elif days < 365:
-                 m = days // 30
-                 d = days % 30
-                 time_since_str = f"{m}м. {d}д." if d > 0 else f"{m}м."
-             else:
-                 y = days // 365
-                 rem = days % 365
-                 m = rem // 30
-                 d = rem % 30
-                 bits = [f"{y}г."]
-                 if m > 0: bits.append(f"{m}м.")
-                 if d > 0: bits.append(f"{d}д.")
-                 time_since_str = " ".join(bits)
-        except:
-             pass
-
-    sync_btn_html = ""
-    if isinstance(user_id, int) and str(user_id).startswith("999"):
-         bot_username = get_setting("telegram_bot_username") or "bot"
-         sync_btn_html = f'''
-                    <button onclick="syncTelegram('{bot_username}')" class="mt-2 w-full bg-[#0088cc]/20 hover:bg-[#0088cc]/30 text-[#00aaff] border border-[#0088cc]/30 font-bold py-3 rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm">
-                        <span class="material-icons-round text-base">sync</span>
-                        <span>Синхронизовать с Telegram</span>
-                    </button>
-         '''
-
-    return f"""
-            <!-- Modern Balanced User Card -->
-            <div class="glass-card border border-white/10 rounded-[1.6rem] p-4 relative overflow-hidden shadow-xl">
-                <!-- Decoration -->
-                <div class="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-3xl"></div>
-
-                <div class="flex flex-col gap-3.5 relative z-10">
-                    <!-- Top: ID and Status -->
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-2.5 min-w-0">
-                            <div
-                                class="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center border border-primary/20 shrink-0">
-                                <span class="material-icons-round text-primary text-[19px]">person</span>
-                            </div>
-                            <div class="min-w-0">
-                                <div class="text-[9px] text-gray-500 uppercase font-black tracking-widest">ID
-                                    пользователя</div>
-                                <div class="text-sm font-black text-white tracking-tight truncate">#{user_id}</div>
-                            </div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-[9px] text-gray-500 uppercase font-black tracking-widest">Баланс</div>
-                            <div class="text-base font-black text-primary tracking-tighter">{balance_str}</div>
-                        </div>
-                    </div>
-
-                    <!-- Middle: Main Stats -->
-                    <div class="grid grid-cols-3 gap-1.5">
-                        <div
-                            class="bg-white/5 border border-white/5 rounded-xl p-2 flex flex-col items-center justify-center text-center transition-all hover:bg-white/[0.08]">
-                            <span class="material-icons-round text-emerald-400 text-[13px] mb-0.5 opacity-80">group</span>
-                            <div class="text-[8px] text-gray-400 uppercase font-black tracking-tight leading-none mb-0.5">Рефералы</div>
-                            <div class="text-[10px] font-black text-white">{referral_count} чел.</div>
-                        </div>
-                        <div
-                            class="bg-white/5 border border-white/5 rounded-xl p-2 flex flex-col items-center justify-center text-center transition-all hover:bg-white/[0.08]">
-                            <span class="material-icons-round text-yellow-400 text-[13px] mb-0.5 opacity-80">payments</span>
-                            <div class="text-[8px] text-gray-400 uppercase font-black tracking-tight leading-none mb-0.5">Доход</div>
-                            <div class="text-[10px] font-black text-white truncate w-full px-1">{earned_str}</div>
-                        </div>
-                        <div
-                            class="bg-white/5 border border-white/5 rounded-xl p-2 flex flex-col items-center justify-center text-center transition-all hover:bg-white/[0.08]">
-                            <span class="material-icons-round text-primary text-[13px] mb-0.5 opacity-80">vpn_key</span>
-                            <div class="text-[8px] text-gray-400 uppercase font-black tracking-tight leading-none mb-0.5">Ключи</div>
-                            <div class="text-[10px] font-black text-white">{keys_count} шт.</div>
-                        </div>
-                    </div>
-
-                    <!-- Bottom: Meta Info -->
-                    <button type="button" data-ref-link="{referral_link}" onclick="copyReferralLink(this)"
-                        class="w-full bg-primary/5 border border-primary/10 rounded-xl p-2 flex items-center gap-2 hover:bg-primary/10 active:scale-[0.99] transition-all">
-                        <span class="material-icons-round text-[15px] text-primary shrink-0">ios_share</span>
-                        <div class="min-w-0 flex-1 text-left">
-                            <div class="text-[8px] text-gray-500 uppercase font-black tracking-widest">Реферальная ссылка</div>
-                            <div class="text-[10px] text-gray-300 font-mono truncate">{referral_link}</div>
-                        </div>
-                        <span class="material-icons-round text-[14px] text-gray-500 shrink-0">content_copy</span>
-                    </button>
-
-                    <div class="flex items-center justify-center gap-1.5">
-                        <span class="material-icons-round text-[11px] text-gray-600">calendar_today</span>
-                        <span class="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Дата
-                            регистрации:</span>
-                        <span class="text-[9px] text-gray-300 font-black">{reg_date_str} ({time_since_str})</span>
-                    </div>
-                    {sync_btn_html}
-                </div>
-            </div>
-    """
-
-def _get_profile_keys_html(keys: list) -> str:
-    if not keys:
-        return _get_no_key_html()
-    
-    html = ""
-    
-    for key in keys:
-        data = _process_key_data(key)
-        
-        html += f"""
-        <div class="glass-card border border-white/10 rounded-2xl relative overflow-hidden shadow-lg transition-all hover:border-primary/30 group mb-3">
-            <div class="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/5 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 pointer-events-none"></div>
-
-            <button class="key-toggle w-full p-3 flex items-center justify-between relative z-10 transition-colors hover:bg-white/5">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-primary/10 transition-colors shrink-0">
-                        <span class="material-icons-round text-gray-400 group-hover:text-primary transition-colors text-lg">vpn_key</span>
-                    </div>
-                    
-                    <div class="text-left overflow-hidden">
-                        <div class="text-xs font-bold text-white group-hover:text-primary transition-colors truncate">{data['name']}</div>
-                        <div class="text-[9px] text-gray-500 font-medium uppercase tracking-wider truncate">
-                           До {data['expire_date_str']} ({data['remaining_str']})
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex items-center gap-2 shrink-0">
-                     <span class="text-[9px] {data['status_bg']} {data['status_color']} px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">{data['status_text']}</span>
-                     <div class="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                        <span class="material-icons-round text-gray-500 text-sm group-hover:text-white transition-colors rotate-icon">expand_more</span>
-                     </div>
-                </div>
-            </button>
-
-            <div class="key-content px-3 relative z-10 transition-all duration-300"> 
-                 <div class="pb-3 pt-2 flex flex-col gap-2 border-t border-white/5">
-                 
-                     <!-- KEY INFO BLOCK -->
-                     <div class="flex flex-col gap-1 px-1 py-1 text-[10px]">
-                        <!-- Row 1: Time -->
-                        <div class="flex flex-wrap justify-between items-center gap-x-2 gap-y-1 border-b border-white/5 pb-1.5 mb-1.5 opacity-90">
-                            <div class="flex items-center gap-1">
-                                <span class="text-gray-500 font-medium shrink-0">⏳ Осталось:</span>
-                                <span class="text-gray-200 font-mono tracking-tight whitespace-nowrap">{data['remaining_str']}</span>
-                            </div>
-                            <div class="w-px h-3 bg-white/10"></div>
-                            <div class="flex items-center gap-1">
-                                <span class="text-gray-500 font-medium shrink-0">➕ Куплен:</span>
-                                <span class="text-gray-200 font-mono tracking-tight whitespace-nowrap">{data['elapsed_str']}</span>
-                            </div>
-                        </div>
-                        
-                        <!-- Row 2: Limits -->
-                        <div class="flex justify-between items-center opacity-90">
-                            <div class="flex items-center gap-1.5">
-                                <span class="text-gray-500 whitespace-nowrap">🛰 Лимит:</span>
-                                <span class="text-gray-300 font-mono whitespace-nowrap">{data['traffic_info']}</span>
-                            </div>
-                            <div class="w-px h-3 bg-white/10 mx-1"></div>
-                            <div class="flex items-center gap-1.5">
-                                <span class="text-gray-500 whitespace-nowrap">📱 Лимит:</span>
-                                <span class="text-gray-300 font-mono whitespace-nowrap">{data['hwid_info']}</span>
-                            </div>
-                        </div>
-                     </div>
-                 
-                     <!-- COMMENTS BLOCK -->
-                     <div id="comment-block-{data['key_id']}" class="{'hidden' if not data.get('comment_key') else 'flex'} items-center opacity-90 px-1 py-1 mb-2 mt-1 relative">
-                         <div class="w-1/2 flex items-center pr-2">
-                             <span class="text-[9px] text-gray-500 font-bold uppercase tracking-wider whitespace-nowrap">Комментарий:</span>
-                         </div>
-                         <div class="absolute left-1/2 -translate-x-1/2 w-px h-3 bg-white/10 shrink-0"></div>
-                         <div class="w-1/2 pl-2 text-right overflow-hidden flex justify-end">
-                             <span id="comment-text-{data['key_id']}" class="text-[10px] text-gray-300 break-words">{data.get('comment_key', '')}</span>
-                         </div>
-                     </div>
-
-                     <div class="flex items-center gap-2 bg-black/20 rounded-xl p-2 border border-white/5 group/copy hover:border-primary/30 transition-colors">
-                         <div class="flex-1 min-w-0">
-                             <div class="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Ссылка</div>
-                             <div class="text-[10px] text-gray-300 font-mono truncate transition-colors group-hover/copy:text-white">{data['sub_url']}</div>
-                         </div>
-                         <button onclick="copyKey(this, '{data['sub_url']}')" 
-                            class="w-7 h-7 rounded-lg bg-white/5 text-white flex items-center justify-center hover:bg-white/10 transition-all active:scale-95 shrink-0 shadow-sm">
-                             <span class="material-icons-round text-sm">content_copy</span>
-                         </button>
-                     </div>
-
-                     <button onclick="openLinkSafe('{data['sub_url']}')"
-                        class="w-full bg-white text-black py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-wider shadow-[0_4px_15px_rgba(255,255,255,0.1)] hover:shadow-[0_6px_20px_rgba(255,255,255,0.2)] active:scale-[0.98] transition-all flex items-center justify-center gap-2">
-                         <span class="material-icons-round text-sm">bolt</span>
-                         <span>Подключить</span>
-                     </button>
-                     
-                     <div class="grid grid-cols-2 gap-2 mt-1">
-                         <button onclick="openActionModal('devices', {data['key_id']}, '{data.get('host_name', '')}')"
-                             class="w-full bg-white/5 text-white py-2 rounded-xl font-bold text-[10px] uppercase tracking-wider hover:bg-white/10 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 border border-white/5 hover:border-white/10">
-                             <span class="material-icons-round text-sm">devices</span>
-                             <span>Устройства</span>
-                         </button>
-                         <button onclick="openActionModal('comment', {data['key_id']}, '{data.get('comment_key', '')}')"
-                             class="w-full bg-white/5 text-white py-2 rounded-xl font-bold text-[10px] uppercase tracking-wider hover:bg-white/10 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 border border-white/5 hover:border-white/10">
-                             <span class="material-icons-round text-sm">edit_note</span>
-                             <span>Комментарии</span>
-                         </button>
-                     </div>
-                </div>
-            </div>
-        </div>
-        """
-    return html
-
-def _get_setup_keys_html(keys: list) -> str:
-    if not keys:
-        return _get_no_key_html()
-        
-    html = ""
-    for key in keys:
-        data = _process_key_data(key)
-        
-        if data['days_left'] <= 0:
-            continue
-            
-        html += f"""
-        <div class="glass-card border border-white/10 rounded-2xl relative overflow-hidden shadow-lg transition-all hover:border-primary/30 group mb-3">
-            <div class="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/5 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 pointer-events-none"></div>
-
-            <button class="key-toggle w-full p-3 flex items-center justify-between relative z-10 transition-colors hover:bg-white/5">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-primary/10 transition-colors shrink-0">
-                        <span class="material-icons-round text-gray-400 group-hover:text-primary transition-colors text-lg">vpn_key</span>
-                    </div>
-                    
-                    <div class="text-left overflow-hidden">
-                        <div class="text-xs font-bold text-white group-hover:text-primary transition-colors truncate">{data['name']}</div>
-                        <div class="text-[9px] text-gray-500 font-medium uppercase tracking-wider truncate">
-                           До {data['expire_date_str']} ({data['remaining_str']})
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex items-center gap-2 shrink-0">
-                     <span class="text-[9px] {data['status_bg']} {data['status_color']} px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">{data['status_text']}</span>
-                     <div class="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                        <span class="material-icons-round text-gray-500 text-sm group-hover:text-white transition-colors rotate-icon">expand_more</span>
-                     </div>
-                </div>
-            </button>
-
-            <div class="key-content px-3 relative z-10 transition-all duration-300"> 
-                 <div class="pb-3 pt-2 flex flex-col gap-2 border-t border-white/5">
-                 
-                     <!-- COMMENTS BLOCK -->
-                     <div id="comment-block-{data['key_id']}" class="{'hidden' if not data.get('comment_key') else 'flex'} items-center opacity-90 px-1 py-1 mb-2 mt-1 relative">
-                         <div class="w-1/2 flex items-center pr-2">
-                             <span class="text-[9px] text-gray-500 font-bold uppercase tracking-wider whitespace-nowrap">Комментарий:</span>
-                         </div>
-                         <div class="absolute left-1/2 -translate-x-1/2 w-px h-3 bg-white/10 shrink-0"></div>
-                         <div class="w-1/2 pl-2 text-right overflow-hidden flex justify-end">
-                             <span id="comment-text-{data['key_id']}" class="text-[10px] text-gray-300 break-words">{data.get('comment_key', '')}</span>
-                         </div>
-                     </div>
-
-                     <div class="flex items-center gap-2 bg-black/20 rounded-xl p-2 border border-white/5 group/copy hover:border-primary/30 transition-colors">
-                         <div class="flex-1 min-w-0">
-                             <div class="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Ссылка</div>
-                             <div class="text-[10px] text-gray-300 font-mono truncate transition-colors group-hover/copy:text-white">{data['sub_url']}</div>
-                         </div>
-                         <button onclick="copyKey(this, '{data['sub_url']}')" 
-                            class="w-7 h-7 rounded-lg bg-white/5 text-white flex items-center justify-center hover:bg-white/10 transition-all active:scale-95 shrink-0 shadow-sm">
-                             <span class="material-icons-round text-sm">content_copy</span>
-                         </button>
-                     </div>
-
-                     <button onclick="openLinkSafe('{data['sub_url']}')"
-                        class="w-full bg-white text-black py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-wider shadow-[0_4px_15px_rgba(255,255,255,0.1)] hover:shadow-[0_6px_20px_rgba(255,255,255,0.2)] active:scale-[0.98] transition-all flex items-center justify-center gap-2">
-                         <span class="material-icons-round text-sm">bolt</span>
-                         <span>Открыть инструкцию</span>
-                     </button>
-                     
-                     <div class="grid grid-cols-2 gap-2 mt-1">
-                         <button onclick="openActionModal('devices', {data['key_id']}, '{data.get('host_name', '')}')"
-                             class="w-full bg-white/5 text-white py-2 rounded-xl font-bold text-[10px] uppercase tracking-wider hover:bg-white/10 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 border border-white/5 hover:border-white/10">
-                             <span class="material-icons-round text-sm">devices</span>
-                             <span>Устройства</span>
-                         </button>
-                         <button onclick="openActionModal('comment', {data['key_id']}, '{data.get('comment_key', '')}')"
-                             class="w-full bg-white/5 text-white py-2 rounded-xl font-bold text-[10px] uppercase tracking-wider hover:bg-white/10 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 border border-white/5 hover:border-white/10">
-                             <span class="material-icons-round text-sm">edit_note</span>
-                             <span>Комментарии</span>
-                         </button>
-                     </div>
-                </div>
-            </div>
-        </div>
-        """
-    return html
-
-def _get_renew_keys_html(keys: list, user_id: int | None = None) -> tuple[str, str, str]:
-    if not keys:
-        return "", "Нет активных ключей", _get_no_key_html()
-        
-    options_html = '<div class="p-1 flex flex-col gap-0.5">'
-    selected_text = ""
-    renew_plans_html = ""
-    
-    for index, key in enumerate(keys):
-        data = _process_key_data(key)
-        host_name = key.get('host_name', '')
-        
-        is_selected = (index == 0)
-        check_class = "text-primary" if is_selected else "text-transparent"
-        text_color = "text-white" if is_selected else "text-gray-300"
-        icon_color = "text-primary" if is_selected else "text-gray-500"
-        
-        if is_selected:
-            selected_text = f"{data['name']} • До {data['expire_date_str']}"
-
-        options_html += f"""
-        <button
-            class="dropdown-option w-full p-2.5 flex items-center justify-between rounded-lg hover:bg-white/5 transition-colors"
-            data-key="#{data['key_id']}" data-name="{data['name']}" data-date="{data['expire_date_str']}" data-host="{host_name}" data-index="{index}">
-            <div class="flex items-center gap-2.5 overflow-hidden">
-                <span class="material-icons-round {icon_color} text-sm shrink-0">vpn_key</span>
-                <div class="text-left overflow-hidden">
-                    <div class="text-xs font-bold {text_color} truncate">{data['name']}</div>
-                    <div class="flex items-center gap-2">
-                        <div class="text-[9px] text-gray-400">До {data['expire_date_str']}</div>
-                        <span class="text-[8px] {data['status_bg']} {data['status_color']} px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0">{data['status_text']}</span>
-                    </div>
-                </div>
-            </div>
-            <span class="material-icons-round {check_class} text-xs selected-icon shrink-0">check</span>
-        </button>
-        """
-        
-        display_style = "grid" if is_selected else "none"
-        desc, grid_html = _build_plans_grid_html(host_name, user_id, f"renew-plans-{index}", display_style)
-        
-        renew_plans_html += f'<div id="renew-desc-content-{index}" style="display: none;">{desc}</div>'
-        renew_plans_html += grid_html
-    
-    options_html += '</div>'
-    
-    return options_html, selected_text, renew_plans_html
-
-def _get_no_key_html() -> str:
-    return """
-        <div class="glass-card border border-white/10 rounded-[2rem] p-5 flex flex-col items-center justify-center text-center shadow-lg mb-3">
-            <div class="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mb-3">
-                <span class="material-icons-round text-2xl text-gray-500">vpn_key_off</span>
-            </div>
-            <h3 class="text-sm font-black text-white mb-1 tracking-tight">Нет активных ключей</h3>
-            <p class="text-[10px] text-gray-400 font-medium leading-tight max-w-[180px]">
-                Купите ключ, чтобы начать пользоваться VPN
-            </p>
-        </div>
-    """
-
-
-def _build_plans_grid_html(host_name: str, user_id: int | None, container_id: str, display_style: str = "grid") -> str:
-    import re
-    try:
-        hosts = get_all_hosts(visible_only=True)
-        host = next((h for h in (hosts or []) if h['host_name'] == host_name), None)
-    except:
-        host = None
-
-    desc = ""
-    if host:
-        desc = host.get('description') or "Выберите подходящий тариф:"
-        desc = re.sub(r'(\s*\n\s*){2,}', '\n', desc).strip()
-
-    try:
-        plans = get_plans_for_host(host_name)
-    except:
-        plans = []
-
-    active_plans = [p for p in plans if p.get('is_active')]
-
-    html = f'<div id="{container_id}" class="server-plans-container grid grid-cols-2 gap-2 mt-1" style="display: {display_style};">'
-
-    if not active_plans:
-        html += '<div class="col-span-2 text-center text-[10px] text-gray-500 py-3 glass-card border border-white/5 rounded-xl">Нет доступных тарифов</div>'
-    else:
-        plan_count = len(active_plans)
-        for plan_idx, plan in enumerate(active_plans):
-            try:
-                raw_price = float(plan.get('price', 0))
-                final_price = int(calculate_webapp_price(raw_price, user_id))
-                months = int(plan.get('months') or 1)
-                duration_days = int(plan.get('duration_days') or 0) or (months * 30)
-                month_factor = round(duration_days / 30.0, 4)
-            except (ValueError, TypeError):
-                continue
-
-            month_label = "месяц" if months == 1 else ("месяца" if 1 < months < 5 else "месяцев")
-
-            is_last_odd = (plan_idx == plan_count - 1) and (plan_count % 2 == 1)
-            span_class = " col-span-2" if is_last_odd else ""
-
-            html += f"""
-            <button
-                class="plan-btn glass-card border border-white/10 rounded-2xl p-3.5 flex flex-col items-center justify-center text-center transition-all active:scale-95 hover:border-primary/40 hover:bg-white/5 group{span_class}"
-                data-host="{host_name}" data-plan-id="{plan['plan_id']}" data-price="{final_price}" data-plan-name="{plan.get('plan_name', '')}"
-                data-months="{months}" data-month-factor="{month_factor}"
-                onclick="selectPlan(this)">
-                <span
-                    class="plan-label text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-0.5 group-hover:text-gray-300 transition-colors">{months} {month_label}</span>
-                <div class="flex items-baseline gap-0.5">
-                    <span class="plan-price text-xl font-bold text-white">{final_price}</span>
-                    <span class="text-xs font-medium text-gray-400">₽</span>
-                </div>
-            </button>
-            """
-    html += '</div>'
-
-    return desc, html
-
-
-def _get_servers_and_plans_html(user_id: int | None = None):
-    try:
-        hosts = get_all_hosts(visible_only=True)
-    except:
-        hosts = []
-        
-    if not hosts:
-        return "", '<div class="col-span-2 text-center text-xs text-gray-500 py-4 glass-card border border-white/5 rounded-xl">Нет доступных серверов</div>'
-        
-    server_options_html = '<div class="p-1 flex flex-col gap-0.5">'
-    plans_html = ""
-    
-    for index, host in enumerate(hosts):
-        host_name = host['host_name']
-        
-        is_selected = (index == 0)
-            
-        check_class = "text-primary" if is_selected else "text-transparent"
-        text_color = "text-white" if is_selected else "text-gray-300"
-        icon_color = "text-primary" if is_selected else "text-gray-500"
-        
-        server_options_html += f"""
-        <button
-            class="server-option w-full p-2.5 flex items-center justify-between rounded-lg hover:bg-white/5 transition-colors"
-            data-server="{host_name}" data-index="{index}" onclick="selectServer(this)">
-            <div class="flex items-center gap-2.5">
-                <span class="material-icons-round {icon_color} text-sm">public</span>
-                <div class="text-left">
-                    <div class="text-xs font-bold {text_color}">{host_name}</div>
-                </div>
-            </div>
-            <span class="material-icons-round {check_class} text-xs server-selected-icon">check</span>
-        </button>
-        """
-        
-        display_style = "grid" if is_selected else "none"
-        desc, grid_html = _build_plans_grid_html(host_name, user_id, f"plans-{index}", display_style)
-        
-        plans_html += f'<div id="desc-content-{index}" style="display: none;">{desc}</div>'
-        plans_html += grid_html
-
-    server_options_html += '</div>'
-    
-    return server_options_html, plans_html
 
 
 def _render_banned_page(webapp_settings: dict):
@@ -1011,201 +526,139 @@ def _render_banned_page(webapp_settings: dict):
     return HTMLResponse(content=html, status_code=403)
 
 
+async def enrich_keys_with_live_stats(active_keys: list, user_id: int) -> None:
+    """
+    Дотягивает из Remnawave лимиты и расход: hwidDeviceLimit,
+    trafficLimitBytes, использованный трафик и число устройств.
+
+    Раньше этот код жил внутри _render_main_page, поэтому мини-апп,
+    который берёт данные через /api/user-status, не получал лимитов
+    вовсе: в таблице vpn_keys колонок limit_ips и limit_bytes нет, и
+    у всех подписок бесконечный лимит показывался ошибочно.
+    """
+    if not active_keys:
+        return
+
+    try:
+        # --- 1. Fetch Key Details (User info from Host) ---
+        details_tasks = []
+        for k in active_keys:
+            details_tasks.append(remnawave_api.get_key_details_from_host(k))
+
+        details_results = await asyncio.gather(*details_tasks, return_exceptions=True)
+
+        # --- 2. Fetch Subscription Info (Traffic Stats) using UUID from Details ---
+        sub_tasks = []
+        # Map results to keys to keep order
+        key_details_map = {}
+
+        for k, res in zip(active_keys, details_results):
+            if isinstance(res, Exception) or not res or not res.get('user'):
+                sub_tasks.append(asyncio.sleep(0, None)) # Skip
+                continue
+
+            u = res['user']
+            key_details_map[k['key_id']] = u
+
+            # Update limits from user object immediately
+            if u.get('trafficLimitBytes') is not None:
+                k['limit_bytes'] = u.get('trafficLimitBytes')
+            if u.get('hwidDeviceLimit') is not None:
+                k['limit_ips'] = u.get('hwidDeviceLimit')
+
+            if not k.get('email') and not k.get('key_email'):
+                api_email = u.get('username') or u.get('email') or ''
+                if api_email:
+                    k['email'] = api_email
+                    k['key_email'] = api_email
+
+            # Determine UUID for subscription check
+            # BOT PRIORITY: Use DB UUID first, then API response
+            target_uuid = k.get('remnawave_user_uuid') or u.get('uuid')
+            host = k.get('host_name')
+
+            if target_uuid:
+                sub_tasks.append(remnawave_api.get_subscription_info(str(target_uuid), host_name=host))
+            else:
+                sub_tasks.append(asyncio.sleep(0, None))
+
+        sub_results = await asyncio.gather(*sub_tasks, return_exceptions=True)
+
+        # --- 3. Process Subscription Results ---
+        for k, sub_res in zip(active_keys, sub_results):
+            # Try to find traffic in subscription response
+            found_traffic = None
+            if not isinstance(sub_res, Exception) and sub_res and isinstance(sub_res, dict):
+                # check common keys
+                for key_name in ['trafficUsed', 'traffic', 'used_traffic']:
+                    val = sub_res.get(key_name)
+                    if val is not None:
+                        found_traffic = val
+                        break
+
+            if found_traffic is not None:
+                k['used_bytes'] = found_traffic
+
+            # Fallback: check User Details (u)
+            if 'used_bytes' not in k:
+                u = key_details_map.get(k['key_id'])
+                if u:
+                     # Check keys in user object
+                     for key_name in ['traffic', 'trafficUsed', 'used_traffic']:
+                         if u.get(key_name) is not None:
+                             try: k['used_bytes'] = int(u.get(key_name)); break
+                             except: pass
+
+                     # Final fallback: sum upload + download
+                     if 'used_bytes' not in k:
+                         uploaded = int(u.get('upload') or 0)
+                         downloaded = int(u.get('download') or 0)
+                         k['used_bytes'] = uploaded + downloaded
+
+            # HWID Usage
+            u = key_details_map.get(k['key_id'])
+            target_uuid = None
+            if u:
+                 target_uuid = u.get('uuid')
+            if not target_uuid:
+                 target_uuid = k.get('remnawave_user_uuid')
+
+            host = k.get('host_name')
+
+            if target_uuid and host:
+                 try:
+                      devs = await remnawave_api.get_connected_devices_count(target_uuid, host_name=host)
+                      if devs and 'total' in devs:
+                           k['used_ips'] = int(devs['total'])
+                 except: pass
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка получения живой статистики для {user_id}: {e}")
+
+
+
 async def _render_main_page(user_id: int):
+    """
+    Отдаёт SPA-оболочку app.html. Все данные (профиль, ключи, каталог)
+    клиент запрашивает сам через /api/* — здесь только шапка/иконки/бренд.
+    """
     webapp_settings = get_webapp_settings()
-    
-    # 1. Check if Webapp is enabled
+
     if not webapp_settings.get("webapp_enable"):
-         return HTMLResponse(content="<h1>Webapp is disabled</h1>", status_code=403)
-         
-    # 2. Check if user is banned
+        return HTMLResponse(content="<h1>Webapp is disabled</h1>", status_code=403)
+
     user = get_user(user_id)
     if user and user.get('is_banned'):
-         return _render_banned_page(webapp_settings)
-         
-    # Можно использовать webapp_domen для проверок или редиректов если нужно
-    # current_domain = webapp_settings.get("webapp_domen")
+        return _render_banned_page(webapp_settings)
 
-    key_section = _get_no_key_html()
-    profile_card = ""
-    profile_keys_list = _get_no_key_html()
-    setup_keys_list = _get_no_key_html()
-    renew_keys_options = ""
-    renew_selected_key = "Нет активных ключей"
-    renew_plans_html_data = _get_no_key_html()
-    keys = []
-    
-    if user_id:
-        keys = get_user_keys(user_id)
-        # Sort all keys by expiry, soonest first
-        try:
-            keys.sort(key=lambda k: datetime.strptime(k['expiry_date'], "%Y-%m-%d %H:%M:%S"))
-        except:
-            pass
-            
-        now = get_msk_time().replace(tzinfo=None)
-        
-        # --- FETCH LIVE DATA ONLY FOR ACTIVE KEYS ---
-        active_keys = []
-        for k in keys:
-            try:
-                exp = datetime.strptime(k['expiry_date'], "%Y-%m-%d %H:%M:%S")
-                if exp > now:
-                    active_keys.append(k)
-            except: pass
-
-        if active_keys:
-            try:
-                # --- 1. Fetch Key Details (User info from Host) ---
-                details_tasks = []
-                for k in active_keys:
-                    details_tasks.append(remnawave_api.get_key_details_from_host(k))
-                
-                details_results = await asyncio.gather(*details_tasks, return_exceptions=True)
-                
-                # --- 2. Fetch Subscription Info (Traffic Stats) using UUID from Details ---
-                sub_tasks = []
-                # Map results to keys to keep order
-                key_details_map = {}
-                
-                for k, res in zip(active_keys, details_results):
-                    if isinstance(res, Exception) or not res or not res.get('user'):
-                        sub_tasks.append(asyncio.sleep(0, None)) # Skip
-                        continue
-                        
-                    u = res['user']
-                    key_details_map[k['key_id']] = u
-                    
-                    # Update limits from user object immediately
-                    if u.get('trafficLimitBytes') is not None:
-                        k['limit_bytes'] = u.get('trafficLimitBytes')
-                    if u.get('hwidDeviceLimit') is not None:
-                        k['limit_ips'] = u.get('hwidDeviceLimit')
-
-                    if not k.get('email') and not k.get('key_email'):
-                        api_email = u.get('username') or u.get('email') or ''
-                        if api_email:
-                            k['email'] = api_email
-                            k['key_email'] = api_email
-                        
-                    # Determine UUID for subscription check
-                    # BOT PRIORITY: Use DB UUID first, then API response
-                    target_uuid = k.get('remnawave_user_uuid') or u.get('uuid')
-                    host = k.get('host_name')
-                    
-                    if target_uuid:
-                        sub_tasks.append(remnawave_api.get_subscription_info(str(target_uuid), host_name=host))
-                    else:
-                        sub_tasks.append(asyncio.sleep(0, None))
-
-                sub_results = await asyncio.gather(*sub_tasks, return_exceptions=True)
-                
-                # --- 3. Process Subscription Results ---
-                for k, sub_res in zip(active_keys, sub_results):
-                    # Try to find traffic in subscription response
-                    found_traffic = None
-                    if not isinstance(sub_res, Exception) and sub_res and isinstance(sub_res, dict):
-                        # check common keys
-                        for key_name in ['trafficUsed', 'traffic', 'used_traffic']:
-                            val = sub_res.get(key_name)
-                            if val is not None:
-                                found_traffic = val
-                                break
-                    
-                    if found_traffic is not None:
-                        k['used_bytes'] = found_traffic
-                    
-                    # Fallback: check User Details (u)
-                    if 'used_bytes' not in k:
-                        u = key_details_map.get(k['key_id'])
-                        if u:
-                             # Check keys in user object
-                             for key_name in ['traffic', 'trafficUsed', 'used_traffic']:
-                                 if u.get(key_name) is not None:
-                                     try: k['used_bytes'] = int(u.get(key_name)); break
-                                     except: pass
-                             
-                             # Final fallback: sum upload + download
-                             if 'used_bytes' not in k:
-                                 uploaded = int(u.get('upload') or 0)
-                                 downloaded = int(u.get('download') or 0)
-                                 k['used_bytes'] = uploaded + downloaded
-
-                    # HWID Usage
-                    u = key_details_map.get(k['key_id'])
-                    target_uuid = None
-                    if u:
-                         target_uuid = u.get('uuid')
-                    if not target_uuid:
-                         target_uuid = k.get('remnawave_user_uuid')
-                         
-                    host = k.get('host_name')
-
-                    if target_uuid and host:
-                         try:
-                              devs = await remnawave_api.get_connected_devices_count(target_uuid, host_name=host)
-                              if devs and 'total' in devs:
-                                   k['used_ips'] = int(devs['total'])
-                         except: pass
-            except Exception as e:
-                logger.error(f"[WEBAPP] - Ошибка получения живой статистики для {user_id}: {e}")
-
-        # --- CALCULATE MIN PRICE ---
-        min_price_val = 0.0
-        try:
-            all_hosts = get_all_hosts(visible_only=True)
-            prices = []
-            for h in all_hosts:
-                plans = get_plans_for_host(h['host_name'])
-                for p in plans:
-                    if p.get('is_active'):
-                        try:
-                            raw_p = float(p.get('price', 0))
-                            final_p = calculate_webapp_price(raw_p, user_id)
-                            prices.append(final_p)
-                        except: continue
-            if prices:
-                min_price_val = min(prices)
-        except Exception as e:
-            logger.error(f"[WEBAPP] - Ошибка расчета мин. цены для {user_id}: {e}")
-
-        # --- GENERATE SECTIONS ---
-        if keys:
-            # For the main monitoring section, show only the soonest active key
-            if active_keys:
-                key_section = _get_key_html(active_keys[0])
-            
-            # Renew, Profile and Setup sections get the full list of keys
-            # (Setup will filter internally, Profile shows all, Renew now shows all)
-            renew_keys_options, renew_selected_key, renew_plans_html_data = _get_renew_keys_html(keys, user_id)
-            renew_selected_display = renew_selected_key
-            
-            profile_keys_list = _get_profile_keys_html(keys)
-            setup_keys_list = _get_setup_keys_html(keys)
-            
-        # Profile Stats
-        user = get_user(user_id)
-        ref_count = get_referral_count(user_id)
-        ref_earned = user.get("referral_balance_all") or 0.0
-        profile_card = _get_profile_card_html(user, ref_count, len(keys), ref_earned)
-    
     p = os.path.join(os.path.dirname(__file__), "app.html")
     with open(p, "r", encoding="utf-8") as f:
         content = f.read()
-    
+
     context = {
-        "profile_card": profile_card,
-        "key_section": key_section,
-        "profile_keys_list": profile_keys_list,
-        "setup_keys_list": setup_keys_list,
-        "renew_keys_options": renew_keys_options,
-        "renew_plans_html_data": renew_plans_html_data,
-        "renew_selected_display": renew_selected_display if 'renew_selected_display' in locals() else renew_selected_key,
-        "min_price": f"{int(min_price_val)} ₽" if min_price_val > 0 else "0 ₽",
         "webapp_logo": webapp_settings.get("webapp_logo") or "",
-        "webapp_icon": webapp_settings.get("webapp_icon") or ""
+        "webapp_icon": webapp_settings.get("webapp_icon") or "",
     }
-    
+
     content = _process_template_placeholders(content, user_id, webapp_settings, context)
     return HTMLResponse(content=content)
 
@@ -1309,6 +762,13 @@ class CreatePaymentRequest(BaseModel):
     promo_code: str | None = None
     tier_device_count: int | None = None
     tier_price: float = 0
+    # частичная оплата с баланса: остаток уходит на выбранный способ оплаты
+    use_balance: bool = False
+
+class TopUpRequest(BaseModel):
+    user_id: int
+    amount: float
+    payment_method: str
 
 class ApplyPromoRequest(BaseModel):
     user_id: int
@@ -1448,6 +908,82 @@ async def api_telegram_direct_auth(req: TelegramDirectAuthRequest):
         logger.error(f"[WEBAPP] - Ошибка прямой авторизации Telegram для {req.user_id}: {e}")
         return {"ok": False, "error": "Auth error"}
 
+class SubscriptionLoginRequest(BaseModel):
+    subscription_url: str
+
+
+def _extract_short_uuid(raw: str) -> str | None:
+    """
+    Достаёт короткий идентификатор подписки из того, что вставил пользователь.
+    Принимает полную ссылку (https://host/sub/XXXX), ссылку с параметрами
+    и сам идентификатор, введённый вручную.
+    """
+    if not raw:
+        return None
+    value = raw.strip()
+    if not value:
+        return None
+
+    # отбрасываем query и hash
+    value = value.split("#", 1)[0].split("?", 1)[0].rstrip("/")
+
+    if "/" in value:
+        candidate = value.rsplit("/", 1)[-1]
+    else:
+        candidate = value
+
+    candidate = candidate.strip()
+    # короткий uuid Remnawave — набор латиницы и цифр
+    if candidate and re.fullmatch(r"[A-Za-z0-9_-]{6,64}", candidate):
+        return candidate
+    return None
+
+
+@app.post("/api/auth/subscription-link")
+async def api_subscription_link_auth(req: SubscriptionLoginRequest):
+    """Вход в кабинет по ссылке подписки."""
+    from shop_bot.data_manager import database
+    try:
+        raw = (req.subscription_url or "").strip()
+        if not raw:
+            return {"ok": False, "error": "Вставьте ссылку подписки"}
+
+        # 1) точное совпадение по полной ссылке
+        key = database.get_key_by_subscription_url(raw)
+
+        # 2) совпадение по короткому идентификатору из ссылки
+        if not key:
+            short_uuid = _extract_short_uuid(raw)
+            if short_uuid:
+                key = database.get_key_by_short_uuid(short_uuid)
+
+        if not key:
+            return {"ok": False, "error": "Подписка не найдена. Проверьте ссылку и попробуйте снова."}
+
+        user_id = key.get("user_id")
+        if not user_id:
+            return {"ok": False, "error": "Подписка не привязана к аккаунту"}
+
+        user = get_user(user_id)
+        if not user:
+            return {"ok": False, "error": "Аккаунт не найден"}
+        if user.get("is_banned"):
+            return {"ok": False, "error": "Доступ закрыт"}
+
+        existing_token = database.get_auth_token_by_user_id(user_id)
+        if existing_token:
+            logger.info(f"[WEBAPP] - Вход по ссылке подписки: пользователь {user_id}")
+            return {"ok": True, "token": existing_token, "user_id": user_id}
+
+        token = str(uuid.uuid4())
+        database.update_user_auth_token(user_id, token)
+        logger.info(f"[WEBAPP] - Вход по ссылке подписки: пользователь {user_id} (новый токен)")
+        return {"ok": True, "token": token, "user_id": user_id}
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка входа по ссылке подписки: {e}")
+        return {"ok": False, "error": "Внутренняя ошибка сервера"}
+
+
 def _validate_password(password: str) -> str | None:
     if len(password) < 5:
         return "Пароль должен содержать минимум 5 символов"
@@ -1579,7 +1115,8 @@ async def api_sync_tg(req: SyncTgRequest):
     tg_id = tg_data.get('id')
     tg_username = tg_data.get('username') or ''
     
-    if user['telegram_id'] > 0:
+    from shop_bot.data_manager.database import is_telegram_account
+    if is_telegram_account(user):
          return {"ok": False, "error": "Telegram уже привязан"}
          
     res = database.link_telegram_to_email_user(user['telegram_id'], tg_id, tg_username)
@@ -1587,6 +1124,66 @@ async def api_sync_tg(req: SyncTgRequest):
          return {"ok": True}
     else:
          return {"ok": False, "error": str(res)}
+
+
+class TgLinkStartRequest(BaseModel):
+    user_id: int
+
+
+@app.post("/api/tg-link/start")
+async def api_tg_link_start(req: TgLinkStartRequest):
+    """
+    Готовит ссылку «привязать Telegram» для аккаунта, заведённого по email
+    или по ссылке подписки.
+
+    В браузере initData от Telegram взять неоткуда, поэтому привязку
+    подтверждает сам бот: пользователь открывает диплинк, бот видит его
+    telegram_id и склеивает аккаунты. Токен здесь одноразовый и не является
+    токеном входа — по нему нельзя авторизоваться, только привязаться.
+    """
+    import time as _time
+    from shop_bot.data_manager.database import is_telegram_account
+    try:
+        user = get_user(req.user_id)
+        if not user or user.get('is_banned'):
+            return {"ok": False, "error": "Access denied"}
+        if is_telegram_account(user):
+            return {"ok": False, "error": "Telegram уже привязан"}
+
+        bot_username = (get_setting("telegram_bot_username") or "").lstrip("@")
+        if not bot_username:
+            return {"ok": False, "error": "Бот не настроен"}
+
+        _purge_tg_link_tokens()
+        token = str(uuid.uuid4())
+        TG_LINK_TOKENS[token] = {
+            "user_id": int(req.user_id),
+            "expires": _time.time() + TG_LINK_TTL_SECONDS,
+            "linked_to": None,
+        }
+        payload = f"link_{token}"
+        return {
+            "ok": True,
+            "token": token,
+            "url": f"https://t.me/{bot_username}?start={payload}",
+            "deep_link": f"tg://resolve?domain={bot_username}&start={payload}",
+        }
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка подготовки привязки Telegram для {req.user_id}: {e}")
+        return {"ok": False, "error": "Не удалось начать привязку"}
+
+
+@app.get("/api/tg-link/check/{token}")
+async def api_tg_link_check(token: str):
+    """Опрос из мини-аппа: подтвердил ли бот привязку."""
+    _purge_tg_link_tokens()
+    data = TG_LINK_TOKENS.get(token)
+    if not data:
+        return {"ok": True, "linked": False, "expired": True}
+    if data.get("linked_to"):
+        TG_LINK_TOKENS.pop(token, None)
+        return {"ok": True, "linked": True, "user_id": data["linked_to"]}
+    return {"ok": True, "linked": False, "expired": False}
 
 
 @app.post("/api/device-tiers")
@@ -1623,8 +1220,6 @@ async def api_get_payment_methods(req: PaymentMethodsRequest):
         methods.append({"id": "pay_yookassa", "name": label, "icon": "credit_card"})
 
     # 2. Platega
-    if (get_setting("platega_payform_enabled") or "false").strip().lower() == "true":
-        methods.append({"id": "pay_platega_payform", "name": "Platega", "icon": "credit_card"})
     if (get_setting("platega_enabled") or "false").strip().lower() == "true":
         methods.append({"id": "pay_platega", "name": "СБП / Platega", "icon": "payments"})
     if (get_setting("platega_crypto_enabled") or "false").strip().lower() == "true":
@@ -1651,7 +1246,7 @@ async def api_get_payment_methods(req: PaymentMethodsRequest):
 
     # 7. Balance
     balance = float(user.get('balance', 0)) if user else 0
-    methods.append({"id": "pay_balance", "name": f"Баланс ({balance:.0f} RUB)", "icon": "account_balance", "balance": balance})
+    methods.append({"id": "pay_balance", "name": "Баланс", "icon": "account_balance", "balance": balance})
 
     return {"ok": True, "methods": methods, "balance": balance}
 
@@ -1678,8 +1273,6 @@ async def api_create_payment(req: CreatePaymentRequest):
         final_price = calculate_webapp_price(float(plan['price']), user_id) 
         
         months = int(plan.get('months') or 1)
-        duration_days = int(plan.get('duration_days') or 0) or (months * 30)
-        month_factor = duration_days / 30.0
         
         tier_device_count = req.tier_device_count
         tier_price_per_month = req.tier_price
@@ -1736,7 +1329,7 @@ async def api_create_payment(req: CreatePaymentRequest):
                         logger.error(f"[WEBAPP] - Ошибка HWID: {e}")
         
         if tier_price_per_month > 0:
-            final_price += tier_price_per_month * month_factor
+            final_price += tier_price_per_month * months
             
         # --- APPLY PROMO DISCOUNT ---
         if req.promo_code:
@@ -1747,9 +1340,36 @@ async def api_create_payment(req: CreatePaymentRequest):
                 elif promo.get('discount_amount'):
                     final_price -= float(promo['discount_amount'])
                 final_price = max(0, round(final_price, 2))
-        
+
+        # --- ЧАСТИЧНАЯ ОПЛАТА С БАЛАНСА ---
+        # Баланс списывается не сейчас, а когда платёж подтвердится
+        # (process_successful_payment), иначе брошенный счёт съедал бы деньги.
+        balance_spend = 0.0
+        if req.use_balance and method_id != "pay_balance":
+            available = float(get_balance(user_id) or 0)
+            balance_spend = round(min(available, float(final_price)), 2)
+            if balance_spend > 0:
+                remainder = round(float(final_price) - balance_spend, 2)
+                if remainder <= 0:
+                    # баланса хватает на весь заказ — обычная оплата с баланса
+                    method_id = "pay_balance"
+                    balance_spend = 0.0
+                else:
+                    if remainder < 1:
+                        # у платёжек есть минимальная сумма счёта
+                        balance_spend = round(max(0.0, float(final_price) - 1), 2)
+                        remainder = round(float(final_price) - balance_spend, 2)
+                    final_price = remainder
+                    logger.info(f"[WEBAPP] - Частичная оплата балансом: User={user_id}, с баланса={balance_spend}, к оплате={final_price}")
+
+        def _pending(pid: str, meta: dict) -> dict:
+            if balance_spend > 0:
+                meta["balance_spend"] = balance_spend
+            _pending(pid, meta)
+            return meta
+
         action_name = req.action
-        
+
         # --- YooKassa ---
         if method_id == "pay_yookassa":
             shop_id, secret = get_setting("yookassa_shop_id"), get_setting("yookassa_secret_key")
@@ -1763,7 +1383,7 @@ async def api_create_payment(req: CreatePaymentRequest):
                 "plan_id": plan_id, "payment_method": "YooKassa", "payment_id": pid,
                 "tier_device_count": tier_device_count
             }
-            create_payload_pending(pid, user_id, float(final_price), meta)
+            _pending(pid, meta)
             comment = get_transaction_comment({"id": user_id, "username": user.get("username")}, action_name, months, req.host_name)
             payload = {
                 "amount": {"value": f"{final_price:.2f}", "currency": "RUB"},
@@ -1783,30 +1403,6 @@ async def api_create_payment(req: CreatePaymentRequest):
                 logger.error(f"[WEBAPP] - Ошибка YooKassa для {user_id}: {e}")
                 return {"ok": False, "error": f"Ошибка YooKassa: {e}"}
 
-        # --- Platega Payform ---
-        elif method_id == "pay_platega_payform":
-            mid, key = get_setting("platega_merchant_id"), get_setting("platega_api_key")
-            if not mid or not key: return {"ok": False, "error": "Platega не настроена"}
-            pid = str(uuid.uuid4())
-            meta = {
-                "user_id": user_id, "months": months, "price": float(final_price),
-                "action": action_name, "key_id": req.key_id, "host_name": req.host_name,
-                "plan_id": plan_id, "payment_method": "Platega Payform", "payment_id": pid,
-                "tier_device_count": tier_device_count
-            }
-            create_payload_pending(pid, user_id, float(final_price), meta)
-            desc = f"Order {pid}"
-            try:
-                platega = PlategaAPI(mid, key)
-                _, url = await platega.create_payment_payform(float(final_price), desc, pid, f"https://t.me/{get_setting('telegram_bot_username')}", f"https://t.me/{get_setting('telegram_bot_username')}")
-                if url:
-                    kb = create_payment_keyboard(url)
-                    await _send_telegram_message(user_id, f"<b>Оплата через Platega</b>\n\nСумма: <b>{final_price:.2f} RUB</b>\n\n<i>Счет также доступен в WebApp.</i>", kb)
-                    return {"ok": True, "payment_url": url, "payment_id": pid, "message": "Счёт создан"}
-                return {"ok": False, "error": "Ошибка получения ссылки Platega"}
-            except Exception as e:
-                return {"ok": False, "error": f"Ошибка Platega: {e}"}
-
         # --- Platega ---
         elif method_id == "pay_platega":
             mid, key = get_setting("platega_merchant_id"), get_setting("platega_api_key")
@@ -1818,7 +1414,7 @@ async def api_create_payment(req: CreatePaymentRequest):
                 "plan_id": plan_id, "payment_method": "Platega", "payment_id": pid,
                 "tier_device_count": tier_device_count
             }
-            create_payload_pending(pid, user_id, float(final_price), meta)
+            _pending(pid, meta)
             desc = f"Order {pid}"
             try:
                 platega = PlategaAPI(mid, key)
@@ -1842,7 +1438,7 @@ async def api_create_payment(req: CreatePaymentRequest):
                 "plan_id": plan_id, "payment_method": "Platega Crypto", "payment_id": pid,
                 "tier_device_count": tier_device_count
             }
-            create_payload_pending(pid, user_id, float(final_price), meta)
+            _pending(pid, meta)
             desc = f"Order {pid}"
             try:
                 platega = PlategaAPI(mid, key)
@@ -1864,7 +1460,7 @@ async def api_create_payment(req: CreatePaymentRequest):
                 "plan_id": plan_id, "payment_method": "CryptoBot", "payment_id": pid,
                 "tier_device_count": tier_device_count
             }
-             create_payload_pending(pid, user_id, float(final_price), meta)
+             _pending(pid, meta)
              # payload_str format MUST match what bot expects. Using a generic format for now or just ID
              # safe encoded payload
              payload_str = f"{pid}" 
@@ -1892,7 +1488,7 @@ async def api_create_payment(req: CreatePaymentRequest):
                 "plan_id": plan_id, "payment_method": "Heleket", "payment_id": pid,
                 "tier_device_count": tier_device_count
             }
-            create_payload_pending(pid, user_id, float(final_price), meta)
+            _pending(pid, meta)
             
             try:
                 result = await create_heleket_payment_request(
@@ -1927,7 +1523,7 @@ async def api_create_payment(req: CreatePaymentRequest):
                 "plan_id": plan_id, "payment_method": "YooMoney", "payment_id": pid,
                 "tier_device_count": tier_device_count
             }
-             create_payload_pending(pid, user_id, float(final_price), meta)
+             _pending(pid, meta)
              label = pid
              desc = get_transaction_comment({"id": user_id, "username": user.get("username")}, action_name, months, req.host_name)
              link = _build_yoomoney_link(receiver, Decimal(str(final_price)), label, desc)
@@ -1955,7 +1551,7 @@ async def api_create_payment(req: CreatePaymentRequest):
                 "plan_id": plan_id, "payment_method": "Telegram Stars", "payment_id": pid,
                 "tier_device_count": tier_device_count
             }
-             create_payload_pending(pid, user_id, float(final_price), meta)
+             _pending(pid, meta)
              title = f"{'Подписка' if action_name == 'new' else 'Продление'} на {months} мес."
              desc = get_transaction_comment({"id": user_id, "username": user.get("username")}, action_name, months, req.host_name)
              await _send_invoice_stars(user_id, title, desc, pid, stars_amount)
@@ -2017,6 +1613,122 @@ async def api_create_payment(req: CreatePaymentRequest):
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка API создания платежа: {e}")
         return {"ok": False, "error": str(e), "details": traceback.format_exc()}
+
+TOPUP_MIN = 10.0
+TOPUP_MAX = 100000.0
+
+
+@app.post("/api/topup/create")
+async def api_topup_create(req: TopUpRequest):
+    """Счёт на пополнение баланса. Метаданные те же, что у бота (action=top_up),
+    поэтому вебхуки зачисляют деньги существующим кодом."""
+    try:
+        user_id = req.user_id
+        user = get_user(user_id)
+        if not user or user.get('is_banned'):
+            return {"ok": False, "error": "Access denied"}
+
+        try:
+            amount = round(float(req.amount), 2)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "Некорректная сумма"}
+        if amount < TOPUP_MIN:
+            return {"ok": False, "error": f"Минимальная сумма пополнения — {TOPUP_MIN:.0f} ₽"}
+        if amount > TOPUP_MAX:
+            return {"ok": False, "error": f"Максимальная сумма пополнения — {TOPUP_MAX:.0f} ₽"}
+
+        method_id = req.payment_method
+        pid = str(uuid.uuid4())
+        meta = {
+            "user_id": user_id, "months": 0, "price": amount,
+            "action": "top_up", "key_id": None, "host_name": None,
+            "plan_id": None, "payment_method": "", "payment_id": pid,
+        }
+        comment = get_transaction_comment({"id": user_id, "username": user.get("username")}, 'topup', f"{amount:.2f}")
+        note = f"<b>Пополнение баланса</b>\n\nСумма: <b>{amount:.2f} RUB</b>"
+
+        if method_id == "pay_yookassa":
+            shop_id, secret = get_setting("yookassa_shop_id"), get_setting("yookassa_secret_key")
+            if not shop_id or not secret:
+                return {"ok": False, "error": "YooKassa не настроена"}
+            YookassaConfiguration.account_id = shop_id
+            YookassaConfiguration.secret_key = secret
+            meta["payment_method"] = "YooKassa"
+            create_payload_pending(pid, user_id, amount, meta)
+            payload = {
+                "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
+                "confirmation": {"type": "redirect", "return_url": f"https://t.me/{get_setting('telegram_bot_username')}"},
+                "capture": True, "description": comment, "metadata": meta,
+            }
+            pay_obj = YookassaPayment.create(payload, pid)
+            url = pay_obj.confirmation.confirmation_url
+
+        elif method_id in ("pay_platega", "pay_platega_crypto"):
+            mid, key = get_setting("platega_merchant_id"), get_setting("platega_api_key")
+            if not mid or not key:
+                return {"ok": False, "error": "Platega не настроена"}
+            crypto = method_id.endswith("crypto")
+            meta["payment_method"] = "Platega Crypto" if crypto else "Platega"
+            create_payload_pending(pid, user_id, amount, meta)
+            back = f"https://t.me/{get_setting('telegram_bot_username')}"
+            _, url = await PlategaAPI(mid, key).create_payment(amount, f"Topup {pid}", pid, back, back, 13 if crypto else 2)
+            if not url:
+                return {"ok": False, "error": "Не удалось получить ссылку Platega"}
+
+        elif method_id == "pay_cryptobot":
+            if not get_setting("cryptobot_token"):
+                return {"ok": False, "error": "CryptoBot не настроен"}
+            meta["payment_method"] = "CryptoBot"
+            create_payload_pending(pid, user_id, amount, meta)
+            res = await create_cryptobot_api_invoice(amount=amount, payload_str=pid)
+            if not res:
+                return {"ok": False, "error": "Ошибка API CryptoBot"}
+            url = res[0]
+
+        elif method_id == "pay_heleket":
+            meta["payment_method"] = "Heleket"
+            create_payload_pending(pid, user_id, amount, meta)
+            res = await create_heleket_payment_request(
+                amount=amount, currency="RUB", description="Balance top up",
+                return_url=f"https://t.me/{get_setting('telegram_bot_username')}",
+                user_id=user_id, email=user.get('email', 'no-email'),
+            )
+            url = (res or {}).get('payment_url')
+            if not url:
+                return {"ok": False, "error": "Ошибка создания платежа Heleket"}
+
+        elif method_id == "pay_yoomoney":
+            receiver = get_setting("yoomoney_receiver")
+            if not receiver:
+                return {"ok": False, "error": "YooMoney не настроен"}
+            meta["payment_method"] = "YooMoney"
+            create_payload_pending(pid, user_id, amount, meta)
+            url = _build_yoomoney_link(receiver, Decimal(str(amount)), pid, comment)
+
+        elif method_id == "pay_stars":
+            try:
+                stars_ratio = float(get_setting("stars_per_rub") or 0)
+            except (TypeError, ValueError):
+                stars_ratio = 0
+            if stars_ratio <= 0:
+                return {"ok": False, "error": "Stars отключены"}
+            meta["payment_method"] = "Telegram Stars"
+            create_payload_pending(pid, user_id, amount, meta)
+            await _send_invoice_stars(user_id, "Пополнение баланса", comment, pid, max(1, int(amount * stars_ratio)))
+            return {"ok": True, "payment_id": pid, "message": "Счёт Stars отправлен в бот",
+                    "payment_url": f"tg://resolve?domain={get_setting('telegram_bot_username')}"}
+
+        else:
+            return {"ok": False, "error": "Этот способ не подходит для пополнения"}
+
+        await _send_telegram_message(user_id, note, create_payment_keyboard(url))
+        logger.info(f"[WEBAPP] - Создан счёт на пополнение: User={user_id}, Sum={amount}, Method={method_id}")
+        return {"ok": True, "payment_url": url, "payment_id": pid, "message": "Счёт создан"}
+
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка создания пополнения для {req.user_id}: {e}")
+        return {"ok": False, "error": str(e)}
+
 
 @app.post("/api/apply-promo")
 async def api_apply_promo(req: ApplyPromoRequest):
@@ -2206,6 +1918,179 @@ async def api_key_comment(req: CommentRequest):
         logger.error(f"[WEBAPP] - Ошибка обновления комментария для ключа {req.key_id}: {e}")
         return {"ok": False, "error": str(e)}
 
+class ResetSubscriptionRequest(BaseModel):
+    user_id: int
+    key_id: int
+
+
+@app.post("/api/key/reset-subscription")
+async def api_key_reset_subscription(req: ResetSubscriptionRequest):
+    """
+    Пересоздаёт ссылку подписки: отзывает текущую в Remnawave и выдаёт новую.
+    Старая ссылка после этого перестаёт работать.
+
+    Ограничение по частоте общее с ботом и админкой — оно хранится в БД.
+    """
+    from shop_bot.data_manager import database
+    try:
+        user = get_user(req.user_id)
+        if not user or user.get('is_banned'):
+            return {"ok": False, "error": "Access denied"}
+
+        key = get_key_by_id(req.key_id)
+        if not key or key.get("user_id") != req.user_id:
+            return {"ok": False, "error": "Подписка не найдена"}
+
+        wait_seconds = database.get_subscription_reset_wait(req.key_id)
+        if wait_seconds > 0:
+            wait_min = max(1, int(wait_seconds / 60))
+            return {"ok": False, "error": f"Пересоздавать можно раз в час. Подождите ещё {wait_min} мин."}
+
+        client_uuid = key.get("remnawave_user_uuid")
+        host_name = key.get("host_name")
+        if not client_uuid:
+            return {"ok": False, "error": "Подписка не привязана к серверу"}
+
+        result = await remnawave_api.revoke_subscription_on_host(client_uuid, host_name=host_name)
+        if not result:
+            return {"ok": False, "error": "Не удалось пересоздать подписку. Попробуйте позже."}
+
+        database.mark_subscription_reset(req.key_id)
+
+        new_sub_url = remnawave_api.extract_subscription_url(result) or ""
+        new_short_uuid = result.get("shortUuid")
+        try:
+            update_key(req.key_id, subscription_url=new_sub_url, short_uuid=new_short_uuid)
+        except Exception as e:
+            logger.warning(f"[WEBAPP] - Не удалось сохранить новую ссылку подписки {req.key_id}: {e}")
+
+        logger.info(f"[WEBAPP] - Пользователь {req.user_id} пересоздал подписку {req.key_id}")
+
+        # Дублируем результат в бот: пользователь мог начать в вебаппе,
+        # а пользоваться ссылкой удобнее из чата.
+        try:
+            key_number = key.get("key_number") or req.key_id
+            notify_text = (
+                f"🔄 <b>Подписка #{key_number} пересоздана</b>\n\n"
+                "Старая ссылка больше не работает. Импортируйте новую ссылку в приложение:\n\n"
+                f"<code>{new_sub_url}</code>"
+            ) if new_sub_url else (
+                f"🔄 <b>Подписка #{key_number} пересоздана</b>\n\n"
+                "Старая ссылка больше не работает. Откройте подписку в боте, чтобы получить новую ссылку."
+            )
+            await _send_telegram_message(req.user_id, notify_text)
+        except Exception as e:
+            logger.warning(f"[WEBAPP] - Не удалось отправить уведомление о сбросе {req.key_id}: {e}")
+
+        return {"ok": True, "subscription_url": new_sub_url}
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка пересоздания подписки {req.key_id}: {e}")
+        return {"ok": False, "error": "Внутренняя ошибка сервера"}
+
+
+def _format_media(message_id, user_id: int | None = None) -> list:
+    """Вложения сообщения в виде, пригодном для показа в миниаппе."""
+    if not message_id:
+        return []
+    try:
+        from shop_bot.data_manager.database import get_media_for_messages
+        grouped = get_media_for_messages([int(message_id)])
+        return [
+            {
+                "id": a.get("media_id"),
+                "kind": a.get("kind"),
+                "name": a.get("file_name"),
+                "url": f"/api/support/media/{a.get('media_id')}?user_id={user_id}" if user_id else None,
+            }
+            for a in grouped.get(int(message_id), [])
+        ]
+    except Exception:
+        return []
+
+
+class SupportHistoryRequest(BaseModel):
+    user_id: int
+
+
+@app.post("/api/support/history")
+async def api_support_history(req: SupportHistoryRequest):
+    """Список всех обращений пользователя — открытых и закрытых."""
+    try:
+        user = get_user(req.user_id)
+        if not user or user.get('is_banned'):
+            return {"ok": False, "error": "Access denied"}
+
+        from shop_bot.data_manager.remnawave_repository import get_user_tickets, get_ticket_messages
+        tickets = get_user_tickets(req.user_id) or []
+
+        items = []
+        for t in sorted(tickets, key=lambda x: int(x['ticket_id']), reverse=True):
+            msgs = [m for m in (get_ticket_messages(t['ticket_id']) or [])
+                    if m.get('sender') != 'note']
+            last = msgs[-1] if msgs else None
+            items.append({
+                "ticket_id": t['ticket_id'],
+                "subject": t.get('subject') or 'Обращение без темы',
+                "status": t.get('status'),
+                "created_at": t.get('created_at'),
+                "updated_at": t.get('updated_at'),
+                "messages_count": len(msgs),
+                "last_message": (last or {}).get('content', '')[:120],
+                "last_sender": (last or {}).get('sender'),
+            })
+
+        return {"ok": True, "tickets": items}
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка истории обращений для {req.user_id}: {e}")
+        return {"ok": False, "error": "Внутренняя ошибка сервера"}
+
+
+class SupportTicketViewRequest(BaseModel):
+    user_id: int
+    ticket_id: int
+
+
+@app.post("/api/support/ticket")
+async def api_support_ticket(req: SupportTicketViewRequest):
+    """Переписка по конкретному обращению, в том числе закрытому."""
+    try:
+        user = get_user(req.user_id)
+        if not user or user.get('is_banned'):
+            return {"ok": False, "error": "Access denied"}
+
+        from shop_bot.data_manager.remnawave_repository import get_ticket, get_ticket_messages
+        ticket = get_ticket(req.ticket_id)
+        if not ticket or ticket.get('user_id') != req.user_id:
+            return {"ok": False, "error": "Обращение не найдено"}
+
+        messages = []
+        for m in (get_ticket_messages(req.ticket_id) or []):
+            if m.get('sender') == 'note':
+                continue
+            media = _format_media(m.get("message_id"), req.user_id)
+            # Сообщение без текста и без вложений показывать нечем —
+            # такие записи остались в базе от отправки пустой формы
+            if not (m.get("content") or "").strip() and not media:
+                continue
+            messages.append({
+                "sender": m.get("sender"),
+                "content": m.get("content"),
+                "created_at": m.get("created_at"),
+                "media": media,
+            })
+
+        return {
+            "ok": True,
+            "ticket_id": ticket['ticket_id'],
+            "subject": ticket.get('subject') or 'Обращение без темы',
+            "status": ticket.get('status'),
+            "messages": messages,
+        }
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка просмотра обращения: {e}")
+        return {"ok": False, "error": "Внутренняя ошибка сервера"}
+
+
 @app.post("/api/support/status")
 async def api_support_status(req: SupportStatusRequest):
     try:
@@ -2226,10 +2111,14 @@ async def api_support_status(req: SupportStatusRequest):
         for m in messages:
             if m.get('sender') == 'note':
                 continue
+            media = _format_media(m.get("message_id"), req.user_id)
+            if not (m.get("content") or "").strip() and not media:
+                continue
             formatted_messages.append({
                 "sender": m.get("sender"),
                 "content": m.get("content"),
-                "created_at": m.get("created_at")
+                "created_at": m.get("created_at"),
+                "media": media,
             })
             
         return {
@@ -2250,9 +2139,12 @@ async def api_support_create(req: SupportTicketCreateRequest):
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
             return {"ok": False, "error": "Access denied"}
-            
+
+        if _support_cooldown_hit(req.user_id):
+            return {"ok": False, "error": "Слишком часто. Подождите пару секунд"}
+
         from shop_bot.data_manager.remnawave_repository import get_or_create_open_ticket, add_support_message, get_setting
-        
+
         subject_text = req.subject.strip()[:64]
         if not subject_text:
             return {"ok": False, "error": "Тема обращения не может быть пустой"}
@@ -2265,50 +2157,266 @@ async def api_support_create(req: SupportTicketCreateRequest):
         if not created_new:
             return {"ok": False, "error": "У вас уже есть открытый тикет"}
             
-        from aiogram import Bot
-        token = get_setting("support_bot_token")
-        if token:
-            bot = Bot(token=token)
-            try:
+        # Уведомление админов — best-effort: тикет уже создан в БД, и
+        # клиент должен увидеть успех даже если бот недоступен (невалидный
+        # токен, сеть, бан бота) — раньше исключение из Bot(token=...)
+        # (вне внутреннего try) улетало в общий except ниже и превращало
+        # уже успешное создание тикета в ответ ok:false.
+        try:
+            from aiogram import Bot
+            token = get_setting("support_bot_token")
+            if token:
+                bot = Bot(token=token)
                 try:
-                    user = await bot.get_chat(req.user_id)
-                    username_display = f"@{user.username}" if getattr(user, 'username', None) else f"ID {req.user_id}"
-                except Exception:
-                    username_display = f"ID {req.user_id}"
-                    
-                import html
-                from shop_bot.data_manager.database import get_admin_ids
-                notification_text = (
-                    f"🆕 <b>Новое обращение (WebApp)!</b>\n\n"
-                    f"👤 <b>USER:</b> (<code>{req.user_id}</code> - {html.escape(username_display)})\n"
-                    f"📝 <b>ID тикета:</b> <code>#{ticket_id}</code>\n"
-                    f"💬 <b>Тема:</b> <i>{html.escape(subject_text)}</i>\n\n"
-                    f"💌 Сообщения:\n"
-                    f"<blockquote>Тикет открыт через веб-приложение.</blockquote>"
-                )
-                
-                photo_url = "https://github.com/CyberERROR/remnawave-shopbot/blob/main/docs/screenshots/suppshor.png?raw=true"
-                reply_kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="💬 Ответить", callback_data=f"admin_reply_dm_{ticket_id}")]
-                ])
-                for aid in get_admin_ids():
                     try:
-                        await bot.send_photo(
-                            chat_id=int(aid),
-                            photo=photo_url,
-                            caption=notification_text,
-                            parse_mode="HTML",
-                            reply_markup=reply_kb
-                        )
+                        user = await bot.get_chat(req.user_id)
+                        username_display = f"@{user.username}" if getattr(user, 'username', None) else f"ID {req.user_id}"
                     except Exception:
-                        pass
-            finally:
-                await bot.session.close()
-                    
+                        username_display = f"ID {req.user_id}"
+
+                    import html
+                    notification_text = (
+                        f"🆕 <b>Новое обращение (WebApp)!</b>\n\n"
+                        f"👤 <b>USER:</b> (<code>{req.user_id}</code> - {html.escape(username_display)})\n"
+                        f"📝 <b>ID тикета:</b> <code>#{ticket_id}</code>\n"
+                        f"💬 <b>Тема:</b> <i>{html.escape(subject_text)}</i>\n\n"
+                        f"💌 Сообщения:\n"
+                        f"<blockquote>Тикет открыт через веб-приложение.</blockquote>"
+                    )
+
+                    from shop_bot.data_manager.remnawave_repository import get_admin_ids
+                    for aid in get_admin_ids():
+                        try:
+                            await bot.send_message(
+                                chat_id=int(aid),
+                                text=notification_text,
+                                parse_mode="HTML",
+                                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                    [InlineKeyboardButton(text="💬 Ответить", callback_data=f"admin_reply_dm_{ticket_id}")]
+                                ])
+                            )
+                        except Exception:
+                            pass
+                finally:
+                    await bot.session.close()
+        except Exception as e:
+            logger.warning(f"[WEBAPP] - Не удалось уведомить админов о новом тикете {ticket_id}: {e}")
+
         return {"ok": True, "ticket_id": ticket_id}
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка создания тикета поддержки для {req.user_id}: {e}")
         return {"ok": False, "error": str(e)}
+
+@app.get("/api/support/media/{media_id}")
+async def api_support_media_file(request: Request, media_id: int, user_id: int | None = None):
+    """
+    Отдаёт вложение пользователю. Доступ только к файлам из собственных
+    обращений — чужие id вернут 403 даже при прямом переборе.
+    """
+    from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+    try:
+        from shop_bot.data_manager.database import get_support_media
+        from shop_bot.data_manager.remnawave_repository import get_ticket
+        from shop_bot.data_manager import support_media as media_store
+
+        row = get_support_media(media_id)
+        if not row:
+            return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+
+        ticket = get_ticket(row.get('ticket_id'))
+        if not ticket:
+            return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+        if user_id is None or int(ticket.get('user_id') or 0) != int(user_id):
+            return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
+
+        path = media_store.abs_path(row.get('local_path'))
+        if path is None:
+            return JSONResponse({"ok": False, "error": "file_missing"}, status_code=404)
+
+        media_type = row.get('mime_type') or "application/octet-stream"
+
+        # Перемотка аудио и видео требует поддержки Range-запросов.
+        # Не полагаемся на версию Starlette и обрабатываем диапазон сами.
+        range_header = request.headers.get('range') if request else None
+        file_size = path.stat().st_size
+
+        if range_header:
+            import re as _re
+            m = _re.match(r'bytes=(\d*)-(\d*)', range_header.strip())
+            if m:
+                start = int(m.group(1)) if m.group(1) else 0
+                end = int(m.group(2)) if m.group(2) else file_size - 1
+                end = min(end, file_size - 1)
+                if start <= end:
+                    length = end - start + 1
+
+                    def _chunk():
+                        with open(path, 'rb') as f:
+                            f.seek(start)
+                            left = length
+                            while left > 0:
+                                data = f.read(min(64 * 1024, left))
+                                if not data:
+                                    break
+                                left -= len(data)
+                                yield data
+
+                    return StreamingResponse(
+                        _chunk(),
+                        status_code=206,
+                        media_type=media_type,
+                        headers={
+                            'Content-Range': f'bytes {start}-{end}/{file_size}',
+                            'Content-Length': str(length),
+                            'Accept-Ranges': 'bytes',
+                        },
+                    )
+
+        return FileResponse(
+            str(path),
+            media_type=media_type,
+            filename=row.get('file_name') or path.name,
+            headers={'Accept-Ranges': 'bytes'},
+        )
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка отдачи вложения {media_id}: {e}")
+        return JSONResponse({"ok": False, "error": "internal"}, status_code=500)
+
+
+@app.get("/api/support/media-config")
+async def api_support_media_config():
+    """Настройки вложений — миниапп подстраивает под них форму загрузки."""
+    try:
+        from shop_bot.data_manager.database import get_support_media_settings
+        cfg = get_support_media_settings()
+        # Без python-multipart приём файлов физически невозможен —
+        # честно гасим кнопку в интерфейсе, а не даём ей падать.
+        enabled = bool(cfg["enabled"]) and MULTIPART_AVAILABLE
+        return {
+            "ok": True,
+            "enabled": enabled,
+            "upload_supported": MULTIPART_AVAILABLE,
+            "max_mb": cfg["max_mb"],
+            "allowed": cfg["allowed"],
+            "accept": ",".join("." + e for e in cfg["allowed"]),
+        }
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка получения настроек вложений: {e}")
+        return {"ok": False, "enabled": False, "allowed": [], "max_mb": 0}
+
+
+if MULTIPART_AVAILABLE:
+  @app.post("/api/support/upload")
+  async def api_support_upload(
+    user_id: int = Form(...),
+    ticket_id: int = Form(...),
+    caption: str = Form(""),
+    file: UploadFile = File(...),
+  ):
+      """
+      Приём вложения из миниаппа.
+
+      Файл кладём на диск и сразу отправляем в Telegram: так у записи
+      появляется и локальная копия, и file_id — как и для вложений,
+      пришедших из чата.
+      """
+      try:
+          user = get_user(user_id)
+          if not user or user.get('is_banned'):
+              return {"ok": False, "error": "Access denied"}
+
+          from shop_bot.data_manager.remnawave_repository import get_ticket, add_support_message
+          from shop_bot.data_manager.database import add_support_media
+          from shop_bot.data_manager import support_media as media_store
+
+          ticket = get_ticket(ticket_id)
+          if not ticket or ticket.get('user_id') != user_id or ticket.get('status') != 'open':
+              return {"ok": False, "error": "Тикет не найден или закрыт"}
+
+          data = await file.read()
+          ok, err, ext = media_store.validate(file.filename, file.content_type, len(data))
+          if not ok:
+              return {"ok": False, "error": err}
+
+          local = media_store.save_bytes(ticket_id, data, ext)
+          if not local:
+              return {"ok": False, "error": "Не удалось сохранить файл"}
+
+          kind = media_store.kind_for_ext(ext)
+          text = (caption or "").strip()
+          label = {"photo": "[Фото]", "video": "[Видео]"}.get(kind, f"[Документ: {file.filename}]")
+          content = f"{label} {text}".strip()
+
+          message_row_id = add_support_message(ticket_id, sender="user", content=content)
+
+          # Отправляем в Telegram и забираем file_id (best-effort — вложение
+          # уже сохранено на диск и в БД ниже, сбой бота не должен
+          # превращать успешную загрузку в ok:false).
+          file_id = None
+          try:
+              token = get_setting("support_bot_token")
+              if token:
+                  bot = Bot(token=token)
+                  try:
+                      path = media_store.abs_path(local)
+                      sent = None
+                      if path:
+                          input_file = FSInputFile(str(path), filename=file.filename or path.name)
+                          forum_chat_id = ticket.get('forum_chat_id')
+                          thread_id = ticket.get('message_thread_id')
+                          caption_text = f"📨 Вложение из WebApp (тикет #{ticket_id})"
+                          if text:
+                              caption_text += f"\n{text}"
+
+                          targets = []
+                          if forum_chat_id and thread_id:
+                              targets.append(dict(chat_id=int(forum_chat_id),
+                                                  message_thread_id=int(thread_id)))
+                          else:
+                              from shop_bot.data_manager.remnawave_repository import get_admin_ids
+                              targets = [dict(chat_id=int(a)) for a in get_admin_ids()]
+
+                          for t in targets:
+                              try:
+                                  if kind == "photo":
+                                      sent = await bot.send_photo(photo=input_file, caption=caption_text, **t)
+                                  elif kind == "video":
+                                      sent = await bot.send_video(video=input_file, caption=caption_text, **t)
+                                  else:
+                                      sent = await bot.send_document(document=input_file, caption=caption_text, **t)
+                              except Exception as e:
+                                  logger.warning(f"[WEBAPP] - Не удалось отправить вложение: {e}")
+
+                          if sent:
+                              if getattr(sent, "photo", None):
+                                  file_id = sent.photo[-1].file_id
+                              elif getattr(sent, "video", None):
+                                  file_id = sent.video.file_id
+                              elif getattr(sent, "document", None):
+                                  file_id = sent.document.file_id
+                  finally:
+                      await bot.session.close()
+          except Exception as e:
+              logger.warning(f"[WEBAPP] - Не удалось переслать вложение в Telegram (тикет {ticket_id}): {e}")
+
+          add_support_media(
+              ticket_id,
+              message_id=message_row_id,
+              sender="user",
+              kind=kind,
+              file_id=file_id,
+              local_path=local,
+              file_name=file.filename,
+              mime_type=file.content_type,
+              file_size=len(data),
+          )
+
+          logger.info(f"[WEBAPP] - Пользователь {user_id} приложил файл к тикету {ticket_id}")
+          return {"ok": True, "kind": kind}
+      except Exception as e:
+          logger.error(f"[WEBAPP] - Ошибка загрузки вложения: {e}")
+          return {"ok": False, "error": "Внутренняя ошибка сервера"}
+
 
 @app.post("/api/support/send")
 async def api_support_send(req: SupportMessageSendRequest):
@@ -2316,71 +2424,437 @@ async def api_support_send(req: SupportMessageSendRequest):
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
             return {"ok": False, "error": "Access denied"}
-            
+
+        if _support_cooldown_hit(req.user_id):
+            return {"ok": False, "error": "Слишком часто. Подождите пару секунд"}
+
         from shop_bot.data_manager.remnawave_repository import get_ticket, add_support_message, get_setting
         ticket = get_ticket(req.ticket_id)
         if not ticket or ticket.get('user_id') != req.user_id or ticket.get('status') != 'open':
             return {"ok": False, "error": "Тикет не найден или закрыт"}
-            
-        add_support_message(req.ticket_id, sender="user", content=req.message)
-        
-        from aiogram import Bot
-        token = get_setting("support_bot_token")
-        if token:
-            bot = Bot(token=token)
-            try:
+
+        # Пустые сообщения раньше сохранялись как есть и превращались в
+        # ленте в пузыри с одним временем без текста (см. #783, #784).
+        message_text = (req.message or "").strip()
+        if not message_text:
+            return {"ok": False, "error": "Введите текст сообщения"}
+        if len(message_text) > SUPPORT_MESSAGE_MAX_LEN:
+            return {"ok": False, "error": f"Сообщение слишком длинное (максимум {SUPPORT_MESSAGE_MAX_LEN} символов)"}
+
+        add_support_message(req.ticket_id, sender="user", content=message_text)
+
+        # Best-effort уведомление — сообщение уже сохранено, сбой бота не
+        # должен превращать успешную отправку в ok:false (см. комментарий
+        # в api_support_create).
+        try:
+            from aiogram import Bot
+            token = get_setting("support_bot_token")
+            if token:
+                bot = Bot(token=token)
                 try:
-                    user = await bot.get_chat(req.user_id)
-                    username_display = f"@{user.username}" if getattr(user, 'username', None) else f"ID {req.user_id}"
-                except Exception:
-                    username_display = f"ID {req.user_id}"
-                    
-                import html
-                from shop_bot.data_manager.database import get_admin_ids
-                notification_text = (
-                    f"✅ <b>Сообщение добавлено в тикет</b>\n\n"
-                    f"👤 <b>USER:</b> (<code>{req.user_id}</code> - {html.escape(username_display)})\n"
-                    f"📝 <b>ID тикета:</b> <code>#{req.ticket_id}</code>\n"
-                    f"💬 <b>Тема:</b> <i>{html.escape(ticket.get('subject', 'Без темы'))}</i>\n\n"
-                    f"💌 Сообщения:\n"
-                    f"<blockquote>{html.escape(req.message)}</blockquote>"
-                )
-                
-                reply_kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="💬 Ответить", callback_data=f"admin_reply_dm_{req.ticket_id}")]
-                ])
-                
-                forum_chat_id = ticket.get('forum_chat_id')
-                thread_id = ticket.get('message_thread_id')
-                
-                if forum_chat_id and thread_id:
                     try:
-                        await bot.send_message(
-                            chat_id=int(forum_chat_id),
-                            message_thread_id=int(thread_id),
-                            text=notification_text,
-                            parse_mode="HTML"
-                        )
-                    except Exception as e:
-                        logger.warning(f"Error mirroring to forum: {e}")
-                
-                for aid in get_admin_ids():
-                    try:
-                        await bot.send_message(
-                            chat_id=int(aid),
-                            text=notification_text,
-                            parse_mode="HTML",
-                            reply_markup=reply_kb
-                        )
+                        user = await bot.get_chat(req.user_id)
+                        username_display = f"@{user.username}" if getattr(user, 'username', None) else f"ID {req.user_id}"
                     except Exception:
-                        pass
-            finally:
-                await bot.session.close()
-                        
+                        username_display = f"ID {req.user_id}"
+
+                    import html
+                    notification_text = (
+                        f"📨 <b>Новое сообщение (WebApp)!</b>\n\n"
+                        f"👤 <b>USER:</b> (<code>{req.user_id}</code> - {html.escape(username_display)})\n"
+                        f"📝 <b>ID тикета:</b> <code>#{req.ticket_id}</code>\n"
+                        f"💬 <b>Тема:</b> <i>{html.escape(ticket.get('subject', 'Без темы'))}</i>\n\n"
+                        f"💌 Сообщения:\n"
+                        f"<blockquote>{html.escape(message_text)}</blockquote>"
+                    )
+
+                    forum_chat_id = ticket.get('forum_chat_id')
+                    thread_id = ticket.get('message_thread_id')
+
+                    if forum_chat_id and thread_id:
+                        try:
+                            await bot.send_message(
+                                chat_id=int(forum_chat_id),
+                                message_thread_id=int(thread_id),
+                                text=notification_text,
+                                parse_mode="HTML"
+                            )
+                        except Exception as e:
+                            logger.warning(f"Error mirroring to forum: {e}")
+                    else:
+                        from shop_bot.data_manager.remnawave_repository import get_admin_ids
+                        for aid in get_admin_ids():
+                            try:
+                                await bot.send_message(
+                                    chat_id=int(aid),
+                                    text=notification_text,
+                                    parse_mode="HTML",
+                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                        [InlineKeyboardButton(text="💬 Ответить", callback_data=f"admin_reply_dm_{req.ticket_id}")]
+                                    ])
+                                )
+                            except Exception:
+                                pass
+                finally:
+                    await bot.session.close()
+        except Exception as e:
+            logger.warning(f"[WEBAPP] - Не удалось уведомить админов о сообщении в тикете {req.ticket_id}: {e}")
+
         return {"ok": True}
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка отправки сообщения в поддержку для {req.user_id}: {e}")
         return {"ok": False, "error": str(e)}
+
+class TrialRequest(BaseModel):
+    user_id: int
+
+
+def _trial_state(user_id: int) -> dict:
+    """
+    Доступен ли пользователю пробный период.
+
+    Требований три: включён в настройках, ещё не использован и к
+    аккаунту привязан Telegram — иначе выдать ключ в боте некуда.
+
+    Раньше «телеграмность» проверялась как int(user_id) <= 0, но
+    create_user_by_email выдаёт положительные синтетические id вида
+    999XXXXXXX, поэтому условие не срабатывало никогда и пробный период
+    предлагался всем подряд. Теперь решает флаг tg_linked.
+    """
+    try:
+        if (get_setting("trial_enabled") or "").strip().lower() not in ("1", "true", "on", "yes"):
+            return {"available": False, "reason": "disabled"}
+
+        user = get_user(user_id)
+        if not user:
+            return {"available": False, "reason": "no_user"}
+
+        if user.get("trial_used"):
+            return {"available": False, "reason": "used"}
+
+        try:
+            days = int(get_setting("trial_duration_days") or 0)
+        except Exception:
+            days = 0
+        if days <= 0:
+            return {"available": False, "reason": "disabled"}
+
+        host = (get_setting("trial_host_id") or "").strip()
+        hosts = get_all_hosts(visible_only=True) or []
+        if host and not any(h.get("host_name") == host for h in hosts):
+            host = ""
+        if not host:
+            if not hosts:
+                return {"available": False, "reason": "no_hosts"}
+            host = hosts[0]["host_name"]
+
+        # Проверку Telegram держим последней: мини-апп показывает «привяжите
+        # Telegram и получите N дней», поэтому срок должен быть уже посчитан.
+        from shop_bot.data_manager.database import is_telegram_account
+        if not is_telegram_account(user):
+            return {"available": False, "reason": "no_telegram", "days": days}
+
+        return {"available": True, "days": days, "host": host, "reason": ""}
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка проверки пробного периода {user_id}: {e}")
+        return {"available": False, "reason": "error"}
+
+
+@app.get("/api/catalog")
+async def api_catalog(user_id: int):
+    """
+    Каталог для экрана покупки: локации, тарифы и наборы устройств —
+    структурой, а не готовым HTML. Разметку собирает клиент, поэтому
+    вид можно менять, не трогая сервер.
+    """
+    import re as _re
+    try:
+        user = get_user(user_id)
+        if not user or user.get('is_banned'):
+            return {"ok": False, "error": "Access denied"}
+
+        try:
+            hosts = get_all_hosts(visible_only=True) or []
+        except Exception:
+            hosts = []
+
+        items = []
+        for host in hosts:
+            host_name = host.get('host_name')
+            if not host_name:
+                continue
+
+            desc = host.get('description') or ""
+            desc = _re.sub(r'(\s*\n\s*){2,}', '\n', desc).strip()
+
+            try:
+                plans = get_plans_for_host(host_name) or []
+            except Exception:
+                plans = []
+
+            plan_items = []
+            base_per_month = None
+            for plan in plans:
+                if not plan.get('is_active'):
+                    continue
+                try:
+                    price = int(calculate_webapp_price(float(plan.get('price', 0)), user_id))
+                    months = int(plan.get('months') or 1)
+                except (TypeError, ValueError):
+                    continue
+                if months <= 0:
+                    continue
+
+                per_month = price / months
+                if months == 1:
+                    base_per_month = per_month
+
+                try:
+                    plan_devices = int(plan.get('hwid_limit') or 0)
+                except (TypeError, ValueError):
+                    plan_devices = 0
+
+                plan_items.append({
+                    "plan_id": plan.get('plan_id'),
+                    "plan_name": plan.get('plan_name') or "",
+                    "months": months,
+                    "price": price,
+                    "per_month": round(per_month),
+                    # 0 — лимит устройств не задан (безлимит)
+                    "devices": plan_devices,
+                })
+
+            # Выгода считается относительно месячного тарифа — так человек
+            # видит, зачем брать длиннее
+            for it in plan_items:
+                save = 0
+                if base_per_month and it["months"] > 1 and base_per_month > 0:
+                    save = round((1 - it["per_month"] / base_per_month) * 100)
+                it["save"] = save if save > 0 else 0
+
+            plan_items.sort(key=lambda x: x["months"])
+
+            # Наборы устройств продаются только при device_mode == 'tiers'.
+            # В режиме 'plan' лимит устройств зашит в сам тариф (hwid_limit),
+            # выбирать нечего — и тогда base_device_* обычно не задан вовсе.
+            device_mode = (host.get('device_mode') or 'plan').strip()
+
+            tiers = []
+            if device_mode == 'tiers':
+                try:
+                    from shop_bot.data_manager.database import get_device_tiers
+                    tiers = get_device_tiers(host_name) or []
+                except Exception:
+                    tiers = []
+
+            # Доплата считается как (лишние устройства) x цена за штуку —
+            # так же, как в боте: float(diff * tier['price']). Отдаём
+            # готовую сумму, чтобы в интерфейсе не было «+5 ₽/мес» у
+            # всех тиров подряд.
+            raw_base = get_setting(f"base_device_{host_name}")
+            try:
+                base_devices = int(raw_base) if raw_base else 0
+            except (TypeError, ValueError):
+                base_devices = 0
+            if base_devices <= 0:
+                # без настройки берём лимит из тарифов: он и есть «включено»
+                plan_limits = {p["devices"] for p in plan_items if p["devices"] > 0}
+                base_devices = min(plan_limits) if len(plan_limits) == 1 else 0
+            if device_mode == 'tiers' and base_devices <= 0:
+                base_devices = 1  # как в боте: без настройки считаем одно включённое
+
+            tier_items = []
+            for t in tiers:
+                try:
+                    devices = int(t.get('device_count') or 0)
+                    unit = float(t.get('price') or 0)
+                    extra = max(0, devices - base_devices)
+                    tier_items.append({
+                        "tier_id": t.get('tier_id'),
+                        "devices": devices,
+                        "price": unit,
+                        "unit_price": unit,
+                        "total_price": round(extra * unit, 2),
+                    })
+                except (TypeError, ValueError):
+                    continue
+            tier_items.sort(key=lambda x: x["devices"])
+
+            items.append({
+                "host_name": host_name,
+                "description": desc,
+                "plans": plan_items,
+                "tiers": tier_items,
+                "base_devices": base_devices,
+                "device_mode": device_mode,
+            })
+
+        return {"ok": True, "hosts": items}
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка каталога для {user_id}: {e}", exc_info=True)
+        return {"ok": False, "error": "Внутренняя ошибка"}
+
+
+@app.get("/api/profile-stats")
+async def api_profile_stats(user_id: int):
+    """Показатели кабинета: баланс, рефералы, оплаченные месяцы."""
+    try:
+        user = get_user(user_id)
+        if not user or user.get('is_banned'):
+            return {"ok": False, "error": "Access denied"}
+
+        try:
+            referrals = get_referral_count(user_id) or 0
+        except Exception:
+            referrals = 0
+
+        def _num(v, digits=0):
+            try:
+                f = float(v or 0)
+            except (TypeError, ValueError):
+                f = 0.0
+            return f"{f:.{digits}f}".replace(".", ",") if digits else f"{f:.0f}"
+
+        username = (user.get('username') or '').strip()
+
+        # Кабинет собирается на клиенте, поэтому отдаём и реквизиты —
+        # раньше они приходили готовым HTML отдельной карточкой, из-за
+        # чего баланс и ID выводились на странице по нескольку раз.
+        try:
+            keys_count = len(get_user_keys(user_id) or [])
+        except Exception:
+            keys_count = 0
+
+        from shop_bot.data_manager.database import is_telegram_account
+        tg_linked = is_telegram_account(user)
+
+        bot_username = (get_setting("telegram_bot_username")
+                        or get_setting("support_bot_username") or "").lstrip("@")
+        ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}" if bot_username else ""
+
+        reg = str(user.get('registration_date') or "")[:10]
+        if reg and "-" in reg:
+            try:
+                y, m, d = reg.split("-")
+                reg = f"{d}.{m}.{y}"
+            except ValueError:
+                pass
+
+        return {
+            "ok": True,
+            "user_id": user_id,
+            "username": f"@{username}" if username else "",
+            "balance": _num(user.get('balance'), 2),
+            "referrals": referrals,
+            "referral_earned": _num(user.get('referral_balance_all'), 2),
+            "total_months": int(user.get('total_months') or 0),
+            "total_spent": _num(user.get('total_spent')),
+            "keys_count": keys_count,
+            "tg_linked": tg_linked,
+            "email": (user.get('auth_email') or "").strip(),
+            "registration_date": reg,
+            "referral_link": ref_link,
+        }
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка показателей кабинета {user_id}: {e}")
+        return {"ok": False, "error": "Внутренняя ошибка"}
+
+
+@app.get("/api/trial/status")
+async def api_trial_status(user_id: int):
+    state = _trial_state(user_id)
+    return {"ok": True, **state}
+
+
+@app.post("/api/trial/activate")
+async def api_trial_activate(req: TrialRequest):
+    """Выдаёт пробную подписку — одной кнопкой, без выбора сервера."""
+    from shop_bot.data_manager.database import set_trial_used
+    from shop_bot.data_manager import remnawave_repository as rw_repo
+    import re as _re
+
+    try:
+        user = get_user(req.user_id)
+        if not user or user.get("is_banned"):
+            return {"ok": False, "error": "Access denied"}
+
+        state = _trial_state(req.user_id)
+        if not state.get("available"):
+            messages = {
+                "used": "Пробный период уже был активирован",
+                "no_telegram": "Привяжите Telegram, чтобы получить пробный период",
+                "disabled": "Пробный период сейчас недоступен",
+                "no_hosts": "Нет доступных серверов, попробуйте позже",
+            }
+            return {"ok": False, "error": messages.get(state.get("reason"), "Пробный период недоступен")}
+
+        host_name = state["host"]
+        days = state["days"]
+
+        # email формируем так же, как бот, чтобы записи не расходились
+        raw = (user.get("username") or f"user{req.user_id}").lower()
+        slug = _re.sub(r"[^a-z0-9_-]", "", raw.replace(".", "_").replace(" ", "")).lstrip("_-")[:16]
+        if not slug:
+            slug = f"user{req.user_id}"
+
+        attempt = 1
+        while attempt <= 100:
+            candidate = f"trial_{slug}{f'-{attempt}' if attempt > 1 else ''}@bot.local"
+            if not rw_repo.get_key_by_email(candidate):
+                break
+            attempt += 1
+
+        try:
+            trial_traffic = int(get_setting("trial_traffic_limit_gb") or 0)
+        except Exception:
+            trial_traffic = 0
+        try:
+            trial_hwid = int(get_setting("trial_hwid_limit") or 0)
+        except Exception:
+            trial_hwid = 0
+
+        result = await remnawave_api.create_or_update_key_on_host(
+            host_name=host_name,
+            email=candidate,
+            days_to_add=days,
+            telegram_id=req.user_id,
+            traffic_limit_gb=trial_traffic if trial_traffic > 0 else None,
+            hwid_limit=trial_hwid if trial_hwid > 0 else None,
+        )
+        if not result:
+            return {"ok": False, "error": "Сервер не ответил. Попробуйте позже."}
+
+        set_trial_used(req.user_id)
+        rw_repo.record_key_from_payload(user_id=req.user_id, payload=result, host_name=host_name)
+
+        logger.info(f"[WEBAPP] - Пользователь {req.user_id} активировал пробный период на {host_name}")
+
+        # дублируем в бот, чтобы ссылка была и в переписке
+        try:
+            token = get_setting("telegram_bot_token")
+            if token:
+                text = (
+                    f"🎁 <b>Пробный период активирован</b>\n\n"
+                    f"Сервер: {host_name}\n"
+                    f"Срок: {days} дн.\n\n"
+                    f"🗽 <b>Ваша подписка:</b>\n\n"
+                    f"<tg-spoiler>{result.get('connection_string', '')}</tg-spoiler>\n\n"
+                    f"👆 Нажмите, чтобы подключиться"
+                )
+                await _send_telegram_message(req.user_id, text)
+        except Exception as e:
+            logger.warning(f"[WEBAPP] - Не удалось отправить пробную подписку в бот: {e}")
+
+        return {
+            "ok": True,
+            "days": days,
+            "host": host_name,
+            "subscription_url": result.get("connection_string", ""),
+        }
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка активации пробного периода: {e}", exc_info=True)
+        return {"ok": False, "error": "Внутренняя ошибка сервера"}
+
 
 @app.get("/api/user-status")
 async def api_user_status(user_id: int):
@@ -2389,13 +2863,32 @@ async def api_user_status(user_id: int):
         if not user or user.get('is_banned'):
             return {"ok": False, "error": "Access denied"}
             
-        keys = get_user_keys(user_id)
-        # Sort keys by key_id descending to get the latest one first
-        formatted_keys = []
-        if keys:
-            keys.sort(key=lambda k: k.get('key_id', 0), reverse=True)
-            formatted_keys = [_process_key_data(k) for k in keys]
-        
+        # get_user_keys уже отдаёт список от новых к старым — тем же
+        # порядком бот нумерует подписки. Сохраняем нумерацию, чтобы
+        # «Подписка №2» в мини-аппе и в чате означали одно и то же.
+        keys = get_user_keys(user_id) or []
+
+        # Лимиты и расход живут не в базе, а в Remnawave. Без этого шага
+        # limit_ips/limit_bytes всегда None и любая подписка выглядела
+        # безлимитной.
+        now_naive = datetime.now(timezone(timedelta(hours=3))).replace(tzinfo=None)
+        active = []
+        for k in keys:
+            try:
+                if datetime.fromisoformat(str(k.get('expire_at'))) > now_naive:
+                    active.append(k)
+            except (TypeError, ValueError):
+                active.append(k)
+
+        try:
+            await enrich_keys_with_live_stats(active, user_id)
+        except Exception as e:
+            logger.warning(f"[WEBAPP] - Живая статистика недоступна для {user_id}: {e}")
+
+        formatted_keys = [
+            _process_key_data(k, number=i + 1) for i, k in enumerate(keys)
+        ]
+
         return {"ok": True, "keys": formatted_keys}
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка статуса пользователя {user_id}: {e}")

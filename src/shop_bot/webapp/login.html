@@ -1,735 +1,821 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="robots" content="noindex, nofollow">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="{{ panel_brand_title }}">
-    <link rel="apple-touch-icon" href="{{ webapp_icon }}">
-    <link rel="icon" type="image/x-icon" href="{{ webapp_icon }}">
-    <title>Загрузка...</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: "#10b981",
-                        "background-dark": "#0a0a0a",
-                    },
-                    animation: {
-                        'spin-slow': 'spin 3s linear infinite',
-                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        body {
-            background-color: #0a0a0a;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            overflow: hidden;
-            transition: background-color 0.3s ease;
-        }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#141519">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="{{ panel_brand_title }}">
+<link rel="apple-touch-icon" href="{{ webapp_icon }}">
+<link rel="icon" href="{{ webapp_icon }}">
+<title>{{ panel_brand_title }} — вход</title>
+<script src="/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --font:'Golos Text',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Ubuntu,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  --bg:#101013;
+  --bg-elev:#141519;
+  --surface:#191a1f;
+  --line:rgba(236,238,242,.08);
+  --line-2:rgba(236,238,242,.15);
+
+  --text:#e9e9ee;
+  --dim:#9c9daa;
+  --faint:#7b7d8a;
+
+  --accent:#d7abff;
+  --accent-hi:#e4c4ff;
+  --accent-ink:#1d1029;
+  --accent-soft:rgba(215,171,255,.12);
+  --accent-line:rgba(215,171,255,.34);
+  --accent-ring:0 0 0 3px rgba(215,171,255,.14);
+
+  --danger:#e07f74;
+  --danger-soft:rgba(224,127,116,.1);
+  --danger-line:rgba(224,127,116,.32);
+
+  --r-sm:9px; --r-md:13px; --r-lg:17px; --r-xl:22px;
+  --ease:cubic-bezier(.22,.72,.24,1);
+
+  --app-h:100dvh;
+  --browser-reserve:0px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;min-height:100%;margin:0}
+body{
+  height:var(--app-h) !important;min-height:var(--app-h) !important;overflow:hidden;
+  background:radial-gradient(120% 60% at 50% -10%,rgba(215,171,255,.055),transparent 62%),var(--bg);
+  color:var(--text);font-family:var(--font);font-size:15px;line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+a{color:inherit;text-decoration:none}
+.hidden{display:none !important}
+:focus-visible{outline:2px solid var(--accent-line);outline-offset:2px;border-radius:4px}
+::selection{background:rgba(215,171,255,.28)}
+::-webkit-scrollbar{width:8px}
+::-webkit-scrollbar-thumb{background:rgba(236,238,242,.11);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-track{background:transparent}
+
+.icon{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto;display:inline-block;vertical-align:middle}
+.label{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)}
+
+/* ---------- каркас: слева витрина (десктоп), справа форма ---------- */
+.shell{
+  position:relative;z-index:1;display:grid;grid-template-columns:minmax(0,1fr);
+  width:100%;height:var(--app-h);min-height:var(--app-h);
+}
+.hero{display:none}
+.pane{
+  display:flex;align-items:center;justify-content:center;min-width:0;overflow-y:auto;
+  padding:max(env(safe-area-inset-top),20px) 18px calc(max(env(safe-area-inset-bottom),18px) + var(--browser-reserve));
+}
+
+.loader{display:flex;flex-direction:column;align-items:center;gap:24px;text-align:center}
+.loader__ring-wrap{position:relative;width:72px;height:72px;display:flex;align-items:center;justify-content:center}
+.loader__ring-bg{position:absolute;inset:0;border-radius:24px;border:1px solid var(--line);background:var(--surface)}
+.loader__ring{width:72px;height:72px;border-radius:24px;border:2px solid var(--accent);border-top-color:transparent;animation:spin 1s linear infinite}
+.loader__icon{position:absolute;color:var(--accent)}
+.loader h2{font-size:15px;font-weight:600;letter-spacing:-.01em;margin:0}
+.loader p{margin:6px 0 0;font-size:13px;color:var(--dim)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+
+.card{
+  width:min(100%,392px);border-radius:var(--r-xl);padding:26px 24px;
+  background:var(--surface);border:1px solid var(--line);
+  box-shadow:0 18px 50px rgba(0,0,0,.4);
+  animation:rise .36s var(--ease) both;
+}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+/* панели переключаются через display:none, поэтому анимация появления
+   срабатывает каждый раз при возврате в форму */
+.panel{animation:rise .26s var(--ease) both}
+.loader{animation:fade .3s ease both}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+/* карточку показывают через style.display='flex', поэтому тело обязано
+   занимать всю ширину — иначе оно ужимается по контенту и уезжает влево */
+.card__body{width:100%;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:20px}
+.card__body > *{width:100%}
+
+.brand-mark{
+  width:64px;height:64px;margin-inline:auto;border-radius:20px;display:grid;place-items:center;
+  color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-line);overflow:hidden;
+}
+.brand-mark .icon{width:28px;height:28px}
+.brand-mark img{width:100%;height:100%;object-fit:cover;display:block}
+.eyebrow{font-size:12px;color:var(--accent);font-weight:500;letter-spacing:.04em;margin-top:14px}
+h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
+.lede{font-size:13.5px;color:var(--dim);line-height:1.55;max-width:290px;margin:10px auto 0}
+
+.stack{display:flex;flex-direction:column;gap:10px;width:100%}
+.btn{border-radius:var(--r-md);min-height:50px;padding:10px 16px;font-weight:600;font-size:14px;display:flex;align-items:center;justify-content:center;gap:9px;transition:background .15s ease,border-color .15s ease,transform .15s ease,opacity .15s ease;width:100%}
+.btn:active{transform:scale(.985)}
+.btn:disabled{opacity:.5;pointer-events:none}
+.btn--primary{color:var(--accent-ink);background:var(--accent)}
+.btn--primary:hover{background:var(--accent-hi)}
+.btn--soft{color:var(--text);background:rgba(236,238,242,.05);border:1px solid var(--line)}
+.btn--soft:hover{background:rgba(236,238,242,.08);border-color:var(--line-2)}
+.link-btn{color:var(--dim);font-weight:500;font-size:13px;padding:6px 2px;background:none}
+.link-btn:hover{color:var(--text)}
+.link-btn--accent{color:var(--accent)}
+.link-btn--accent:hover{color:var(--accent-hi)}
+
+.field,.digit{border:1px solid var(--line);background:rgba(0,0,0,.24);color:var(--text);outline:none;transition:border-color .15s ease,box-shadow .15s ease}
+.field:focus,.digit:focus{border-color:var(--accent-line);box-shadow:var(--accent-ring)}
+.field{width:100%;border-radius:var(--r-md);padding:14px 15px;font-size:15px}
+.field::placeholder{color:var(--dim);opacity:.7}
+
+.panel{display:flex;flex-direction:column;gap:14px;width:100%}
+.panel h3{font-size:19px;font-weight:700;letter-spacing:-.015em;margin:0;text-align:left}
+.panel p.hint{font-size:13px;color:var(--dim);margin:4px 0 0;text-align:left;line-height:1.5}
+
+.error-box{font-size:13px;text-align:center;background:var(--danger-soft);border:1px solid var(--danger-line);color:var(--danger);border-radius:var(--r-md);padding:11px 13px}
+
+.foot-row{display:flex;align-items:center;justify-content:space-between;width:100%;padding-top:12px;border-top:1px solid var(--line)}
+.foot-row.center{justify-content:center;position:relative}
+
+.digits{display:flex;justify-content:space-between;gap:7px;width:100%;max-width:296px;margin:0 auto}
+.digit{width:42px;height:56px;border-radius:var(--r-md);text-align:center;font-size:20px;font-weight:600}
+
+.timer-row{display:flex;align-items:center;justify-content:space-between;padding:0 1px}
+.timer-row span.label{color:var(--dim);font-size:13px;font-family:var(--font);text-transform:none;letter-spacing:0}
+.timer-pill{color:var(--accent);font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:3px;background:var(--accent-soft);padding:5px 10px;border-radius:9px}
+
+.status-line{display:flex;align-items:center;justify-content:center;gap:9px}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2.4s ease-in-out infinite}
+.status-line span{font-size:12.5px;color:var(--dim)}
+
+/* ---------- десктоп: витрина слева, форма справа ---------- */
+@media(min-width:960px){
+  .shell{grid-template-columns:minmax(0,1fr) 520px}
+  .hero{
+    display:flex;flex-direction:column;min-width:0;overflow-y:auto;
+    padding:52px 56px;background:var(--bg-elev);border-right:1px solid var(--line);
+  }
+  .hero__brand{display:flex;align-items:center;gap:13px}
+  .hero__brand .brand-mark{width:42px;height:42px;border-radius:13px;margin:0}
+  .hero__brand .brand-mark .icon{width:20px;height:20px}
+  .hero__brand b{font-size:17px;font-weight:600;letter-spacing:-.01em}
+  .hero__head{margin-top:auto;padding-top:40px}
+  .hero__head .label{display:block;margin-bottom:12px}
+  .hero__head h2{font-size:38px;line-height:1.12;font-weight:700;letter-spacing:-.025em;margin:0;max-width:15ch}
+  .hero__head p{font-size:15px;color:var(--dim);line-height:1.6;margin:16px 0 0;max-width:46ch}
+  .hero__list{margin-top:30px;display:grid;gap:10px;max-width:520px}
+  .hero__item{animation:rise .4s var(--ease) both}
+  .hero__item:nth-child(1){animation-delay:.06s}
+  .hero__item:nth-child(2){animation-delay:.12s}
+  .hero__item:nth-child(3){animation-delay:.18s}
+  .hero__item{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface)}
+  /* плашка с иконкой — тоже span, поэтому текстовые правила привязаны к
+     .hero__item-text: иначе они перебивали display:grid и иконка уезжала
+     в левый верхний угол плашки */
+  .hero__item-icon{width:36px;height:36px;border-radius:var(--r-sm);display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);flex:0 0 auto}
+  .hero__item-text{min-width:0}
+  .hero__item-text b{display:block;font-size:14px;font-weight:600}
+  .hero__item-text span{display:block;font-size:12.5px;color:var(--dim);margin-top:2px}
+  .hero__foot{margin-top:auto;padding-top:36px;display:flex;align-items:center;gap:8px;color:var(--faint)}
+  .hero__foot .icon{width:14px;height:14px}
+
+  .pane{padding:40px}
+  .card{width:min(100%,428px);padding:32px 30px;box-shadow:none}
+  /* бренд уже стоит слева — в карточке он лишний */
+  .card > .card__body > #authHeader > .brand-mark,
+  .card > .card__body > #authHeader > .eyebrow{display:none}
+  #authHeader h1{margin-top:0}
+  .lede{max-width:320px}
+}
+
+/* невысокие окна ноутбуков — витрина должна помещаться целиком */
+@media(min-width:960px) and (max-height:760px){
+  .hero{padding:34px 48px}
+  .hero__head{padding-top:26px}
+  .hero__head h2{font-size:30px}
+  .hero__head p{font-size:14px;margin-top:12px}
+  .hero__list{margin-top:22px}
+  .hero__item{padding:11px 14px}
+  .hero__foot{padding-top:22px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  *,*:before,*:after{animation-duration:.01ms !important;animation-delay:0ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+}
+
+@media(min-width:1400px){
+  .shell{grid-template-columns:minmax(0,1fr) 580px}
+  .hero{padding:64px 72px}
+  .hero__head h2{font-size:44px}
+}
+</style>
 </head>
-
 <body>
-    <div id="loader" class="flex flex-col items-center justify-center gap-6 relative z-10">
-        <!-- Декоративное свечение -->
-        <div class="absolute -top-10 -left-10 w-40 h-40 bg-primary/20 rounded-full blur-[60px] animate-pulse-fast">
-        </div>
-        <div class="absolute -bottom-10 -right-10 w-40 h-40 bg-emerald-600/10 rounded-full blur-[60px] animate-pulse-fast"
-            style="animation-delay: 0.5s;"></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+<symbol id="li-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3Z"/></symbol>
+<symbol id="li-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></symbol>
+<symbol id="li-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 6l8 7 8-7"/></symbol>
+<symbol id="li-link" viewBox="0 0 24 24"><path d="M9 15l6-6"/><path d="M13 5l1-1a4 4 0 1 1 6 6l-1 1"/><path d="M11 19l-1 1a4 4 0 1 1-6-6l1-1"/></symbol>
+<symbol id="li-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8"/><path d="M12 16v4"/></symbol>
+<symbol id="li-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5Z"/></symbol>
+<symbol id="li-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+</defs>
+</svg>
 
-        <!-- Логотип/Спиннер -->
-        <div class="relative flex justify-center items-center">
-            <!-- Внешнее кольцо -->
-            <div class="absolute inset-0 rounded-full border-2 border-primary/20"></div>
-            <!-- Вращающееся кольцо -->
-            <div
-                class="w-16 h-16 rounded-full border-2 border-primary border-t-transparent animate-spin shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-            </div>
-            <!-- Иконка по центру -->
-            <div class="absolute inset-0 flex items-center justify-center">
-                <svg class="w-6 h-6 text-primary fill-current animate-pulse" xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24">
-                    <path
-                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-                </svg>
-            </div>
-        </div>
+<div class="shell">
 
-        <div class="flex flex-col items-center gap-1">
-            <h2 class="text-sm font-bold text-white tracking-widest uppercase">Загрузка</h2>
-            <p class="text-[10px] text-gray-500 font-medium animate-pulse">Инициализация безопасного входа...</p>
-        </div>
+  <aside class="hero">
+    <div class="hero__brand">
+      <span class="brand-mark"><svg class="icon"><use href="#li-shield"/></svg><img class="hidden" alt=""></span>
+      <b>{{ panel_brand_title }}</b>
     </div>
 
-    <div id="auth-container"
-        class="hidden flex flex-col items-center justify-center gap-6 relative z-10 w-full text-center">
-        <div class="absolute -top-10 -left-10 w-40 h-40 bg-primary/20 rounded-full blur-[60px] animate-pulse-fast">
-        </div>
-        <div id="auth-header" class="flex flex-col items-center gap-2">
-            <div class="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center border border-primary/20 mb-2">
-                <svg class="w-10 h-10 text-primary" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.11.02-1.93 1.23-5.46 3.62-.51.35-.98.52-1.4.51-.46-.01-1.35-.26-2.01-.48-.81-.27-1.45-.42-1.39-.89.03-.24.36-.49.99-.75 3.88-1.69 6.47-2.8 7.76-3.34 3.69-1.54 4.45-1.81 4.95-1.82.11 0 .35.03.5.16.13.11.17.26.18.37 0 .01.01.12 0 .21z" />
-                </svg>
-            </div>
-            <h1 class="text-xl font-black text-white uppercase tracking-tighter">Авторизация</h1>
-            <p class="text-gray-400 text-sm leading-relaxed max-w-[280px]">Пожалуйста, авторизуйтесь через нашего Telegram бота для доступа к кабинету</p>
-        </div>
-
-        <div id="auth-methods" class="flex flex-col gap-3 w-full px-5 max-w-[340px] mx-auto mt-2">
-            <a id="auth-link" href="#"
-                class="w-full bg-white dark:bg-gray-200 text-gray-900 dark:text-black font-bold py-4 rounded-2xl text-sm shadow-md hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-3">
-                <span>Войти через Telegram</span>
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-            </a>
-            <button id="show-email-btn" class="w-full glass-card border border-white/5 text-gray-300 font-bold py-4 rounded-2xl text-sm shadow-sm hover:bg-white/10 active:scale-[0.98] transition-all flex items-center justify-center gap-3">
-                <span class="material-icons-round text-[18px]">email</span>
-                <span>Войти по Email</span>
-            </button>
-        </div>
-
-        <div id="email-auth-form" class="hidden flex-col gap-4 w-full px-5 max-w-[340px] mx-auto mt-2">
-            <h3 class="text-white text-base font-black text-center mb-1 uppercase tracking-wide">Войти по Email</h3>
-            
-            <div class="flex flex-col gap-3 w-full">
-                <input type="email" id="email-input" placeholder="Email" class="w-full bg-black/20 border border-white/10 text-white placeholder-gray-500 rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all shadow-inner">
-                <input type="password" id="password-input" placeholder="Пароль" class="w-full bg-black/20 border border-white/10 text-white placeholder-gray-500 rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all shadow-inner">
-            </div>
-            
-            <div id="email-error" class="hidden text-red-500 text-[11px] text-center font-bold">Ошибка</div>
-            
-            <div class="flex flex-col gap-2 mt-1 w-full">
-                <button id="email-login-btn" class="w-full bg-primary text-white font-black py-3.5 text-xs uppercase tracking-wider rounded-2xl shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] active:scale-[0.98] transition-all">Войти</button>
-                <button id="email-register-btn" class="w-full bg-white/5 text-gray-300 font-bold py-3.5 text-[11px] uppercase tracking-wider rounded-2xl border border-white/10 hover:bg-white/10 active:scale-[0.98] transition-all">Создать аккаунт</button>
-            </div>
-            
-            <div class="flex items-center justify-between w-full mt-2 pt-3 border-t border-white/5 px-2">
-                <button id="back-to-tg-btn" class="text-gray-500 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors py-1">Отмена</button>
-                <button id="forgot-password-btn" class="text-primary text-[10px] font-black uppercase tracking-widest hover:text-emerald-400 transition-colors py-1">Забыли пароль?</button>
-            </div>
-        </div>
-
-        <!-- Reset Password Form -->
-        <div id="reset-password-form" class="hidden flex-col gap-4 w-full px-5 max-w-[340px] mx-auto mt-2">
-            <h3 class="text-white text-base font-black text-center mb-1 uppercase tracking-wide">Восстановление пароля</h3>
-            
-            <!-- Step 1: Request Code -->
-            <div id="reset-step-1" class="flex flex-col gap-4 w-full">
-                <p class="text-[11px] text-gray-400 text-center leading-relaxed">Пожалуйста, введите Email. Код подтверждения будет отправлен в привязанный Telegram аккаунт.</p>
-                <input type="email" id="reset-email-input" placeholder="Ваш Email" class="w-full bg-black/20 border border-white/10 text-white placeholder-gray-500 rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all shadow-inner">
-                <div id="reset-error-1" class="hidden text-red-500 text-[11px] text-center font-bold">Ошибка</div>
-                <button id="reset-request-btn" class="w-full bg-primary/20 hover:bg-primary/30 text-primary py-3.5 text-xs uppercase tracking-wider font-bold rounded-2xl border border-primary/30 shadow-[0_0_15px_rgba(16,185,129,0.1)] active:scale-[0.98] transition-all mt-1">Получить код в Telegram</button>
-            </div>
-
-            <!-- Step 2: Verify and New Password -->
-            <div id="reset-step-2" class="hidden flex-col gap-4 w-full">
-                <p id="reset-sent-msg" class="text-[11px] text-white text-center font-bold tracking-wider mb-1">Код отправлен в телеграм <span id="reset-sent-email" class="hidden"></span></p>
-                
-                <div class="flex justify-between gap-2 w-full max-w-[280px] mx-auto" id="reset-code-inputs">
-                    <input type="text" inputmode="numeric" maxlength="1" class="reset-digit w-10 h-14 bg-black/20 border border-white/10 rounded-xl text-center text-xl text-white font-mono focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all shadow-inner">
-                    <input type="text" inputmode="numeric" maxlength="1" class="reset-digit w-10 h-14 bg-black/20 border border-white/10 rounded-xl text-center text-xl text-white font-mono focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all shadow-inner">
-                    <input type="text" inputmode="numeric" maxlength="1" class="reset-digit w-10 h-14 bg-black/20 border border-white/10 rounded-xl text-center text-xl text-white font-mono focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all shadow-inner">
-                    <input type="text" inputmode="numeric" maxlength="1" class="reset-digit w-10 h-14 bg-black/20 border border-white/10 rounded-xl text-center text-xl text-white font-mono focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all shadow-inner">
-                    <input type="text" inputmode="numeric" maxlength="1" class="reset-digit w-10 h-14 bg-black/20 border border-white/10 rounded-xl text-center text-xl text-white font-mono focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all shadow-inner">
-                    <input type="text" inputmode="numeric" maxlength="1" class="reset-digit w-10 h-14 bg-black/20 border border-white/10 rounded-xl text-center text-xl text-white font-mono focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all shadow-inner">
-                </div>
-
-                <div id="reset-new-password-container" class="hidden w-full transition-all">
-                    <input type="password" id="reset-new-password" placeholder="Новый пароль" class="w-full bg-black/20 border border-white/10 text-white placeholder-gray-500 rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-primary/50 focus:bg-white/5 transition-all shadow-inner mt-2">
-                </div>
-                
-                <div id="reset-error-2" class="hidden text-red-500 text-[11px] text-center font-bold">Ошибка</div>
-
-                <div class="flex items-center justify-between px-1" id="reset-timer-container">
-                    <span class="text-gray-500 text-[10px] font-black uppercase tracking-widest">Ожидание...</span>
-                    <span id="reset-timer" class="text-primary text-[10px] font-black flex items-center gap-1 bg-primary/10 px-2 py-0.5 rounded-md"><span id="timer-val">60</span>s</span>
-                </div>
-
-                <button id="reset-verify-btn" class="hidden w-full bg-primary text-white font-black py-3.5 text-xs uppercase tracking-wider rounded-2xl shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] active:scale-[0.98] transition-all mt-1">Сохранить пароль</button>
-            </div>
-
-            <div class="flex justify-center w-full mt-2 pt-3 border-t border-white/5 relative items-center">
-                <button id="back-to-login-btn" class="text-gray-500 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors py-1">Отмена</button>
-                <button id="reset-back-step-btn" class="hidden text-gray-500 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors py-1 absolute">Назад</button>
-            </div>
-        </div>
-
-        <div class="flex items-center gap-2 mt-2 opacity-50">
-            <span class="w-1.5 h-1.5 bg-primary rounded-full animate-pulse"></span>
-            <span class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Ожидание подтверждения...</span>
-        </div>
+    <div class="hero__head">
+      <span class="label">Личный кабинет</span>
+      <h2>Подписки под рукой</h2>
+      <p>Оформление и продление, лимит устройств, ссылка подписки и поддержка — всё в одном окне, без переписки с ботом.</p>
     </div>
 
-    <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            function escapeHTML(str) {
-                if (!str) return '';
-                return String(str)
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#039;');
-            }
+    <div class="hero__list">
+      <div class="hero__item">
+        <span class="hero__item-icon"><svg class="icon"><use href="#li-shield"/></svg></span>
+        <span class="hero__item-text"><b>Подписки и продление</b><span>Оформление и оплата в пару кликов</span></span>
+      </div>
+      <div class="hero__item">
+        <span class="hero__item-icon"><svg class="icon"><use href="#li-monitor"/></svg></span>
+        <span class="hero__item-text"><b>Устройства и ссылки</b><span>Отключайте лишние, пересоздавайте ссылку</span></span>
+      </div>
+      <div class="hero__item">
+        <span class="hero__item-icon"><svg class="icon"><use href="#li-chat"/></svg></span>
+        <span class="hero__item-text"><b>Поддержка</b><span>Переписка прямо в кабинете</span></span>
+      </div>
+    </div>
 
-            const loader = document.getElementById('loader');
-            const authContainer = document.getElementById('auth-container');
-            const authLink = document.getElementById('auth-link');
-            const authHeader = document.getElementById('auth-header');
-            
-            const authMethods = document.getElementById('auth-methods');
-            const emailAuthForm = document.getElementById('email-auth-form');
-            const showEmailBtn = document.getElementById('show-email-btn');
-            const backToTgBtn = document.getElementById('back-to-tg-btn');
-            const emailLoginBtn = document.getElementById('email-login-btn');
-            const emailRegisterBtn = document.getElementById('email-register-btn');
-            const emailInput = document.getElementById('email-input');
-            const passwordInput = document.getElementById('password-input');
-            const emailError = document.getElementById('email-error');
+    <div class="hero__foot">
+      <svg class="icon"><use href="#li-lock"/></svg>
+      <span class="label">Вход по одноразовому токену</span>
+    </div>
+  </aside>
 
-            if(showEmailBtn) showEmailBtn.addEventListener('click', () => {
-                authHeader.classList.add('hidden');
-                authMethods.classList.add('hidden');
-                emailAuthForm.classList.remove('hidden');
-                emailAuthForm.classList.add('flex');
-                emailError.classList.add('hidden');
-            });
+  <main class="pane">
+    <div id="loader" class="loader">
+      <div class="loader__ring-wrap">
+        <div class="loader__ring-bg"></div>
+        <div class="loader__ring"></div>
+        <svg class="icon loader__icon" style="width:26px;height:26px"><use href="#li-shield"/></svg>
+      </div>
+      <div>
+        <h2>Загрузка</h2>
+        <p>Инициализация безопасного входа…</p>
+      </div>
+    </div>
 
-            if(backToTgBtn) backToTgBtn.addEventListener('click', () => {
-                emailAuthForm.classList.add('hidden');
-                emailAuthForm.classList.remove('flex');
-                authMethods.classList.remove('hidden');
-                authHeader.classList.remove('hidden');
-            });
+    <section id="authCard" class="card hidden">
+      <div class="card__body">
 
-            async function submitEmailAuth(isRegister) {
-                let email = emailInput.value.trim();
-                const password = passwordInput.value.trim();
-                
-                // Санитизация email-поля: удаление тегов
-                email = email.replace(/[<>]/g, '');
-                
-                if (!email || !password) {
-                    emailError.innerHTML = escapeHTML("Введите Email и пароль");
-                    emailError.classList.remove('hidden');
-                    return;
-                }
+        <div id="authHeader">
+          <span class="brand-mark"><svg class="icon"><use href="#li-shield"/></svg><img class="hidden" alt=""></span>
+          <div class="eyebrow">{{ panel_brand_title }}</div>
+          <h1>Вход в кабинет</h1>
+          <p class="lede">Войдите через Telegram, по Email или по ссылке подписки, чтобы управлять подписками.</p>
+        </div>
 
-                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                    emailError.innerHTML = escapeHTML("Введите корректный Email (например: user@mail.ru)");
-                    emailError.classList.remove('hidden');
-                    return;
-                }
+        <div id="authMethods" class="stack">
+          <a id="authTelegramLink" href="#" class="btn btn--primary"><span>Войти через Telegram</span><svg class="icon" style="width:16px;height:16px"><use href="#li-arrow"/></svg></a>
+          <button id="showEmailBtn" class="btn btn--soft"><svg class="icon" style="width:16px;height:16px;color:var(--accent)"><use href="#li-mail"/></svg><span>Войти по Email</span></button>
+          <button id="showSubBtn" class="btn btn--soft"><svg class="icon" style="width:16px;height:16px;color:var(--accent)"><use href="#li-link"/></svg><span>Войти по ссылке подписки</span></button>
+        </div>
 
-                if (isRegister) {
-                    if (password.length < 5) {
-                        emailError.innerHTML = escapeHTML("Пароль должен содержать минимум 5 символов");
-                        emailError.classList.remove('hidden');
-                        return;
-                    }
-                    if (/^\d+$/.test(password)) {
-                        emailError.innerHTML = escapeHTML("Пароль не должен состоять только из цифр");
-                        emailError.classList.remove('hidden');
-                        return;
-                    }
-                    if (new Set(password).size < 2) {
-                        emailError.innerHTML = escapeHTML("Пароль слишком простой — используйте разные символы");
-                        emailError.classList.remove('hidden');
-                        return;
-                    }
-                }
-                
-                const endpoint = isRegister ? '/api/auth/email/register' : '/api/auth/email/login';
-                emailLoginBtn.disabled = true;
-                emailRegisterBtn.disabled = true;
-                emailLoginBtn.classList.add('opacity-50');
-                emailRegisterBtn.classList.add('opacity-50');
-                
-                try {
-                    const res = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email, password })
-                    });
-                    const data = await res.json();
-                    
-                    if (data.ok && data.token) {
-                        loginWithToken(data.token);
-                    } else {
-                        emailError.innerHTML = escapeHTML(data.error || "Ошибка связи с сервером");
-                        emailError.classList.remove('hidden');
-                    }
-                } catch (e) {
-                    emailError.innerHTML = escapeHTML("Ошибка сети");
-                    emailError.classList.remove('hidden');
-                }
-                emailLoginBtn.disabled = false;
-                emailRegisterBtn.disabled = false;
-                emailLoginBtn.classList.remove('opacity-50');
-                emailRegisterBtn.classList.remove('opacity-50');
-            }
+        <div id="emailPanel" class="panel hidden">
+          <div>
+            <h3>Войти по Email</h3>
+            <p class="hint">Введите данные аккаунта или создайте новый.</p>
+          </div>
+          <input type="email" id="emailInput" placeholder="Email" class="field" autocomplete="username">
+          <input type="password" id="passwordInput" placeholder="Пароль" class="field" autocomplete="current-password">
+          <div id="emailError" class="error-box hidden"></div>
+          <div class="stack">
+            <button id="emailLoginBtn" class="btn btn--primary">Войти</button>
+            <button id="emailRegisterBtn" class="btn btn--soft">Создать аккаунт</button>
+          </div>
+          <div class="foot-row">
+            <button id="backToMethodsBtn" class="link-btn">Отмена</button>
+            <button id="forgotPasswordBtn" class="link-btn link-btn--accent">Забыли пароль?</button>
+          </div>
+        </div>
 
-            if(emailLoginBtn) emailLoginBtn.addEventListener('click', () => submitEmailAuth(false));
-            if(emailRegisterBtn) emailRegisterBtn.addEventListener('click', () => submitEmailAuth(true));
+        <div id="subPanel" class="panel hidden">
+          <div>
+            <h3>Вход по ссылке подписки</h3>
+            <p class="hint">Вставьте ссылку, которую выдал бот при оформлении подписки.</p>
+          </div>
+          <input type="text" id="subUrlInput" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://..." class="field">
+          <div id="subError" class="error-box hidden"></div>
+          <button id="subLoginBtn" class="btn btn--primary">Войти</button>
+          <p class="hint" style="text-align:center">Ссылку можно скопировать в боте: откройте подписку и нажмите кнопку копирования.</p>
+          <div class="foot-row center">
+            <button id="backFromSubBtn" class="link-btn">Отмена</button>
+          </div>
+        </div>
 
-            // Password Reset Logic
-            const resetPasswordForm = document.getElementById('reset-password-form');
-            const forgotPasswordBtn = document.getElementById('forgot-password-btn');
-            const backToLoginBtn = document.getElementById('back-to-login-btn');
-            const resetStep1 = document.getElementById('reset-step-1');
-            const resetStep2 = document.getElementById('reset-step-2');
-            const resetRequestBtn = document.getElementById('reset-request-btn');
-            const resetVerifyBtn = document.getElementById('reset-verify-btn');
-            const resetEmailInput = document.getElementById('reset-email-input');
-            const resetNewPassword = document.getElementById('reset-new-password');
-            const resetError1 = document.getElementById('reset-error-1');
-            const resetError2 = document.getElementById('reset-error-2');
-            const resetSentEmail = document.getElementById('reset-sent-email');
-            const resetBackStepBtn = document.getElementById('reset-back-step-btn');
-            const timerVal = document.getElementById('timer-val');
-            let resetTimerInterval;
+        <div id="resetPanel" class="panel hidden">
+          <div>
+            <h3>Восстановление пароля</h3>
+            <p class="hint">Код подтверждения придёт в привязанный Telegram.</p>
+          </div>
 
-            const digitInputs = document.querySelectorAll('.reset-digit');
-            
-            async function checkResetCode() {
-                let email = resetEmailInput.value.trim();
-                email = email.replace(/[<>]/g, '');
-                
-                let code = '';
-                digitInputs.forEach(i => code += i.value);
-                if (code.length !== 6) return;
-                
-                resetError2.classList.add('hidden');
-                try {
-                    const res = await fetch('/api/auth/email/reset/check', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({email, code})
-                    });
-                    const data = await res.json();
-                    if(data.ok) {
-                        document.getElementById('reset-code-inputs').classList.add('hidden');
-                        document.getElementById('reset-timer-container').classList.add('hidden');
-                        document.getElementById('reset-sent-msg').classList.add('hidden');
-                        document.getElementById('reset-new-password-container').classList.remove('hidden');
-                        document.getElementById('reset-verify-btn').classList.remove('hidden');
-                        document.getElementById('reset-back-step-btn').classList.add('hidden');
-                        document.getElementById('back-to-login-btn').classList.remove('hidden');
-                        resetNewPassword.focus();
-                        if(resetTimerInterval) clearInterval(resetTimerInterval);
-                    } else {
-                        resetError2.innerHTML = escapeHTML(data.error || "Неверный код");
-                        resetError2.classList.remove('hidden');
-                        digitInputs.forEach(i => i.value = '');
-                        digitInputs[0].focus();
-                    }
-                } catch(e) {
-                    resetError2.innerHTML = escapeHTML("Ошибка сети");
-                    resetError2.classList.remove('hidden');
-                }
-            }
+          <div id="resetStep1" class="panel">
+            <input type="email" id="resetEmailInput" placeholder="Ваш Email" class="field">
+            <div id="resetError1" class="error-box hidden"></div>
+            <button id="resetRequestBtn" class="btn btn--soft" style="color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)">Получить код в Telegram</button>
+          </div>
 
-            digitInputs.forEach((input, index) => {
-                input.addEventListener('input', async (e) => {
-                    if (e.target.value.length > 0) {
-                        e.target.value = e.target.value.replace(/\D/g, ''); // Fix non-digits
-                        if (index < digitInputs.length - 1 && e.target.value) {
-                            digitInputs[index + 1].focus();
-                        } else if (index === 5 && e.target.value) {
-                            await checkResetCode();
-                        }
-                    }
-                });
-                input.addEventListener('keydown', (e) => {
-                    if (e.key === 'Backspace' && e.target.value === '') {
-                        if (index > 0) {
-                            digitInputs[index - 1].focus();
-                        }
-                    }
-                });
-                input.addEventListener('paste', async (e) => {
-                    e.preventDefault();
-                    const pasteData = (e.clipboardData || window.clipboardData).getData('text').trim().replace(/\D/g, '');
-                    if (pasteData.length >= 6) {
-                        for (let i = 0; i < 6; i++) {
-                            digitInputs[i].value = pasteData[i];
-                        }
-                        digitInputs[5].focus();
-                        await checkResetCode();
-                    }
-                });
-            });
+          <div id="resetStep2" class="panel hidden">
+            <p id="resetSentMsg" style="font-size:13.5px;font-weight:500;text-align:center;margin:0">Код отправлен в Telegram</p>
+            <div class="digits" id="digitInputs">
+              <input type="text" inputmode="numeric" maxlength="1" class="digit">
+              <input type="text" inputmode="numeric" maxlength="1" class="digit">
+              <input type="text" inputmode="numeric" maxlength="1" class="digit">
+              <input type="text" inputmode="numeric" maxlength="1" class="digit">
+              <input type="text" inputmode="numeric" maxlength="1" class="digit">
+              <input type="text" inputmode="numeric" maxlength="1" class="digit">
+            </div>
+            <div id="resetNewPasswordWrap" class="hidden">
+              <input type="password" id="resetNewPassword" placeholder="Новый пароль" class="field">
+            </div>
+            <div id="resetError2" class="error-box hidden"></div>
+            <div class="timer-row" id="resetTimerRow">
+              <span class="label">Ожидание…</span>
+              <span class="timer-pill"><span id="timerVal">60</span>s</span>
+            </div>
+            <button id="resetVerifyBtn" class="btn btn--primary hidden">Сохранить пароль</button>
+          </div>
 
-            if(resetBackStepBtn) resetBackStepBtn.addEventListener('click', () => {
-                resetStep2.classList.add('hidden');
-                resetStep2.classList.remove('flex');
-                resetStep1.classList.remove('hidden');
-                resetStep1.classList.add('flex');
-                resetError1.classList.add('hidden');
-                document.getElementById('reset-sent-msg').classList.remove('hidden');
-                
-                document.getElementById('back-to-login-btn').classList.remove('hidden');
-                document.getElementById('reset-back-step-btn').classList.add('hidden');
-                
-                if(resetTimerInterval) clearInterval(resetTimerInterval);
-            });
+          <div class="foot-row center">
+            <button id="backToLoginBtn" class="link-btn">Отмена</button>
+            <button id="resetBackStepBtn" class="link-btn hidden" style="position:absolute">Назад</button>
+          </div>
+        </div>
 
-            if(forgotPasswordBtn) forgotPasswordBtn.addEventListener('click', () => {
-                emailAuthForm.classList.add('hidden');
-                emailAuthForm.classList.remove('flex');
-                resetPasswordForm.classList.remove('hidden');
-                resetPasswordForm.classList.add('flex');
-                resetStep1.classList.remove('hidden');
-                resetStep1.classList.add('flex');
-                resetStep2.classList.add('hidden');
-                resetStep2.classList.remove('flex');
-                resetEmailInput.value = emailInput.value;
-                resetError1.classList.add('hidden');
-                resetError2.classList.add('hidden');
-                document.getElementById('reset-back-step-btn').classList.add('hidden');
-                document.getElementById('back-to-login-btn').classList.remove('hidden');
-            });
+        <div class="status-line hidden" id="statusLine"><span class="status-dot"></span><span>Ожидание подтверждения…</span></div>
+      </div>
+    </section>
+  </main>
+</div>
 
-            if(backToLoginBtn) backToLoginBtn.addEventListener('click', () => {
-                resetPasswordForm.classList.add('hidden');
-                resetPasswordForm.classList.remove('flex');
-                emailAuthForm.classList.remove('hidden');
-                emailAuthForm.classList.add('flex');
-            });
+<script>
+document.addEventListener('DOMContentLoaded', function(){
 
-            if(resetRequestBtn) resetRequestBtn.addEventListener('click', async () => {
-                let email = resetEmailInput.value.trim();
-                email = email.replace(/[<>]/g, '');
-                
-                if(!email) {
-                    resetError1.innerHTML = escapeHTML("Введите Email");
-                    resetError1.classList.remove('hidden');
-                    return;
-                }
-                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                    resetError1.innerHTML = escapeHTML("Введите корректный Email (например: user@mail.ru)");
-                    resetError1.classList.remove('hidden');
-                    return;
-                }
-                resetRequestBtn.disabled = true;
-                resetRequestBtn.textContent = "Отправка...";
-                
-                try {
-                    const res = await fetch('/api/auth/email/reset/request', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({email})
-                    });
-                    const data = await res.json();
-                    if(data.ok) {
-                        resetStep1.classList.add('hidden');
-                        resetStep1.classList.remove('flex');
-                        resetStep2.classList.remove('hidden');
-                        resetStep2.classList.add('flex');
-                        resetError1.classList.add('hidden');
-                        resetSentEmail.innerHTML = escapeHTML(email);
-                        resetError2.classList.add('hidden');
-                        
-                        document.getElementById('reset-code-inputs').classList.remove('hidden');
-                        document.getElementById('reset-timer-container').classList.remove('hidden');
-                        document.getElementById('reset-sent-msg').classList.remove('hidden');
-                        document.getElementById('reset-new-password-container').classList.add('hidden');
-                        document.getElementById('reset-verify-btn').classList.add('hidden');
-                        
-                        document.getElementById('back-to-login-btn').classList.add('hidden');
-                        document.getElementById('reset-back-step-btn').classList.remove('hidden');
+  function syncViewportMetrics(){
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+    const visibleHeight = Math.round((vv && vv.height) || window.innerHeight || document.documentElement.clientHeight || 0);
+    if(visibleHeight > 0) root.style.setProperty('--app-h', visibleHeight + 'px');
 
-                        digitInputs.forEach(i => i.value = '');
-                        resetNewPassword.value = '';
-                        setTimeout(() => digitInputs[0].focus(), 100);
+    const isTouchMobile = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    const detectedOverlap = vv ? Math.max(0, Math.round((window.innerHeight || visibleHeight) - vv.height - vv.offsetTop)) : 0;
 
-                        let timeLeft = 60;
-                        timerVal.textContent = timeLeft;
-                        if(resetTimerInterval) clearInterval(resetTimerInterval);
-                        resetTimerInterval = setInterval(() => {
-                            timeLeft--;
-                            timerVal.textContent = timeLeft;
-                            if(timeLeft <= 0) {
-                                clearInterval(resetTimerInterval);
-                                if (!resetStep2.classList.contains('hidden')) {
-                                    resetBackStepBtn.click();
-                                }
-                            }
-                        }, 1000);
-                    } else {
-                        resetError1.innerHTML = escapeHTML(data.error || "Ошибка запроса");
-                        resetError1.classList.remove('hidden');
-                    }
-                } catch (e) {
-                    resetError1.innerHTML = escapeHTML("Ошибка сети");
-                    resetError1.classList.remove('hidden');
-                }
-                resetRequestBtn.disabled = false;
-                resetRequestBtn.textContent = "Получить код в Telegram";
-            });
+    let reserve = 0;
+    if(isTouchMobile && !isStandalone){
+      reserve = detectedOverlap > 8 ? detectedOverlap : 76;
+      reserve = Math.min(112, Math.max(0, reserve));
+    }
+    root.style.setProperty('--browser-reserve', reserve + 'px');
+  }
+  syncViewportMetrics();
+  window.addEventListener('resize', syncViewportMetrics, { passive:true });
+  window.addEventListener('orientationchange', () => setTimeout(syncViewportMetrics, 250), { passive:true });
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', syncViewportMetrics, { passive:true });
+    window.visualViewport.addEventListener('scroll', syncViewportMetrics, { passive:true });
+  }
 
-            if(resetVerifyBtn) resetVerifyBtn.addEventListener('click', async () => {
-                let email = resetEmailInput.value.trim();
-                email = email.replace(/[<>]/g, '');
-                
-                let code = '';
-                digitInputs.forEach(i => code += i.value);
-                const new_password = resetNewPassword.value.trim();
-                
-                if(!new_password) {
-                    resetError2.innerHTML = escapeHTML("Заполните новый пароль");
-                    resetError2.classList.remove('hidden');
-                    return;
-                }
-                resetVerifyBtn.disabled = true;
-                resetVerifyBtn.textContent = "Сохранение...";
-                
-                try {
-                    const res = await fetch('/api/auth/email/reset/verify', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({email, code, new_password})
-                    });
-                    const data = await res.json();
-                    if(data.ok) {
-                        alert("Пароль успешно изменён! Теперь вы можете войти.");
-                        backToLoginBtn.click();
-                        passwordInput.value = new_password; // Auto-fill
-                    } else {
-                        resetError2.innerHTML = escapeHTML(data.error || "Неверный код");
-                        resetError2.classList.remove('hidden');
-                    }
-                } catch (e) {
-                    resetError2.innerHTML = escapeHTML("Ошибка сети");
-                    resetError2.classList.remove('hidden');
-                }
-                resetVerifyBtn.disabled = false;
-                resetVerifyBtn.textContent = "Сохранить новый пароль";
-            });
+  /* логотип бренда вместо дежурного щита — если он загрузился */
+  const BRAND_LOGO = '{{ webapp_logo }}';
+  if(BRAND_LOGO){
+    document.querySelectorAll('.brand-mark').forEach(box => {
+      const img = box.querySelector('img'), fallback = box.querySelector('svg');
+      img.onload = () => { img.classList.remove('hidden'); fallback.classList.add('hidden'); };
+      img.src = BRAND_LOGO;
+    });
+  }
 
-            function setAuthToken(token) {
-                localStorage.setItem('auth_token', token);
-                document.cookie = "auth_token=" + encodeURIComponent(token) + "; max-age=31536000; path=/; SameSite=Lax";
-            }
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const BAD_EMAIL = 'Введите корректный Email (например: user@mail.ru)';
+  const JSON_H = {'Content-Type':'application/json'};
 
-            function getAuthToken() {
-                let token = localStorage.getItem('auth_token');
-                if (!token) {
-                    const match = document.cookie.match(new RegExp('(^| )auth_token=([^;]+)'));
-                    if (match) {
-                        token = decodeURIComponent(match[2]);
-                        localStorage.setItem('auth_token', token);
-                    }
-                } else {
-                    document.cookie = "auth_token=" + encodeURIComponent(token) + "; max-age=31536000; path=/; SameSite=Lax";
-                }
-                return token;
-            }
+  function show(el, mode){ el.classList.remove('hidden'); if(mode) el.style.display = mode; }
+  function hide(el){ el.classList.add('hidden'); }
+  function showError(el, msg){ el.textContent = msg; show(el); }
+  function cleanEmail(el){ return el.value.trim().replace(/[<>]/g,''); }
+  function postJSON(url, body){
+    return fetch(url, { method:'POST', headers: JSON_H, body: JSON.stringify(body) }).then(r => r.json());
+  }
+  /* обёртка «заблокировать кнопку → запрос → вернуть подпись» */
+  async function withPending(btn, pendingText, fn){
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = pendingText;
+    try{ return await fn(); }
+    finally{ btn.disabled = false; btn.textContent = original; }
+  }
 
-            function removeAuthToken() {
-                localStorage.removeItem('auth_token');
-                document.cookie = "auth_token=; max-age=0; path=/; SameSite=Lax";
-            }
+  const loader = document.getElementById('loader');
+  const authCard = document.getElementById('authCard');
+  const authHeader = document.getElementById('authHeader');
+  const authMethods = document.getElementById('authMethods');
+  const authTelegramLink = document.getElementById('authTelegramLink');
 
-            if (window.location.search.includes('token=') || window.location.pathname.includes('token=')) {
-                removeAuthToken();
-                window.history.replaceState(null, '', '/');
-            }
+  const emailPanel = document.getElementById('emailPanel');
+  const showEmailBtn = document.getElementById('showEmailBtn');
+  const backToMethodsBtn = document.getElementById('backToMethodsBtn');
+  const emailLoginBtn = document.getElementById('emailLoginBtn');
+  const emailRegisterBtn = document.getElementById('emailRegisterBtn');
+  const emailInput = document.getElementById('emailInput');
+  const passwordInput = document.getElementById('passwordInput');
+  const emailError = document.getElementById('emailError');
 
-            const savedToken = getAuthToken();
-            if (savedToken) {
-                window.location.href = "/?token=" + savedToken;
-                return;
-            }
+  /* строка «ожидание подтверждения» появляется только после того, как человек
+     нажал «Войти через Telegram» — до этого ждать нечего */
+  const statusLine = document.getElementById('statusLine');
+  let awaitingTelegram = false;
+  authTelegramLink.addEventListener('click', () => {
+    awaitingTelegram = true;
+    show(statusLine, 'flex');
+  });
 
-            async function startAuthPolling(token) {
-                const interval = setInterval(async () => {
-                    try {
-                        const response = await fetch('/api/auth/check-token/' + token);
-                        const data = await response.json();
-                        if (data.authorized) {
-                            clearInterval(interval);
-                            const finalToken = data.token || token;
-                            setAuthToken(finalToken);
-                            window.location.href = "/?token=" + finalToken;
-                        }
-                    } catch (e) { }
-                }, 2000);
-            }
+  function goToMethods(){
+    hide(emailPanel); hide(document.getElementById('subPanel')); hide(document.getElementById('resetPanel'));
+    show(authMethods, 'flex'); show(authHeader);
+    if(awaitingTelegram) show(statusLine, 'flex');
+  }
 
-            async function handleExternalAuth() {
-                try {
-                    const response = await fetch('/api/auth/request-token');
-                    const data = await response.json();
-                    if (data.ok) {
-                        authLink.href = data.auth_url;
-                        loader.classList.add('hidden');
-                        authContainer.classList.remove('hidden');
-                        startAuthPolling(data.token);
-                    }
-                } catch (e) { }
-            }
+  showEmailBtn.addEventListener('click', () => {
+    hide(authHeader); hide(authMethods); hide(statusLine);
+    show(emailPanel, 'flex'); hide(emailError);
+    setTimeout(() => emailInput.focus(), 60);
+  });
+  backToMethodsBtn.addEventListener('click', goToMethods);
 
-            async function loginWithToken(token) {
-                setAuthToken(token);
-                window.location.href = "/?token=" + token;
-            }
+  /* ---------- subscription link login ---------- */
+  const subPanel = document.getElementById('subPanel');
+  const showSubBtn = document.getElementById('showSubBtn');
+  const subUrlInput = document.getElementById('subUrlInput');
+  const subLoginBtn = document.getElementById('subLoginBtn');
+  const subError = document.getElementById('subError');
+  const backFromSubBtn = document.getElementById('backFromSubBtn');
 
-            async function tryDirectAuth(userId) {
-                try {
-                    const response = await fetch('/api/auth/telegram-direct', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ user_id: userId })
-                    });
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.token) {
-                            loginWithToken(data.token);
-                            return true;
-                        }
-                    }
-                    return false;
-                } catch (e) {
-                    return false;
-                }
-            }
+  showSubBtn.addEventListener('click', () => {
+    hide(authHeader); hide(authMethods); hide(statusLine);
+    show(subPanel, 'flex'); hide(subError);
+    setTimeout(() => subUrlInput.focus(), 60);
+  });
+  backFromSubBtn.addEventListener('click', goToMethods);
 
-            async function tryTelegramAuth() {
-                try {
-                    const tg = window.Telegram && window.Telegram.WebApp;
-                    if (!tg) return false;
+  async function submitSubAuth(){
+    const value = subUrlInput.value.trim();
+    hide(subError);
+    if(!value) return showError(subError, 'Вставьте ссылку подписки');
 
-                    tg.ready();
-                    tg.expand();
+    await withPending(subLoginBtn, 'Проверяю…', async () => {
+      try{
+        const data = await postJSON('/api/auth/subscription-link', { subscription_url: value });
+        if(data.ok && data.token) return loginWithToken(data.token);
+        showError(subError, data.error || 'Не удалось войти по этой ссылке');
+      }catch(e){ showError(subError, 'Нет связи с сервером. Попробуйте позже.'); }
+    });
+  }
+  subLoginBtn.addEventListener('click', submitSubAuth);
+  subUrlInput.addEventListener('keydown', e => { if(e.key === 'Enter') submitSubAuth(); });
 
-                    const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
-                    if (!user || !user.id) return false;
+  /* ---------- email login / register ---------- */
+  async function submitEmailAuth(isRegister){
+    const email = cleanEmail(emailInput);
+    const password = passwordInput.value.trim();
 
-                    const initData = tg.initData;
-                    if (initData && initData.length > 0) {
-                        const response = await fetch('/api/auth/token', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ init_data: initData })
-                        });
+    if(!email || !password) return showError(emailError, 'Введите Email и пароль');
+    if(!EMAIL_RE.test(email)) return showError(emailError, BAD_EMAIL);
 
-                        if (response.ok) {
-                            const data = await response.json();
-                            if (data.token) {
-                                loginWithToken(data.token);
-                                return true;
-                            }
-                        }
-                    }
+    if(isRegister){
+      if(password.length < 5) return showError(emailError, 'Пароль должен содержать минимум 5 символов');
+      if(/^\d+$/.test(password)) return showError(emailError, 'Пароль не должен состоять только из цифр');
+      if(new Set(password).size < 2) return showError(emailError, 'Пароль слишком простой — используйте разные символы');
+    }
 
-                    return await tryDirectAuth(user.id);
-                } catch (e) {
-                    return false;
-                }
-            }
+    const endpoint = isRegister ? '/api/auth/email/register' : '/api/auth/email/login';
+    emailLoginBtn.disabled = true; emailRegisterBtn.disabled = true;
+    hide(emailError);
+    try{
+      const data = await postJSON(endpoint, { email, password });
+      if(data.ok && data.token) loginWithToken(data.token);
+      else showError(emailError, data.error || 'Ошибка связи с сервером');
+    }catch(e){ showError(emailError, 'Ошибка сети'); }
+    emailLoginBtn.disabled = false; emailRegisterBtn.disabled = false;
+  }
+  emailLoginBtn.addEventListener('click', () => submitEmailAuth(false));
+  emailRegisterBtn.addEventListener('click', () => submitEmailAuth(true));
+  [emailInput, passwordInput].forEach(el => el.addEventListener('keydown', e => { if(e.key === 'Enter') submitEmailAuth(false); }));
 
-            setTimeout(async () => {
-                let success = await tryTelegramAuth();
-                if (!success) {
-                    await new Promise(r => setTimeout(r, 500));
-                    success = await tryTelegramAuth();
-                }
-                if (!success) {
-                    handleExternalAuth();
-                }
-            }, 300);
-        });
+  /* ---------- password reset ---------- */
+  const resetPanel = document.getElementById('resetPanel');
+  const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+  const backToLoginBtn = document.getElementById('backToLoginBtn');
+  const resetStep1 = document.getElementById('resetStep1');
+  const resetStep2 = document.getElementById('resetStep2');
+  const resetRequestBtn = document.getElementById('resetRequestBtn');
+  const resetVerifyBtn = document.getElementById('resetVerifyBtn');
+  const resetEmailInput = document.getElementById('resetEmailInput');
+  const resetNewPassword = document.getElementById('resetNewPassword');
+  const resetNewPasswordWrap = document.getElementById('resetNewPasswordWrap');
+  const resetError1 = document.getElementById('resetError1');
+  const resetError2 = document.getElementById('resetError2');
+  const resetSentMsg = document.getElementById('resetSentMsg');
+  const resetTimerRow = document.getElementById('resetTimerRow');
+  const resetBackStepBtn = document.getElementById('resetBackStepBtn');
+  const digitInputs = Array.from(document.querySelectorAll('.digit'));
+  const timerVal = document.getElementById('timerVal');
+  let resetTimerInterval;
 
-        let secretSequence = '';
-        const TARGET_SEQUENCE = '3350';
+  const resetCode = () => digitInputs.map(i => i.value).join('');
 
-        document.addEventListener('keydown', (e) => {
-            const char = e.key;
-            const isNumber = /^[0-9]$/.test(char) || e.code.startsWith('Numpad');
-            const digit = e.code.startsWith('Numpad') ? e.code.replace('Numpad', '') : char;
+  resetEmailInput.addEventListener('keydown', e => { if(e.key === 'Enter') resetRequestBtn.click(); });
+  resetNewPassword.addEventListener('keydown', e => { if(e.key === 'Enter') resetVerifyBtn.click(); });
 
-            if (/^[0-9]$/.test(digit)) {
-                secretSequence += digit;
-                if (secretSequence.length > TARGET_SEQUENCE.length) {
-                    secretSequence = secretSequence.slice(-TARGET_SEQUENCE.length);
-                }
+  async function checkResetCode(){
+    const email = cleanEmail(resetEmailInput);
+    const code = resetCode();
+    if(code.length !== 6) return;
+    hide(resetError2);
+    try{
+      const data = await postJSON('/api/auth/email/reset/check', { email, code });
+      if(data.ok){
+        hide(document.getElementById('digitInputs'));
+        hide(resetTimerRow);
+        hide(resetSentMsg);
+        show(resetNewPasswordWrap);
+        show(resetVerifyBtn, 'flex');
+        hide(resetBackStepBtn);
+        show(backToLoginBtn);
+        resetNewPassword.focus();
+        if(resetTimerInterval) clearInterval(resetTimerInterval);
+      } else {
+        showError(resetError2, data.error || 'Неверный код');
+        digitInputs.forEach(i => i.value = '');
+        digitInputs[0].focus();
+      }
+    }catch(e){ showError(resetError2, 'Ошибка сети'); }
+  }
 
-                if (secretSequence === TARGET_SEQUENCE) {
-                    secretSequence = '';
-                    takeSecretScreenshot();
-                }
-            } else {
-                secretSequence = '';
-            }
-        });
+  digitInputs.forEach((input, index) => {
+    input.addEventListener('input', async e => {
+      if(e.target.value.length > 0){
+        e.target.value = e.target.value.replace(/\D/g,'');
+        if(index < digitInputs.length - 1 && e.target.value) digitInputs[index+1].focus();
+        else if(index === 5 && e.target.value) await checkResetCode();
+      }
+    });
+    input.addEventListener('keydown', e => {
+      if(e.key === 'Backspace' && e.target.value === '' && index > 0) digitInputs[index-1].focus();
+    });
+    input.addEventListener('paste', async e => {
+      e.preventDefault();
+      const pasted = (e.clipboardData || window.clipboardData).getData('text').trim().replace(/\D/g,'');
+      if(pasted.length >= 6){
+        for(let i=0;i<6;i++) digitInputs[i].value = pasted[i];
+        digitInputs[5].focus();
+        await checkResetCode();
+      }
+    });
+  });
 
-        async function takeSecretScreenshot() {
-            try {
-                const stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: {
-                        cursor: "never",
-                        displaySurface: "browser"
-                    },
-                    audio: false,
-                    preferCurrentTab: true,
-                    selfBrowserSurface: "include",
-                    monitorTypeSurfaces: "include"
-                });
+  resetBackStepBtn.addEventListener('click', () => {
+    hide(resetStep2);
+    show(resetStep1, 'flex');
+    hide(resetError1);
+    show(resetSentMsg);
+    show(backToLoginBtn);
+    hide(resetBackStepBtn);
+    if(resetTimerInterval) clearInterval(resetTimerInterval);
+  });
 
-                const video = document.createElement("video");
-                video.srcObject = stream;
+  forgotPasswordBtn.addEventListener('click', () => {
+    hide(emailPanel);
+    show(resetPanel, 'flex');
+    show(resetStep1, 'flex');
+    hide(resetStep2);
+    resetEmailInput.value = emailInput.value;
+    hide(resetError1); hide(resetError2);
+    hide(resetBackStepBtn); show(backToLoginBtn);
+  });
 
-                video.onloadedmetadata = async () => {
-                    const canvas = document.createElement("canvas");
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    const ctx = canvas.getContext("2d");
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  backToLoginBtn.addEventListener('click', () => {
+    hide(resetPanel);
+    show(emailPanel, 'flex');
+  });
 
-                    stream.getTracks().forEach(track => track.stop());
+  resetRequestBtn.addEventListener('click', async () => {
+    const email = cleanEmail(resetEmailInput);
+    if(!email) return showError(resetError1, 'Введите Email');
+    if(!EMAIL_RE.test(email)) return showError(resetError1, BAD_EMAIL);
 
-                    canvas.toBlob(async (blob) => {
-                        const url = URL.createObjectURL(blob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = `screenshot_${new Date().getTime()}.png`;
-                        link.click();
-                        URL.revokeObjectURL(url);
+    await withPending(resetRequestBtn, 'Отправка…', async () => {
+    try{
+      const data = await postJSON('/api/auth/email/reset/request', { email });
+      if(data.ok){
+        hide(resetStep1);
+        show(resetStep2, 'flex');
+        hide(resetError1);
+        show(resetSentMsg);
+        hide(resetError2);
+        show(document.getElementById('digitInputs'), 'flex');
+        show(resetTimerRow);
+        hide(resetNewPasswordWrap);
+        hide(resetVerifyBtn);
+        hide(backToLoginBtn); show(resetBackStepBtn);
 
-                        try {
-                            const item = new ClipboardItem({ "image/png": blob });
-                            await navigator.clipboard.write([item]);
-                        } catch (err) {}
-                    }, 'image/png');
-                };
+        digitInputs.forEach(i => i.value = '');
+        resetNewPassword.value = '';
+        setTimeout(() => digitInputs[0].focus(), 100);
 
-                await video.play();
+        let timeLeft = 60;
+        timerVal.textContent = timeLeft;
+        if(resetTimerInterval) clearInterval(resetTimerInterval);
+        resetTimerInterval = setInterval(() => {
+          timeLeft--;
+          timerVal.textContent = timeLeft;
+          if(timeLeft <= 0){
+            clearInterval(resetTimerInterval);
+            if(!resetStep2.classList.contains('hidden')) resetBackStepBtn.click();
+          }
+        }, 1000);
+      } else {
+        showError(resetError1, data.error || 'Ошибка запроса');
+      }
+    }catch(e){ showError(resetError1, 'Ошибка сети'); }
+    });
+  });
 
-            } catch (e) {
-                if (e.name !== 'NotAllowedError') {
-                    console.error('Screenshot error:', e);
-                }
-            }
+  resetVerifyBtn.addEventListener('click', async () => {
+    const email = cleanEmail(resetEmailInput);
+    const code = resetCode();
+    const newPassword = resetNewPassword.value.trim();
+    if(!newPassword) return showError(resetError2, 'Заполните новый пароль');
+
+    await withPending(resetVerifyBtn, 'Сохранение…', async () => {
+      try{
+        const data = await postJSON('/api/auth/email/reset/verify', { email, code, new_password: newPassword });
+        if(data.ok){
+          passwordInput.value = newPassword;
+          backToLoginBtn.click();
+          window.alert('Пароль успешно изменён! Теперь вы можете войти.');
+        } else {
+          showError(resetError2, data.error || 'Неверный код');
         }
-    </script>
-</body>
+      }catch(e){ showError(resetError2, 'Ошибка сети'); }
+    });
+  });
 
+  /* ---------- token storage ---------- */
+  function writeAuthCookie(token, maxAge){
+    document.cookie = 'auth_token=' + encodeURIComponent(token) + '; max-age=' + maxAge + '; path=/; SameSite=Lax';
+  }
+  function setAuthToken(token){
+    localStorage.setItem('auth_token', token);
+    writeAuthCookie(token, 31536000);
+  }
+  function getAuthToken(){
+    let token = localStorage.getItem('auth_token');
+    if(!token){
+      const match = document.cookie.match(new RegExp('(^| )auth_token=([^;]+)'));
+      if(match){ token = decodeURIComponent(match[2]); localStorage.setItem('auth_token', token); }
+    } else {
+      writeAuthCookie(token, 31536000);
+    }
+    return token;
+  }
+  function removeAuthToken(){
+    localStorage.removeItem('auth_token');
+    writeAuthCookie('', 0);
+  }
+
+  if(window.location.search.includes('token=') || window.location.pathname.includes('token=')){
+    removeAuthToken();
+    window.history.replaceState(null, '', '/');
+  }
+
+  const savedToken = getAuthToken();
+  if(savedToken){ window.location.href = '/?token=' + savedToken; return; }
+
+  async function startAuthPolling(token){
+    const interval = setInterval(async () => {
+      try{
+        const response = await fetch('/api/auth/check-token/' + token);
+        const data = await response.json();
+        if(data.authorized){
+          clearInterval(interval);
+          const finalToken = data.token || token;
+          setAuthToken(finalToken);
+          window.location.href = '/?token=' + finalToken;
+        }
+      }catch(e){}
+    }, 2000);
+  }
+
+  async function handleExternalAuth(){
+    try{
+      const response = await fetch('/api/auth/request-token');
+      const data = await response.json();
+      if(data.ok){
+        authTelegramLink.href = data.auth_url;
+        hide(loader);
+        show(authCard, 'flex');
+        startAuthPolling(data.token);
+      }
+    }catch(e){}
+  }
+
+  function loginWithToken(token){
+    setAuthToken(token);
+    window.location.href = '/?token=' + token;
+  }
+  /* один запрос → если сервер вернул токен, сразу входим */
+  async function authViaEndpoint(url, body){
+    try{
+      const data = await postJSON(url, body);
+      if(data && data.token){ loginWithToken(data.token); return true; }
+    }catch(e){}
+    return false;
+  }
+
+  async function tryTelegramAuth(){
+    try{
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if(!tg) return false;
+      tg.ready(); tg.expand();
+
+      const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
+      if(!user || !user.id) return false;
+
+      const initData = tg.initData;
+      if(initData && initData.length > 0 && await authViaEndpoint('/api/auth/token', { init_data: initData })) return true;
+      return await authViaEndpoint('/api/auth/telegram-direct', { user_id: user.id });
+    }catch(e){ return false; }
+  }
+
+  setTimeout(async () => {
+    let success = await tryTelegramAuth();
+    if(!success){
+      await new Promise(r => setTimeout(r, 500));
+      success = await tryTelegramAuth();
+    }
+    if(!success) handleExternalAuth();
+  }, 300);
+});
+
+/* ---------- secret local screenshot combo (dev/marketing use only, requires explicit OS screen-share consent) ---------- */
+let secretSequence = '';
+const TARGET_SEQUENCE = '3350';
+document.addEventListener('keydown', e => {
+  const digit = e.code.startsWith('Numpad') ? e.code.replace('Numpad','') : e.key;
+  if(/^[0-9]$/.test(digit)){
+    secretSequence = (secretSequence + digit).slice(-TARGET_SEQUENCE.length);
+    if(secretSequence === TARGET_SEQUENCE){ secretSequence = ''; takeSecretScreenshot(); }
+  } else {
+    secretSequence = '';
+  }
+});
+async function takeSecretScreenshot(){
+  try{
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor:'never', displaySurface:'browser' }, audio:false,
+      preferCurrentTab:true, selfBrowserSurface:'include', monitorTypeSurfaces:'include'
+    });
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.onloadedmetadata = async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      stream.getTracks().forEach(t => t.stop());
+      canvas.toBlob(async blob => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url; link.download = `screenshot_${Date.now()}.png`; link.click();
+        URL.revokeObjectURL(url);
+        try{ await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); }catch(e){}
+      }, 'image/png');
+    };
+    await video.play();
+  }catch(e){ if(e.name !== 'NotAllowedError') console.error('Screenshot error:', e); }
+}
+</script>
+</body>
 </html>

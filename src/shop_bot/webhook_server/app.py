@@ -47,6 +47,7 @@ from shop_bot.data_manager import speedtest_runner
 from shop_bot.data_manager import resource_monitor
 from shop_bot.data_manager import backup_manager
 from shop_bot.data_manager import remnawave_repository as rw_repo
+from shop_bot.data_manager import database as rw_repo_db
 from shop_bot.data_manager.remnawave_repository import (
     get_all_settings, update_setting, get_all_hosts, get_plans_for_host,
     create_host, delete_host, create_plan, delete_plan, update_plan, get_user_count,
@@ -88,7 +89,9 @@ _support_bot_controller = SupportBotController()
 ALL_SETTINGS_KEYS = [
     "panel_login", "panel_password", "about_text", "terms_url", "privacy_url",
     "support_user", "support_text", "channel_url", "telegram_bot_token",
-    "telegram_bot_username", "admin_telegram_id", "yookassa_shop_id",
+    "telegram_bot_username", "admin_telegram_id", "admin_telegram_ids", "yookassa_shop_id",
+    "support_media_enabled", "support_media_max_mb", "support_media_allowed",
+    "support_media_keep_days",
     "yookassa_secret_key", "sbp_enabled", "receipt_email", "cryptobot_token",
     "heleket_merchant_id", "heleket_api_key", "domain", "referral_percentage",
     "referral_discount", "ton_wallet_address", "tonapi_key", "force_subscription", "trial_enabled", "trial_duration_days", "trial_host_id", "trial_traffic_limit_gb", "trial_hwid_limit", "enable_referrals", "minimum_withdrawal",
@@ -310,6 +313,22 @@ def create_webhook_app(bot_controller_instance):
             'csrf_token': generate_csrf,
             'webapp_exists': webapp_exists
         }
+
+    @flask_app.template_filter('strip_media_label')
+    def strip_media_label_filter(text, media=None):
+        """
+        Убирает служебную подпись «[Фото]» и подобные, если вложение
+        и так показано рядом. Саму переписку в базе не меняем — правка
+        только на показе, поэтому работает и для старых сообщений.
+        """
+        if not media:
+            return text or ''
+        import re as _re
+        return _re.sub(
+            r'^\[(Фото|Видео|Голосовое|Кружок|Документ:[^\]]*)\]\s*',
+            '', text or ''
+        ).strip()
+
 
     @flask_app.template_filter('strip_bom')
     def strip_bom_filter(s):
@@ -966,6 +985,527 @@ def create_webhook_app(bot_controller_instance):
         except Exception:
             keys = []
         return render_template('partials/user_keys_table.html', keys=keys)
+
+
+    # ---------------------------------------------------------------
+    #  Имена пользователей: обновление из Telegram и история
+    # ---------------------------------------------------------------
+    def _fetch_telegram_username(bot, user_id: int, loop=None):
+        """
+        Забирает актуальный username из Telegram.
+
+        Важно: сессия бота живёт в его собственном event loop, поэтому
+        asyncio.run() здесь недопустим — он создаёт новый цикл, и aiohttp
+        падает с "Timeout context manager should be used inside a task".
+        Корутину нужно отдавать в уже работающий цикл бота.
+
+        Возвращает (username, status), где status:
+          'ok'      — Telegram ответил, имя взято (может быть None);
+          'absent'  — пользователь недоступен/не найден, считаем безымянным;
+          'error'   — временный сбой, имя трогать НЕ нужно.
+        """
+        try:
+            if loop is None:
+                loop = current_app.config.get('EVENT_LOOP')
+
+            if loop and loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(bot.get_chat(user_id), loop)
+                chat = future.result(timeout=20)
+            else:
+                # бот не поднят в отдельном цикле — крайний случай
+                logger.warning("EVENT_LOOP не запущен, использую резервный asyncio.run")
+                chat = asyncio.run(bot.get_chat(user_id))
+
+            return getattr(chat, 'username', None), 'ok'
+        except Exception as e:
+            text = str(e).lower()
+            # пользователь не начинал диалог, удалил аккаунт, заблокировал бота
+            absent_markers = (
+                'chat not found', 'user not found', 'bot was blocked',
+                'user is deactivated', 'peer_id_invalid', 'forbidden',
+            )
+            if any(m in text for m in absent_markers):
+                return None, 'absent'
+            logger.warning(f"Не удалось получить username пользователя {user_id}: {e}")
+            return None, 'error'
+
+
+    def _sync_username_to_remnawave(user_id: int, current: str | None) -> int:
+        """
+        Пишет актуальное имя и историю смен в поле «Описание» всех подписок
+        пользователя в Remnawave. Возвращает число обновлённых подписок.
+
+        Описание — свободный текст, оно не уникально и не участвует в
+        идентификации, поэтому запись туда безопасна для подключений.
+        """
+        try:
+            keys = get_user_keys(user_id) or []
+        except Exception as e:
+            logger.warning(f"Синхронизация описания {user_id}: не удалось получить подписки: {e}")
+            return 0
+        if not keys:
+            return 0
+
+        label = rw_repo.format_username(current)
+        lines = [f"TG: {label} (id {user_id})"]
+
+        try:
+            history = rw_repo.get_username_history(user_id, limit=5) or []
+        except Exception:
+            history = []
+        if history:
+            lines.append("История имён:")
+            for h in history:
+                when = (h.get('changed_at') or '')[:16]
+                was = rw_repo.format_username(h.get('previous_username'))
+                now = rw_repo.format_username(h.get('username'))
+                lines.append(f"  {when} {was} -> {now}")
+
+        text = "\n".join(lines)
+
+        updated = 0
+        for key in keys:
+            uuid_val = key.get('remnawave_user_uuid')
+            if not uuid_val:
+                continue
+            try:
+                ok = asyncio.run(remnawave_api.update_user_description(
+                    uuid_val, text, host_name=key.get('host_name')))
+                if ok:
+                    updated += 1
+            except Exception as e:
+                logger.warning(f"Синхронизация описания {user_id}: подписка {key.get('key_id')}: {e}")
+        return updated
+
+
+    @flask_app.route('/users/<int:user_id>/username/refresh', methods=['POST'])
+    @login_required
+    def refresh_username_route(user_id: int):
+        """Обновляет имя одного пользователя из Telegram."""
+        try:
+            user = get_user(user_id)
+            if not user:
+                return jsonify({"ok": False, "error": "Пользователь не найден"}), 404
+
+            bot = _bot_controller.get_bot_instance()
+            if not bot:
+                return jsonify({"ok": False, "error": "Бот не запущен"}), 503
+
+            loop = current_app.config.get('EVENT_LOOP')
+            username, status = _fetch_telegram_username(bot, user_id, loop)
+            if status == 'error':
+                return jsonify({"ok": False, "error": "Telegram не ответил, попробуйте позже"}), 502
+
+            result = rw_repo.set_username(user_id, username, source='telegram')
+            label = rw_repo.format_username(result.get('current'))
+
+            synced = 0
+            if result.get('changed'):
+                synced = _sync_username_to_remnawave(user_id, result.get('current'))
+                message = f"Имя обновлено: {label}"
+                if synced:
+                    message += f" · описание в Remnawave обновлено ({synced})"
+            else:
+                message = f"Имя не изменилось: {label}"
+
+            return jsonify({
+                "ok": True,
+                "changed": bool(result.get('changed')),
+                "username": result.get('current'),
+                "label": label,
+                "status": status,
+                "synced": synced,
+                "message": message,
+            })
+        except Exception as e:
+            logger.error(f"Ошибка обновления имени {user_id}: {e}", exc_info=True)
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
+    @flask_app.route('/users/username/refresh-all', methods=['POST'])
+    @login_required
+    def refresh_all_usernames_route():
+        """Обновляет имена всех пользователей из Telegram."""
+        try:
+            bot = _bot_controller.get_bot_instance()
+            if not bot:
+                return jsonify({"ok": False, "error": "Бот не запущен"}), 503
+
+            user_ids = rw_repo.get_all_user_ids()
+            if not user_ids:
+                return jsonify({"ok": True, "total": 0, "changed": 0, "message": "Пользователей нет"})
+
+            changed = unchanged = absent = errors = synced = 0
+            loop = current_app.config.get('EVENT_LOOP')
+
+            for uid in user_ids:
+                username, status = _fetch_telegram_username(bot, uid, loop)
+                if status == 'error':
+                    errors += 1
+                    continue
+                if status == 'absent':
+                    absent += 1
+
+                result = rw_repo.set_username(uid, username, source='telegram')
+                if result.get('changed'):
+                    changed += 1
+                    # описание в Remnawave держим в актуальном виде
+                    try:
+                        synced += _sync_username_to_remnawave(uid, result.get('current'))
+                    except Exception as e:
+                        logger.warning(f"Массовое обновление имён: описание {uid}: {e}")
+                else:
+                    unchanged += 1
+
+                # не упираемся в лимиты Telegram
+                time.sleep(0.05)
+
+            logger.info(
+                f"Массовое обновление имён: всего {len(user_ids)}, изменено {changed}, "
+                f"без изменений {unchanged}, недоступны {absent}, ошибок {errors}"
+            )
+
+            message = f"Обработано {len(user_ids)}, обновлено {changed}"
+            if synced:
+                message += f", описаний в Remnawave: {synced}"
+            if errors:
+                message += f", не ответил Telegram: {errors}"
+
+            return jsonify({
+                "ok": True,
+                "total": len(user_ids),
+                "changed": changed,
+                "unchanged": unchanged,
+                "absent": absent,
+                "errors": errors,
+                "synced": synced,
+                "message": message,
+            })
+        except Exception as e:
+            logger.error(f"Ошибка массового обновления имён: {e}", exc_info=True)
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
+    @flask_app.route('/users/<int:user_id>/username/history.json')
+    @login_required
+    def username_history_route(user_id: int):
+        """История имён пользователя."""
+        try:
+            history = rw_repo.get_username_history(user_id, limit=50)
+            items = [{
+                "id": h.get('id'),
+                "username": h.get('username'),
+                "label": rw_repo.format_username(h.get('username')),
+                "previous": h.get('previous_username'),
+                "previous_label": rw_repo.format_username(h.get('previous_username')),
+                "source": h.get('source') or 'telegram',
+                "changed_at": h.get('changed_at'),
+            } for h in (history or [])]
+            return jsonify({"ok": True, "items": items})
+        except Exception as e:
+            logger.error(f"Ошибка получения истории имён {user_id}: {e}")
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
+    # ---------------------------------------------------------------
+    #  Массовые действия над пользователями
+    # ---------------------------------------------------------------
+    @flask_app.route('/users/count.json')
+    @login_required
+    def users_count_json():
+        """Сколько всего пользователей подходит под текущий фильтр."""
+        try:
+            q = (request.args.get('q') or '').strip()
+            ids = rw_repo.get_matching_user_ids(q or None)
+            return jsonify({"ok": True, "total": len(ids)})
+        except Exception as e:
+            logger.error(f"Ошибка подсчёта пользователей: {e}")
+            return jsonify({"ok": False, "total": 0}), 500
+
+
+    @flask_app.route('/users/bulk-action', methods=['POST'])
+    @login_required
+    def users_bulk_action_route():
+        """
+        Применяет действие к списку пользователей.
+        Поддерживаются: reset_trial, mark_trial_used, reset_cooldown,
+        ban, unban, refresh_username.
+        """
+        from shop_bot.data_manager import database
+        try:
+            payload = request.get_json(silent=True) or {}
+            action = (payload.get('action') or '').strip()
+            raw_ids = payload.get('user_ids') or []
+            scope = (payload.get('scope') or 'selected').strip()
+
+            if scope == 'all':
+                # «Выбрать всех» уважает активный поиск: берём тех же,
+                # кого пользователь видит в отфильтрованном списке.
+                user_ids = rw_repo.get_matching_user_ids(payload.get('q') or None)
+            else:
+                user_ids = []
+                for v in raw_ids:
+                    try:
+                        user_ids.append(int(v))
+                    except (TypeError, ValueError):
+                        continue
+
+            if not user_ids:
+                return jsonify({"ok": False, "error": "Не выбран ни один пользователь"}), 400
+
+            allowed = {'reset_trial', 'mark_trial_used', 'reset_cooldown',
+                       'ban', 'unban', 'refresh_username'}
+            if action not in allowed:
+                return jsonify({"ok": False, "error": "Неизвестное действие"}), 400
+
+            bot = None
+            loop = None
+            if action == 'refresh_username':
+                bot = _bot_controller.get_bot_instance()
+                if not bot:
+                    return jsonify({"ok": False, "error": "Бот не запущен"}), 503
+                loop = current_app.config.get('EVENT_LOOP')
+
+            done = skipped = failed = 0
+
+            for uid in user_ids:
+                try:
+                    if action == 'reset_trial':
+                        fn = getattr(database, 'reset_trial_for_user', None)
+                        if fn is None:
+                            return jsonify({"ok": False,
+                                            "error": "Обновите data_manager/database.py"}), 500
+                        fn(uid); done += 1
+
+                    elif action == 'mark_trial_used':
+                        _exec_ok = False
+                        with sqlite3.connect(DB_FILE) as conn:
+                            conn.execute("UPDATE users SET trial_used = 1 WHERE telegram_id = ?", (uid,))
+                            conn.commit(); _exec_ok = True
+                        done += 1 if _exec_ok else 0
+
+                    elif action == 'reset_cooldown':
+                        fn = getattr(database, 'clear_subscription_reset_for_user', None)
+                        if fn is None:
+                            return jsonify({"ok": False,
+                                            "error": "Обновите data_manager/database.py"}), 500
+                        affected = fn(uid)
+                        if affected:
+                            done += 1
+                        else:
+                            skipped += 1
+
+                    elif action == 'ban':
+                        ban_user(uid); done += 1
+
+                    elif action == 'unban':
+                        unban_user(uid); done += 1
+
+                    elif action == 'refresh_username':
+                        username, status = _fetch_telegram_username(bot, uid, loop)
+                        if status == 'error':
+                            failed += 1
+                            continue
+                        result = rw_repo.set_username(uid, username, source='telegram')
+                        if result.get('changed'):
+                            done += 1
+                            try:
+                                _sync_username_to_remnawave(uid, result.get('current'))
+                            except Exception as e:
+                                logger.warning(f"Массовое действие: описание {uid}: {e}")
+                        else:
+                            skipped += 1
+                        time.sleep(0.05)
+
+                except Exception as e:
+                    logger.warning(f"Массовое действие {action} для {uid}: {e}")
+                    failed += 1
+
+            logger.info(f"Массовое действие '{action}': выполнено {done}, "
+                        f"без изменений {skipped}, ошибок {failed} (из {len(user_ids)})")
+
+            titles = {
+                'reset_trial': 'Пробный период сброшен',
+                'mark_trial_used': 'Пробный период отмечен использованным',
+                'reset_cooldown': 'Ограничение снято',
+                'ban': 'Пользователи заблокированы',
+                'unban': 'Пользователи разблокированы',
+                'refresh_username': 'Имена обновлены',
+            }
+            message = f"{titles[action]}: {done} из {len(user_ids)}"
+            if skipped:
+                message += f", без изменений {skipped}"
+            if failed:
+                message += f", ошибок {failed}"
+
+            return jsonify({
+                "ok": True, "action": action, "total": len(user_ids),
+                "done": done, "skipped": skipped, "failed": failed,
+                "message": message,
+            })
+        except Exception as e:
+            logger.error(f"Ошибка массового действия: {e}", exc_info=True)
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
+    @flask_app.route('/users/<int:user_id>/reset-cooldown', methods=['POST'])
+    @login_required
+    def reset_user_subscription_cooldown_route(user_id: int):
+        """Снимает ограничение по частоте пересоздания подписок пользователя."""
+        from shop_bot.data_manager import database
+        try:
+            user = get_user(user_id)
+            if not user:
+                return jsonify({"ok": False, "error": "Пользователь не найден"}), 404
+
+            fn = getattr(database, "clear_subscription_reset_for_user", None)
+            if fn is None:
+                return jsonify({"ok": False, "error": "Обновите data_manager/database.py"}), 500
+
+            affected = fn(user_id)
+            logger.info(f"Админ снял кулдаун пересоздания подписок пользователю {user_id} ({affected} шт.)")
+            return jsonify({
+                "ok": True,
+                "affected": affected,
+                "message": ("Ограничение снято" if affected else "Ограничение и так не действовало")
+            })
+        except Exception as e:
+            logger.error(f"Ошибка снятия кулдауна {user_id}: {e}", exc_info=True)
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
+    @flask_app.route('/users/<int:user_id>/delete', methods=['POST'])
+    @login_required
+    def delete_user_route(user_id: int):
+        """
+        Полностью удаляет пользователя из БД вместе с его подписками.
+        Требует подтверждения: клиент присылает имя пользователя, оно
+        должно совпасть с тем, что записано в базе.
+        """
+        from shop_bot.data_manager import database
+        try:
+            user = get_user(user_id)
+            if not user:
+                return jsonify({"ok": False, "error": "Пользователь не найден"}), 404
+
+            payload = request.get_json(silent=True) or {}
+            typed = (payload.get('confirm_name') or '').strip()
+
+            expected = (user.get('username') or '').strip()
+            # у пользователя может не быть username — тогда сверяем по ID
+            fallback = str(user_id)
+            valid = {v.lower().lstrip('@') for v in (expected, fallback) if v}
+
+            if not typed or typed.lower().lstrip('@') not in valid:
+                return jsonify({
+                    "ok": False,
+                    "error": "Имя не совпадает. Введите точное имя пользователя."
+                }), 400
+
+            # сначала снимаем ключи с панели Remnawave
+            revoked, total = 0, 0
+            try:
+                keys = get_user_keys(user_id) or []
+                total = len(keys)
+                for key in keys:
+                    try:
+                        if asyncio.run(remnawave_api.delete_client_on_host(
+                                key.get('host_name'), key.get('key_email'))):
+                            revoked += 1
+                    except Exception as e:
+                        logger.warning(f"Удаление пользователя {user_id}: не удалось снять ключ "
+                                       f"{key.get('key_id')}: {e}")
+            except Exception as e:
+                logger.warning(f"Удаление пользователя {user_id}: не удалось получить ключи: {e}")
+
+            try:
+                delete_user_keys(user_id)
+            except Exception as e:
+                logger.warning(f"Удаление пользователя {user_id}: не удалось удалить ключи из БД: {e}")
+
+            deleted = database.delete_user(user_id)
+            if not deleted:
+                return jsonify({"ok": False, "error": "Не удалось удалить пользователя"}), 500
+
+            logger.info(f"Админ удалил пользователя {user_id} (ключей снято {revoked}/{total})")
+            return jsonify({
+                "ok": True,
+                "message": f"Пользователь удалён. Ключей снято: {revoked} из {total}."
+            })
+        except Exception as e:
+            logger.error(f"Ошибка удаления пользователя {user_id}: {e}", exc_info=True)
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
+    @flask_app.route('/users/<int:user_id>/keys/<int:key_id>/reset-subscription', methods=['POST'])
+    @login_required
+    def reset_user_subscription_route(user_id: int, key_id: int):
+        """
+        Пересоздаёт ссылку подписки пользователя из админ-панели.
+        Частоту у админа не ограничиваем (это ручное действие поддержки),
+        но момент сброса пишем в общий счётчик, чтобы пользователь сразу
+        следом не сбросил подписку ещё раз.
+        """
+        from shop_bot.data_manager import database
+        try:
+            key = rw_repo.get_key_by_id(key_id)
+            if not key or key.get('user_id') != user_id:
+                return jsonify({"ok": False, "error": "Подписка не найдена"}), 404
+
+            client_uuid = key.get('remnawave_user_uuid')
+            host_name = key.get('host_name')
+            if not client_uuid:
+                return jsonify({"ok": False, "error": "Подписка не привязана к серверу"}), 400
+
+            result = asyncio.run(
+                remnawave_api.revoke_subscription_on_host(client_uuid, host_name=host_name)
+            )
+            if not result:
+                return jsonify({"ok": False, "error": "Панель Remnawave не приняла запрос"}), 502
+
+            database.mark_subscription_reset(key_id)
+
+            new_sub_url = remnawave_api.extract_subscription_url(result) or ''
+            new_short_uuid = result.get('shortUuid')
+            try:
+                rw_repo.update_key(key_id, subscription_url=new_sub_url, short_uuid=new_short_uuid)
+            except Exception as e:
+                logger.warning(f"Не удалось сохранить новую ссылку подписки {key_id}: {e}")
+
+            logger.info(f"Админ пересоздал подписку {key_id} пользователя {user_id}")
+
+            # уведомляем владельца подписки в боте
+            try:
+                bot = _bot_controller.get_bot_instance()
+                if bot:
+                    key_number = key.get('key_number') or key_id
+                    text = (
+                        f"🔄 <b>Подписка #{key_number} пересоздана</b>\n\n"
+                        "Ссылка обновлена администратором. Старая ссылка больше не работает.\n\n"
+                    )
+                    if new_sub_url:
+                        safe_url = html_escape.escape(new_sub_url)
+                        text += f"Новая ссылка:\n<pre><code>{safe_url}</code></pre>"
+                    else:
+                        text += "Откройте подписку в боте, чтобы получить новую ссылку."
+
+                    loop = current_app.config.get('EVENT_LOOP')
+                    if loop and loop.is_running():
+                        asyncio.run_coroutine_threadsafe(
+                            bot.send_message(chat_id=user_id, text=text, parse_mode='HTML',
+                                             disable_web_page_preview=True),
+                            loop
+                        )
+                    else:
+                        asyncio.run(bot.send_message(chat_id=user_id, text=text, parse_mode='HTML',
+                                                     disable_web_page_preview=True))
+            except Exception as e:
+                logger.warning(f"Не удалось уведомить пользователя {user_id} о сбросе подписки: {e}")
+
+            return jsonify({"ok": True, "subscription_url": new_sub_url})
+        except Exception as e:
+            logger.error(f"Ошибка пересоздания подписки {key_id}: {e}", exc_info=True)
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
 
 
     @flask_app.route('/users/<int:user_id>/referrals.json')
@@ -2452,12 +2992,264 @@ def create_webhook_app(bot_controller_instance):
                 return redirect(url_for('support_ticket_page', ticket_id=ticket_id))
 
         messages = get_ticket_messages(ticket_id)
-        
+        _attach_media_to_messages(messages)
+
         if request.args.get('partial') == 'true':
             return render_template('ticket.html', ticket=ticket, messages=messages, partial_mode=True)
 
         common_data = get_common_template_data()
         return render_template('ticket.html', ticket=ticket, messages=[], **common_data)
+
+    @flask_app.route('/support/<int:ticket_id>/attach', methods=['POST'])
+    @login_required
+    def support_ticket_attach(ticket_id: int):
+        """
+        Отправляет файл пользователю в чат поддержки.
+
+        Файл проходит те же проверки формата и размера, что и вложения от
+        пользователя, ложится в общее хранилище и уходит в Telegram —
+        так переписка остаётся целой с обеих сторон.
+        """
+        from shop_bot.data_manager import support_media as media_store
+        from aiogram.types import FSInputFile
+
+        try:
+            ticket = get_ticket(ticket_id)
+            if not ticket:
+                return jsonify({"ok": False, "error": "Тикет не найден"}), 404
+
+            upload = request.files.get('file')
+            if not upload or not upload.filename:
+                return jsonify({"ok": False, "error": "Файл не выбран"}), 400
+
+            data = upload.read()
+            ok, err, ext = media_store.validate(upload.filename, upload.mimetype, len(data))
+            if not ok:
+                return jsonify({"ok": False, "error": err}), 400
+
+            local = media_store.save_bytes(ticket_id, data, ext)
+            if not local:
+                return jsonify({"ok": False, "error": "Не удалось сохранить файл"}), 500
+
+            kind = media_store.kind_for_ext(ext)
+            caption = (request.form.get('message') or '').strip()
+            label = {"photo": "[Фото]", "video": "[Видео]"}.get(kind, f"[Документ: {upload.filename}]")
+            content = f"{label} {caption}".strip()
+
+            message_row_id = add_support_message(ticket_id, sender='admin', content=content)
+
+            file_id = None
+            try:
+                bot = _support_bot_controller.get_bot_instance()
+                loop = current_app.config.get('EVENT_LOOP')
+                path = media_store.abs_path(local)
+
+                if bot and loop and loop.is_running() and path:
+                    input_file = FSInputFile(str(path), filename=upload.filename)
+                    text = "💬 Файл от технической поддержки"
+                    if caption:
+                        text += f"\n{caption}"
+
+                    if kind == "photo":
+                        coro = bot.send_photo(chat_id=int(ticket['user_id']), photo=input_file, caption=text)
+                    elif kind == "video":
+                        coro = bot.send_video(chat_id=int(ticket['user_id']), video=input_file, caption=text)
+                    else:
+                        coro = bot.send_document(chat_id=int(ticket['user_id']), document=input_file, caption=text)
+
+                    sent = asyncio.run_coroutine_threadsafe(coro, loop).result(timeout=60)
+
+                    if getattr(sent, "photo", None):
+                        file_id = sent.photo[-1].file_id
+                    elif getattr(sent, "video", None):
+                        file_id = sent.video.file_id
+                    elif getattr(sent, "document", None):
+                        file_id = sent.document.file_id
+                else:
+                    logger.info("Вложение поддержки: support-бот не запущен, файл сохранён только локально")
+            except Exception as e:
+                logger.warning(f"Вложение поддержки: не удалось отправить файл пользователю: {e}")
+
+            rw_repo_db.add_support_media(
+                ticket_id,
+                message_id=message_row_id,
+                sender='admin',
+                kind=kind,
+                file_id=file_id,
+                local_path=local,
+                file_name=upload.filename,
+                mime_type=upload.mimetype,
+                file_size=len(data),
+            )
+
+            # дублируем в тему форума, если она заведена
+            try:
+                forum_chat_id = ticket.get('forum_chat_id')
+                thread_id = ticket.get('message_thread_id')
+                bot = _support_bot_controller.get_bot_instance()
+                loop = current_app.config.get('EVENT_LOOP')
+                path = media_store.abs_path(local)
+                if bot and loop and loop.is_running() and forum_chat_id and thread_id and path:
+                    mirror = FSInputFile(str(path), filename=upload.filename)
+                    asyncio.run_coroutine_threadsafe(
+                        bot.send_document(chat_id=int(forum_chat_id),
+                                          message_thread_id=int(thread_id),
+                                          document=mirror,
+                                          caption=f"💬 Файл отправлен пользователю (тикет #{ticket_id})"),
+                        loop)
+            except Exception as e:
+                logger.warning(f"Вложение поддержки: не удалось отзеркалить в форум: {e}")
+
+            delivered = file_id is not None
+            return jsonify({
+                "ok": True,
+                "delivered": delivered,
+                "message": "Файл отправлен" if delivered else "Файл сохранён, но не доставлен в Telegram",
+            })
+        except Exception as e:
+            logger.error(f"Ошибка отправки вложения в тикет {ticket_id}: {e}", exc_info=True)
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
+    @flask_app.route('/support/media')
+    @login_required
+    def support_media_page():
+        """Обзор хранилища вложений: что занято и чем можно почистить."""
+        from shop_bot.data_manager import support_media as media_store
+        try:
+            stats = rw_repo_db.get_support_media_stats()
+            disk = media_store.disk_usage()
+            items = rw_repo_db.list_support_media(limit=100, offset=0) or []
+            cfg = rw_repo_db.get_support_media_settings()
+        except Exception as e:
+            logger.error(f"Ошибка страницы вложений: {e}", exc_info=True)
+            stats, disk, items, cfg = {}, {}, [], {}
+
+        common_data = get_common_template_data()
+        return render_template('support_media.html', stats=stats, disk=disk,
+                               items=items, cfg=cfg,
+                               human=media_store.human_size, **common_data)
+
+
+    @flask_app.route('/support/media/cleanup', methods=['POST'])
+    @login_required
+    def support_media_cleanup():
+        """Очистка вложений: осиротевшие, старые или всё сразу."""
+        from shop_bot.data_manager import support_media as media_store
+        try:
+            payload = request.get_json(silent=True) or {}
+            mode = (payload.get('mode') or 'orphan').strip()
+
+            if mode == 'orphan':
+                result = media_store.cleanup(orphan_only=True)
+            elif mode == 'old':
+                days = int(payload.get('days') or rw_repo_db.get_support_media_settings().get('keep_days') or 30)
+                if days <= 0:
+                    return jsonify({"ok": False, "error": "Укажите срок хранения больше нуля"}), 400
+                result = media_store.cleanup(older_than_days=days)
+            elif mode == 'stray':
+                result = {"records": 0, "files": 0, "freed_bytes": 0,
+                          "stray": media_store.purge_stray_files()}
+            else:
+                return jsonify({"ok": False, "error": "Неизвестный режим очистки"}), 400
+
+            freed = media_store.human_size(result.get('freed_bytes', 0))
+            message = (f"Удалено записей: {result.get('records', 0)}, "
+                       f"файлов: {result.get('files', 0)}, освобождено {freed}")
+            if result.get('stray'):
+                message += f", бесхозных файлов: {result['stray']}"
+
+            logger.info(f"Очистка вложений ({mode}): {message}")
+            return jsonify({"ok": True, "message": message, **result})
+        except Exception as e:
+            logger.error(f"Ошибка очистки вложений: {e}", exc_info=True)
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
+    @flask_app.route('/support/media/<int:media_id>/delete', methods=['POST'])
+    @login_required
+    def support_media_delete(media_id: int):
+        from shop_bot.data_manager import support_media as media_store
+        try:
+            row = rw_repo_db.delete_support_media(media_id)
+            if not row:
+                return jsonify({"ok": False, "error": "Вложение не найдено"}), 404
+            media_store.delete_file(row.get('local_path'))
+            return jsonify({"ok": True, "message": "Вложение удалено"})
+        except Exception as e:
+            logger.error(f"Ошибка удаления вложения {media_id}: {e}")
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
+    @flask_app.route('/support/media/usage.json')
+    @login_required
+    def support_media_usage():
+        from shop_bot.data_manager import support_media as media_store
+        try:
+            disk = media_store.disk_usage()
+            return jsonify({"ok": True, "files": disk["files"],
+                            "bytes": disk["bytes"],
+                            "human": media_store.human_size(disk["bytes"])})
+        except Exception:
+            return jsonify({"ok": False, "human": "—"}), 500
+
+
+    @flask_app.route('/support/media/<int:media_id>')
+    @login_required
+    def support_media_file(media_id: int):
+        """
+        Отдаёт вложение админу. Сначала пробуем локальную копию, а если её
+        нет (не скачалась или почистили) — тянем из Telegram по file_id и
+        заодно сохраняем локально, чтобы в следующий раз было быстро.
+        """
+        from shop_bot.data_manager import support_media as media_store
+        row = rw_repo_db.get_support_media(media_id)
+        if not row:
+            return jsonify({"error": "not_found"}), 404
+
+        path = media_store.abs_path(row.get('local_path'))
+
+        if path is None and row.get('file_id'):
+            try:
+                bot = _support_bot_controller.get_bot_instance() or _bot_controller.get_bot_instance()
+                loop = current_app.config.get('EVENT_LOOP')
+                if bot and loop and loop.is_running():
+                    ext = media_store.guess_ext(row.get('file_name'), row.get('mime_type'))
+                    future = asyncio.run_coroutine_threadsafe(
+                        media_store.download_from_telegram(
+                            bot, row['file_id'], int(row['ticket_id']), ext),
+                        loop)
+                    local, size = future.result(timeout=30)
+                    if local:
+                        rw_repo_db.update_support_media_path(media_id, local, size)
+                        path = media_store.abs_path(local)
+            except Exception as e:
+                logger.warning(f"Медиа {media_id}: не удалось дозагрузить из Telegram: {e}")
+
+        if path is None:
+            return jsonify({"error": "file_missing"}), 404
+
+        return send_file(
+            str(path),
+            mimetype=row.get('mime_type') or None,
+            download_name=row.get('file_name') or path.name,
+            as_attachment=bool(request.args.get('download')),
+            conditional=True,
+        )
+
+
+    def _attach_media_to_messages(messages: list) -> None:
+        """Дописывает каждому сообщению список его вложений (одним запросом)."""
+        try:
+            ids = [m.get('message_id') for m in (messages or []) if m.get('message_id')]
+            grouped = rw_repo_db.get_media_for_messages(ids) if ids else {}
+            for m in messages or []:
+                m['media'] = grouped.get(int(m.get('message_id') or 0), [])
+        except Exception as e:
+            logger.warning(f"Не удалось подтянуть вложения к сообщениям: {e}")
+            for m in messages or []:
+                m.setdefault('media', [])
+
 
     @flask_app.route('/support/<int:ticket_id>/messages.json')
     @login_required
@@ -2466,11 +3258,22 @@ def create_webhook_app(bot_controller_instance):
         if not ticket:
             return jsonify({"error": "not_found"}), 404
         messages = get_ticket_messages(ticket_id) or []
+        _attach_media_to_messages(messages)
         items = [
             {
                 "sender": m.get('sender'),
                 "content": m.get('content'),
-                "created_at": m.get('created_at')
+                "created_at": m.get('created_at'),
+                "media": [
+                    {
+                        "id": a.get('media_id'),
+                        "kind": a.get('kind'),
+                        "name": a.get('file_name'),
+                        "size": a.get('file_size'),
+                        "url": url_for('support_media_file', media_id=a.get('media_id')),
+                    }
+                    for a in (m.get('media') or [])
+                ],
             }
             for m in messages
         ]
