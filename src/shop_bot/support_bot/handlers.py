@@ -114,6 +114,14 @@ def get_support_router() -> Router:
         text = (message.text or message.caption or "").strip()
         if message.photo: return f"[Фото] {text}".strip()
         if message.video: return f"[Видео] {text}".strip()
+        if message.voice: return f"[Голосовое] {text}".strip()
+        if message.video_note: return "[Кружок]"
+        if message.audio:
+            name = getattr(message.audio, "file_name", None) or "аудио"
+            return f"[Документ: {name}] {text}".strip()
+        if message.document:
+            name = getattr(message.document, "file_name", None) or "файл"
+            return f"[Документ: {name}] {text}".strip()
         return text
 
     def _support_contact_markup() -> types.InlineKeyboardMarkup | None:
@@ -490,9 +498,100 @@ def get_support_router() -> Router:
         except Exception:
             pass
 
+    async def _persist_attachments(bot: Bot, message: types.Message, ticket_id: int,
+                                   message_row_id: int | None, sender: str = "user") -> int:
+        """
+        Сохраняет вложения из сообщения Telegram: file_id в БД сразу,
+        локальную копию — следом. Если скачать не вышло, запись всё равно
+        остаётся: файл потом доступен по file_id.
+        """
+        from shop_bot.data_manager import support_media as media_store
+        from shop_bot.data_manager.database import add_support_media, get_support_media_settings
+
+        cfg = get_support_media_settings()
+        if not cfg["enabled"]:
+            return 0
+
+        items = []
+        if message.photo:
+            biggest = message.photo[-1]
+            items.append(dict(kind="photo", file_id=biggest.file_id,
+                              file_unique_id=biggest.file_unique_id,
+                              size=getattr(biggest, "file_size", 0) or 0,
+                              name=None, mime="image/jpeg",
+                              width=getattr(biggest, "width", None),
+                              height=getattr(biggest, "height", None)))
+        if message.video:
+            v = message.video
+            items.append(dict(kind="video", file_id=v.file_id, file_unique_id=v.file_unique_id,
+                              size=getattr(v, "file_size", 0) or 0,
+                              name=getattr(v, "file_name", None),
+                              mime=getattr(v, "mime_type", "video/mp4"),
+                              width=getattr(v, "width", None), height=getattr(v, "height", None)))
+        if message.voice:
+            v = message.voice
+            items.append(dict(kind="voice", file_id=v.file_id, file_unique_id=v.file_unique_id,
+                              size=getattr(v, "file_size", 0) or 0,
+                              name="voice.ogg",
+                              mime=getattr(v, "mime_type", None) or "audio/ogg",
+                              width=None, height=None))
+        if message.video_note:
+            n = message.video_note
+            items.append(dict(kind="video_note", file_id=n.file_id, file_unique_id=n.file_unique_id,
+                              size=getattr(n, "file_size", 0) or 0,
+                              name="circle.mp4", mime="video/mp4",
+                              width=getattr(n, "length", None), height=getattr(n, "length", None)))
+        if message.audio:
+            a = message.audio
+            items.append(dict(kind="audio", file_id=a.file_id, file_unique_id=a.file_unique_id,
+                              size=getattr(a, "file_size", 0) or 0,
+                              name=getattr(a, "file_name", None) or "audio.mp3",
+                              mime=getattr(a, "mime_type", None) or "audio/mpeg",
+                              width=None, height=None))
+        if message.document:
+            d = message.document
+            items.append(dict(kind="document", file_id=d.file_id, file_unique_id=d.file_unique_id,
+                              size=getattr(d, "file_size", 0) or 0,
+                              name=getattr(d, "file_name", None),
+                              mime=getattr(d, "mime_type", None), width=None, height=None))
+
+        saved = 0
+        for it in items:
+            ok, err, ext = media_store.validate(it["name"], it["mime"], it["size"], it["kind"])
+            if not ok:
+                try:
+                    await message.answer(f"⚠️ Вложение не сохранено: {err}")
+                except Exception:
+                    pass
+                continue
+
+            local, real_size = await media_store.download_from_telegram(
+                bot, it["file_id"], ticket_id, ext)
+
+            add_support_media(
+                ticket_id,
+                message_id=message_row_id,
+                sender=sender,
+                kind=it["kind"],
+                file_id=it["file_id"],
+                file_unique_id=it["file_unique_id"],
+                local_path=local,
+                file_name=it["name"],
+                mime_type=it["mime"],
+                file_size=real_size or it["size"],
+                width=it["width"],
+                height=it["height"],
+            )
+            saved += 1
+        return saved
+
     async def _process_ticket_message_flow(bot: Bot, message: types.Message, state: FSMContext, ticket_id: int, subject: str, created_new: bool):
         content = _extract_content(message)
-        add_support_message(ticket_id, sender="user", content=content)
+        message_row_id = add_support_message(ticket_id, sender="user", content=content)
+        try:
+            await _persist_attachments(bot, message, ticket_id, message_row_id, sender="user")
+        except Exception as e:
+            logger.warning(f"Не удалось сохранить вложения тикета {ticket_id}: {e}")
         
         forum_chat_id, thread_id = await _ensure_forum_topic(bot, ticket_id, subject, message.from_user)
         if forum_chat_id and thread_id:
@@ -813,9 +912,14 @@ def get_support_router() -> Router:
                 pass
             if not (is_admin_by_setting or is_admin_in_chat):
                 return
-            content = (message.text or message.caption or "").strip()
-            if content:
-                add_support_message(ticket_id=int(ticket['ticket_id']), sender='admin', content=content)
+            content = _extract_content(message)
+            if (content or message.photo or message.video or message.document
+                    or message.voice or message.video_note or message.audio):
+                mid = add_support_message(ticket_id=int(ticket['ticket_id']), sender='admin', content=content)
+                try:
+                    await _persist_attachments(bot, message, int(ticket['ticket_id']), mid, sender='admin')
+                except Exception as e:
+                    logger.warning(f"Не удалось сохранить вложения ответа админа: {e}")
             await _send_admin_reply_to_user(bot, user_id, int(ticket['ticket_id']), message, content)
         except Exception as e:
             logger.warning(f"Не удалось передать сообщение темы форума: {e}")
@@ -993,8 +1097,12 @@ def get_support_router() -> Router:
 
         user_id = int(ticket['user_id'])
         
-        add_support_message(ticket_id=ticket_id, sender='admin', content=content)
-        
+        _admin_msg_id = add_support_message(ticket_id=ticket_id, sender='admin', content=content)
+        try:
+            await _persist_attachments(bot, message, ticket_id, _admin_msg_id, sender='admin')
+        except Exception as e:
+            logger.warning(f"Не удалось сохранить вложения ответа админа: {e}")
+
         try:
             await _send_admin_reply_to_user(bot, user_id, ticket_id, message, content)
         except Exception as e:

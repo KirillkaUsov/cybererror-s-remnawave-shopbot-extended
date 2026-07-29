@@ -53,9 +53,9 @@ def create_main_menu_keyboard(user_keys: list, trial_available: bool, is_admin: 
     
     keys_count = len(user_keys) if user_keys else 0
     builder.button(text=_setting_button_text("btn_profile", "👤 Мой профиль"), callback_data="show_profile", **_setting_button_extra("btn_profile"))
-    builder.button(text=_setting_button_text("btn_my_keys", "🔑 Мои ключи", f" ({keys_count})"), callback_data="manage_keys", **_setting_button_extra("btn_my_keys"))
+    builder.button(text=_setting_button_text("btn_my_keys", "🔑 Мои подписки", f" ({keys_count})"), callback_data="manage_keys", **_setting_button_extra("btn_my_keys"))
     
-    builder.button(text=_setting_button_text("btn_buy_key", "🛒 Купить ключ"), callback_data="buy_new_key", **_setting_button_extra("btn_buy_key"))
+    builder.button(text=_setting_button_text("btn_buy_key", "🛒 Перейти к тарифам"), callback_data="buy_new_key", **_setting_button_extra("btn_buy_key"))
     topup_suffix = f" ({int(balance)})" if balance > 0 else ""
     builder.button(text=_setting_button_text("btn_topup", "💳 Пополнить баланс", topup_suffix), callback_data="top_up_start", **_setting_button_extra("btn_topup"))
     
@@ -185,13 +185,22 @@ def create_admin_user_keys_keyboard(user_id: int, keys: list[dict]) -> InlineKey
 def create_admin_key_actions_keyboard(key_id: int, user_id: int | None = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="➕ Добавить дни", callback_data=f"admin_key_extend_{key_id}")
+    builder.button(text="🔄 Пересоздать подписку", callback_data=f"admin_key_reset_{key_id}")
     builder.button(text="🗑 Удалить ключ", callback_data=f"admin_key_delete_{key_id}")
     builder.button(text="⬅️ Назад к ключам", callback_data=f"admin_key_back_{key_id}")
     if user_id is not None:
         builder.button(text="👤 Перейти к пользователю", callback_data=f"admin_view_user_{user_id}")
-        builder.adjust(2, 2)
+        builder.adjust(1, 1, 2, 1)
     else:
-        builder.adjust(2, 1)
+        builder.adjust(1, 1, 2)
+    return builder.as_markup()
+
+
+def create_admin_reset_subscription_confirm_keyboard(key_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⚠️ Да, пересоздать", callback_data=f"admin_key_reset_confirm_{key_id}")
+    builder.button(text="❌ Отмена", callback_data=f"admin_edit_key_{key_id}")
+    builder.adjust(1)
     return builder.as_markup()
 
 def create_admin_delete_key_confirm_keyboard(key_id: int) -> InlineKeyboardMarkup:
@@ -448,7 +457,7 @@ def create_device_tiers_keyboard(tiers: list[dict], host_name: str, plan_id: int
 
     builder = InlineKeyboardBuilder()
     base_icon = "🟢" if selected_tier_id == 0 else "⚪️"
-    builder.button(text=f"{base_icon} {base_devices} (вкл.)", callback_data="select_tier_0")
+    builder.button(text=f"{base_icon} {base_devices} (включено)", callback_data="select_tier_0")
     total_btns = 1
     for t in tiers:
         is_selected = (selected_tier_id == t['tier_id'])
@@ -681,11 +690,11 @@ def create_keys_management_keyboard(keys: list) -> InlineKeyboardMarkup:
             
             time_str = get_time_str(expiry_dt)
 
-            # button_text = f"{status_icon} Ключ #{i+1} ({host_name}) {time_str}"
+            # button_text = f"{status_icon} Подписка #{i+1} ({host_name}) {time_str}"
             button_text = f"{status_icon} #{i+1} ({host_name}) {time_str}"
             builder.button(text=button_text, callback_data=f"show_key_{key['key_id']}")
             
-    builder.button(text=_setting_button_text("btn_buy_key", "🛒 Купить ключ"), callback_data="buy_new_key", **_setting_button_extra("btn_buy_key"))
+    builder.button(text=_setting_button_text("btn_buy_key", "🛒 Перейти к тарифам"), callback_data="buy_new_key", **_setting_button_extra("btn_buy_key"))
     builder.button(text=_setting_button_text("btn_back_to_menu", "⬅️ Назад в меню"), callback_data="back_to_main_menu", **_setting_button_extra("btn_back_to_menu"))
     builder.adjust(1)
     return builder.as_markup()
@@ -698,7 +707,7 @@ def create_key_info_keyboard(key_id: int, connection_string: str | None = None) 
         builder.button(text="📲 Подключиться", web_app=WebAppInfo(url=connection_string))
         layout.append(1)
         
-    builder.button(text="➕ Продлить ключ", callback_data=f"extend_key_{key_id}")
+    builder.button(text="➕ Продлить подписку", callback_data=f"extend_key_{key_id}")
     layout.append(1)
     
     builder.button(text="📱 Устройства", callback_data=f"key_devices_{key_id}")
@@ -708,16 +717,26 @@ def create_key_info_keyboard(key_id: int, connection_string: str | None = None) 
     builder.button(text="📖 Инструкция", callback_data=f"howto_vless_{key_id}")
     builder.button(text="📝 Комментарий", callback_data=f"key_comments_{key_id}")
     layout.append(2)
+
+    builder.button(text="🔄 Пересоздать подписку", callback_data=f"reset_sub_confirm_{key_id}")
+    layout.append(1)
     
-    builder.button(text="⬅️ Назад к списку ключей", callback_data="manage_keys")
+    builder.button(text="⬅️ Назад к списку подписок", callback_data="manage_keys")
     layout.append(1)
     
     builder.adjust(*layout) 
     return builder.as_markup()
 
+def create_reset_subscription_confirm_keyboard(key_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⚠️ Да, пересоздать ссылку", callback_data=f"reset_sub_do_{key_id}")
+    builder.button(text="Отмена", callback_data=f"show_key_{key_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
 def create_qr_keyboard(key_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="⬅️ Назад к ключу", callback_data=f"show_key_{key_id}")
+    builder.button(text="⬅️ Назад к подписке", callback_data=f"show_key_{key_id}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -754,7 +773,7 @@ def create_devices_list_keyboard(devices: list, key_id: int, page: int = 0, tota
     if row_btns:
         markup.inline_keyboard.append(row_btns)
         
-    markup.inline_keyboard.append([InlineKeyboardButton(text="⬅️ Назад к ключу", callback_data=f"show_key_{key_id}")])
+    markup.inline_keyboard.append([InlineKeyboardButton(text="⬅️ Назад к подписке", callback_data=f"show_key_{key_id}")])
     
     return markup
 
@@ -774,7 +793,7 @@ def create_howto_vless_keyboard_key(key_id: int) -> InlineKeyboardMarkup:
     builder.button(text="📱 iOS", callback_data="howto_ios")
     builder.button(text="💻 Windows", callback_data="howto_windows")
     builder.button(text="🐧 Linux", callback_data="howto_linux")
-    builder.button(text="⬅️ Назад к ключу", callback_data=f"show_key_{key_id}")
+    builder.button(text="⬅️ Назад к подписке", callback_data=f"show_key_{key_id}")
     builder.adjust(2, 2, 1)
     return builder.as_markup()
 
@@ -797,14 +816,14 @@ def create_uni_promo_keys_keyboard(keys: list, code: str) -> InlineKeyboardMarku
     builder = InlineKeyboardBuilder()
     for i, key in enumerate(keys):
         host_name = key.get('host_name', 'Неизвестный хост')
-        builder.button(text=f"Ключ #{i+1} ({host_name})", callback_data=f"apply_uni_{code}_{key['key_id']}")
+        builder.button(text=f"Подписка #{i+1} ({host_name})", callback_data=f"apply_uni_{code}_{key['key_id']}")
     builder.button(text="❌ Отмена", callback_data="show_profile")
     builder.adjust(1)
     return builder.as_markup()
 
 def create_key_comments_keyboard(key_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="⬅️ Назад к ключу", callback_data=f"show_key_{key_id}")
+    builder.button(text="⬅️ Назад к подписке", callback_data=f"show_key_{key_id}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -1143,6 +1162,8 @@ def create_dynamic_support_menu_keyboard() -> InlineKeyboardMarkup:
 
 def create_dynamic_key_info_keyboard(key_id: int, connection_string: str | None = None) -> InlineKeyboardMarkup:
     """Create key info keyboard using dynamic configuration"""
+    # Состав кнопок целиком задаётся конструктором в админ-панели,
+    # включая «Пересоздать подписку» (button_id = reset_sub).
     return create_dynamic_keyboard("key_info_menu", key_id=key_id, connection_string=connection_string)
 
 def create_back_to_profile_keyboard() -> InlineKeyboardMarkup:

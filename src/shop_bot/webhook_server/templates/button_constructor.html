@@ -37,7 +37,7 @@
                         <option value="admin_menu">Админ меню</option>
                         <option value="profile_menu">Меню профиля</option>
                         <option value="support_menu">Меню поддержки</option>
-                        <option value="key_info_menu">Информация о ключе</option>
+                        <option value="key_info_menu">Информация о подписке</option>
                     </select>
                 </div>
             </div>
@@ -301,10 +301,10 @@
                     нему бот определяет, какое действие совершить или какое меню вызвать при нажатии.
                     <br><br>
                     Примеры кнопок: <br>
-                    <span class="text-white px-1">⬅️ К списку ключей</span> - callback_data = <span
+                    <span class="text-white px-1">⬅️ К списку подписок</span> - callback_data = <span
                         class="text-yellow-400 font-bold">"manage_keys"</span>;
                     <br> и так же можно указать: <br>
-                    <span class="text-white px-1">🔑 Мои ключи</span> - callback_data = <span
+                    <span class="text-white px-1">🔑 Мои подписки</span> - callback_data = <span
                         class="text-yellow-400 font-bold">"manage_keys"</span>;
                 </p>
             </div>
@@ -665,17 +665,18 @@
         { m: 'admin_menu', id: 'users', t: '👥 Пользователи', c: 'admin_users', u: '' },
         { m: 'admin_menu', id: 'back_to_menu', t: '⬅️ Назад в меню', c: 'back_to_main_menu', u: '' },
         { m: 'key_info_menu', id: 'connect', t: '📲 Подключиться', c: '', u: '{connection_string}' },
-        { m: 'key_info_menu', id: 'extend', t: '➕ Продлить ключ', c: 'extend_key_{key_id}', u: '' },
+        { m: 'key_info_menu', id: 'extend', t: '➕ Продлить подписку', c: 'extend_key_{key_id}', u: '' },
         { m: 'key_info_menu', id: 'key_devices', t: '📱 Устройства', c: 'key_devices_{key_id}', u: '' },
         { m: 'key_info_menu', id: 'qr', t: '📱 QR-код', c: 'show_qr_{key_id}', u: '' },
         { m: 'key_info_menu', id: 'howto', t: '📖 Инструкция', c: 'howto_vless_{key_id}', u: '' },
         { m: 'key_info_menu', id: 'comment_key', t: '📝 Комментарий', c: 'key_comments_{key_id}', u: '' },
-        { m: 'key_info_menu', id: 'back', t: '⬅️ Назад к списку ключей', c: 'manage_keys', u: '' },
+        { m: 'key_info_menu', id: 'reset_sub', t: '🔄 Пересоздать подписку', c: 'reset_sub_confirm_{key_id}', u: '' },
+        { m: 'key_info_menu', id: 'back', t: '⬅️ Назад к списку подписок', c: 'manage_keys', u: '' },
         { m: 'main_menu', id: 'about', t: 'ℹ️ О проекте', c: 'show_about', u: '' },
         { m: 'main_menu', id: 'admin', t: '⚙️ Админка', c: 'admin_menu', u: '' },
         { m: 'main_menu', id: 'buy_key', t: '🛒 Купить', c: 'buy_new_key', u: '' },
         { m: 'main_menu', id: 'howto', t: '❓ Как использовать', c: 'howto_vless', u: '' },
-        { m: 'main_menu', id: 'my_keys', t: '🔑 Мои ключи ({len(user_keys)})', c: 'manage_keys', u: '' },
+        { m: 'main_menu', id: 'my_keys', t: '🔑 Мои подписки ({len(user_keys)})', c: 'manage_keys', u: '' },
         { m: 'main_menu', id: 'profile', t: '👤 Профиль', c: 'show_profile', u: '' },
         { m: 'main_menu', id: 'referral', t: '🤝 Реферальная программа', c: 'show_referral_program', u: '' },
         { m: 'main_menu', id: 'speed', t: '⚡ Скорость', c: 'user_speedtest_last', u: '' },
@@ -695,7 +696,7 @@
 
     const MENU_NAME_MAP = {
         'main_menu': 'Главное меню',
-        'key_info_menu': 'Информация о ключе',
+        'key_info_menu': 'Информация о подписке',
         'admin_menu': 'Админ меню',
         'profile_menu': 'Меню профиля',
         'support_menu': 'Меню поддержки'
@@ -1255,7 +1256,7 @@
                     'admin_menu': { title: '⚙️ Админ панель', subtitle: 'Административные функции:' },
                     'profile_menu': { title: '👤 Мой профиль', subtitle: 'Управление профилем:' },
                     'support_menu': { title: '🆘 Поддержка', subtitle: 'Система поддержки:' },
-                    'key_info_menu': { title: '🔑 Информация о ключе', subtitle: 'Управление ключом:' }
+                    'key_info_menu': { title: '🔑 Информация о подписке', subtitle: 'Управление подпиской:' }
                 };
                 const menuInfo = menuTitles[this.currentMenuType] || {
                     title: MENU_NAME_MAP[this.currentMenuType] || 'Меню',
@@ -1328,8 +1329,8 @@
             const descriptions = {
                 'main_menu': '🏠 Вернуться в главное меню',
                 'profile': '👤 Открыть профиль пользователя',
-                'my_keys': '🔑 Показать мои ключи',
-                'buy_key': '🛒 Купить новый ключ',
+                'my_keys': '🔑 Показать мои подписки',
+                'buy_key': '🛒 Купить новую подписку',
                 'top_up_balance': '💳 Пополнить баланс',
                 'referral_program': '🤝 Реферальная программа',
                 'support': '🆘 Система поддержки',
@@ -1342,7 +1343,11 @@
                 'admin_settings': '⚙️ Настройки системы',
                 'back_to_menu': '⬅️ Назад в меню',
                 'support_new_ticket': '📝 Создать новое обращение',
-                'support_my_tickets': '📋 Мои обращения'
+                'support_my_tickets': '📋 Мои обращения',
+                'reset_sub': '🔄 Пересоздать ссылку подписки (старая ссылка перестанет работать)',
+                'extend_key': '➕ Продлить подписку',
+                'key_devices': '📱 Список подключённых устройств',
+                'key_comments': '📝 Комментарий к подписке'
             };
 
             if (descriptions[callbackData]) return descriptions[callbackData];

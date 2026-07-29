@@ -498,6 +498,10 @@ def initialize_db():
                 "minimum_withdrawal": "100",
                 "admin_telegram_id": None,
                 "admin_telegram_ids": None,
+                "support_media_enabled": "true",
+                "support_media_max_mb": "10",
+                "support_media_allowed": "jpg,jpeg,png,webp,gif,mp4,mov,pdf",
+                "support_media_keep_days": "0",
                 "yookassa_shop_id": None,
                 "yookassa_secret_key": None,
                 "sbp_enabled": "false",
@@ -661,6 +665,38 @@ def _ensure_default_values(cursor: sqlite3.Cursor, table: str, defaults: dict) -
 
 
 # ===== _ENSURE_USERS_COLUMNS =====
+# Диапазон синтетических id, которые выдаются аккаунтам, заведённым по
+# почте (см. create_user_by_email). Настоящие Telegram id сюда не
+# попадают, но полагаться только на диапазон нельзя — он конечен,
+# поэтому основной источник правды это колонка tg_linked.
+SYNTHETIC_ID_MIN = 9_991_000_000
+SYNTHETIC_ID_MAX = 9_999_999_999
+
+
+def is_telegram_account(user) -> bool:
+    """
+    Привязан ли к аккаунту настоящий Telegram.
+
+    Принимает и словарь пользователя, и голый id. Колонка tg_linked
+    заполняется миграцией и при создании; если её почему-то нет,
+    откатываемся на проверку по диапазону синтетических id.
+    """
+    if isinstance(user, dict):
+        flag = user.get("tg_linked")
+        if flag is not None:
+            return bool(int(flag))
+        user_id = user.get("telegram_id")
+    else:
+        user_id = user
+
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return False
+
+    return uid > 0 and not (SYNTHETIC_ID_MIN <= uid <= SYNTHETIC_ID_MAX)
+
+
 def _ensure_users_columns(cursor: sqlite3.Cursor) -> None:
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
     if not cursor.fetchone(): return
@@ -675,9 +711,27 @@ def _ensure_users_columns(cursor: sqlite3.Cursor) -> None:
         "auth_token": "TEXT",
         "auth_email": "TEXT",
         "auth_pass": "TEXT",
+        # 1 — аккаунт заведён/привязан через Telegram, 0 — только почта.
+        # Раньше «телеграмность» определяли по знаку telegram_id, но
+        # create_user_by_email выдаёт положительные синтетические id вида
+        # 999XXXXXXX, поэтому проверка не срабатывала никогда.
+        "tg_linked": "INTEGER",
     }
     for column, definition in mapping.items():
         _ensure_table_column(cursor, "users", column, definition)
+
+    # Разовое заполнение для уже существующих записей: синтетический
+    # диапазон — почтовые аккаунты, всё остальное — настоящий Telegram.
+    try:
+        cursor.execute(
+            "UPDATE users SET tg_linked = CASE "
+            "WHEN telegram_id BETWEEN ? AND ? THEN 0 "
+            "WHEN telegram_id <= 0 THEN 0 ELSE 1 END "
+            "WHERE tg_linked IS NULL",
+            (SYNTHETIC_ID_MIN, SYNTHETIC_ID_MAX),
+        )
+    except sqlite3.Error as e:
+        logger.warning(f"Не удалось заполнить tg_linked: {e}")
 
 
 # =================================
@@ -988,10 +1042,14 @@ def run_migration():
             _ensure_support_tickets_columns(cursor)
             _ensure_vpn_keys_schema(cursor)
             _ensure_table_column(cursor, "vpn_keys", "comment_key", "TEXT")
+            # общий для бота, вебаппа и админки момент последнего пересоздания подписки
+            _ensure_table_column(cursor, "vpn_keys", "last_subscription_reset_at", "INTEGER")
             _ensure_ssh_targets_table(cursor)
             _ensure_host_speedtests_table(cursor)
             _ensure_resource_metrics_table(cursor)
             _ensure_gift_tokens_table(cursor)
+            _ensure_username_history_table(cursor)
+            _ensure_support_media_table(cursor)
             _ensure_promo_tables(cursor)
             _ensure_webapp_settings_table(cursor)
             try:
@@ -1036,6 +1094,7 @@ def run_migration():
             
             _ensure_pending_transactions_table(cursor)
             _ensure_default_button_configs(cursor)
+            _ensure_reset_subscription_button(cursor)
             
 
             try:
@@ -1085,8 +1144,8 @@ def _ensure_default_button_configs(cursor: sqlite3.Cursor) -> None:
         main_menu_buttons = [
             ("trial", "🎁 Попробовать бесплатно", "get_trial", 0, 0, 0, 2),
             ("profile", "👤 Мой профиль", "show_profile", 1, 0, 1, 1),
-            ("my_keys", "🔑 Мои ключи ({len(user_keys)})", "manage_keys", 1, 1, 2, 1),
-            ("buy_key", "🛒 Купить ключ", "buy_new_key", 2, 0, 3, 1),
+            ("my_keys", "🔑 Мои подписки ({len(user_keys)})", "manage_keys", 1, 1, 2, 1),
+            ("buy_key", "🛒 Купить подписку", "buy_new_key", 2, 0, 3, 1),
             ("topup", "💳 Пополнить баланс", "top_up_start", 2, 1, 4, 1),
             ("referral", "🤝 Реферальная программа", "show_referral_program", 3, 0, 5, 2),
             ("support", "🆘 Поддержка", "show_help", 4, 0, 6, 1),
@@ -1162,12 +1221,13 @@ def _ensure_default_button_configs(cursor: sqlite3.Cursor) -> None:
     if not menu_has_buttons("key_info_menu"):
         key_info_menu_buttons = [
             ("connect", "📲 Подключиться", None, "{connection_string}", 0, 0, 0, 2),
-            ("extend", "➕ Продлить ключ", "extend_key_{key_id}", None, 1, 0, 1, 2),
+            ("extend", "➕ Продлить подписку", "extend_key_{key_id}", None, 1, 0, 1, 2),
             ("key_devices", "📱 Устройства", "key_devices_{key_id}", None, 2, 0, 2, 1),
             ("qr", "📱 QR-код", "show_qr_{key_id}", None, 2, 1, 3, 1),
             ("howto", "📖 Инструкция", "howto_vless_{key_id}", None, 3, 0, 4, 1),
             ("comment_key", "📝 Комментарий", "key_comments_{key_id}", None, 3, 1, 5, 1),
-            ("back", "⬅️ Назад к списку ключей", "manage_keys", None, 4, 0, 6, 2),
+            ("reset_sub", "🔄 Пересоздать подписку", "reset_sub_confirm_{key_id}", None, 4, 0, 6, 2),
+            ("back", "⬅️ Назад к списку подписок", "manage_keys", None, 5, 0, 7, 2),
         ]
 
         for button_id, text, callback_data, url, row_pos, col_pos, sort_order, width in key_info_menu_buttons:
@@ -1179,6 +1239,43 @@ def _ensure_default_button_configs(cursor: sqlite3.Cursor) -> None:
 
 
 # ==========================================
+
+
+# ===== _ENSURE_RESET_SUBSCRIPTION_BUTTON =====
+def _ensure_reset_subscription_button(cursor: sqlite3.Cursor) -> None:
+    """
+    Точечная миграция: добавляет кнопку "Пересоздать подписку" в key_info_menu
+    для инсталляций, где это меню уже было засеяно раньше (до появления этой
+    кнопки) и поэтому не попадает под _ensure_default_button_configs.
+    Безопасна для повторного запуска.
+    """
+    try:
+        cursor.execute(
+            "SELECT 1 FROM button_configs WHERE menu_type = ? AND button_id = ? LIMIT 1",
+            ("key_info_menu", "reset_sub"),
+        )
+        if cursor.fetchone():
+            return
+
+        cursor.execute(
+            "SELECT COALESCE(MAX(row_position), -1), COALESCE(MAX(sort_order), -1) "
+            "FROM button_configs WHERE menu_type = ?",
+            ("key_info_menu",),
+        )
+        row = cursor.fetchone()
+        next_row = (row[0] if row and row[0] is not None else -1) + 1
+        next_sort = (row[1] if row and row[1] is not None else -1) + 1
+
+        cursor.execute("""
+            INSERT OR IGNORE INTO button_configs
+            (menu_type, button_id, text, callback_data, url, row_position, column_position, sort_order, button_width, is_active)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, 1)
+        """, ("key_info_menu", "reset_sub", "🔄 Пересоздать подписку", "reset_sub_confirm_{key_id}", next_row, 0, next_sort, 2))
+        logging.info("Миграция: в key_info_menu добавлена кнопка 'reset_sub' (Пересоздать подписку)")
+    except Exception as e:
+        logging.warning(f"Миграция: не удалось добавить кнопку reset_sub в key_info_menu: {e}")
+
+# ==============================================
 
 
 # ===== _ENSURE_SSH_TARGETS_TABLE =====
@@ -1220,6 +1317,56 @@ def _ensure_ssh_targets_table(cursor: sqlite3.Cursor) -> None:
 
 
 # ===== _ENSURE_GIFT_TOKENS_TABLE =====
+def _ensure_support_media_table(cursor: sqlite3.Cursor) -> None:
+    """
+    Вложения в тикетах поддержки.
+
+    Гибридное хранение: держим и file_id Telegram, и локальную копию.
+    file_id позволяет мгновенно переслать файл обратно в Telegram без
+    выгрузки, локальный файл — показать вложение в админ-панели и не
+    потерять его при смене токена бота.
+    """
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS support_media (
+            media_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_id INTEGER NOT NULL,
+            message_id INTEGER,
+            sender TEXT NOT NULL DEFAULT 'user',
+            kind TEXT NOT NULL DEFAULT 'photo',
+            file_id TEXT,
+            file_unique_id TEXT,
+            local_path TEXT,
+            file_name TEXT,
+            mime_type TEXT,
+            file_size INTEGER DEFAULT 0,
+            width INTEGER,
+            height INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    _ensure_index(cursor, "idx_support_media_ticket", "support_media", "ticket_id")
+    _ensure_index(cursor, "idx_support_media_message", "support_media", "message_id")
+
+
+def _ensure_username_history_table(cursor: sqlite3.Cursor) -> None:
+    """История имён пользователей: каждое обновление — новая запись."""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS username_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            username TEXT,
+            previous_username TEXT,
+            source TEXT DEFAULT 'telegram',
+            changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    _ensure_index(cursor, "idx_username_history_user", "username_history", "user_id")
+
+
 def _ensure_gift_tokens_table(cursor: sqlite3.Cursor) -> None:
     """Миграция для таблиц подарочных токенов."""
     cursor.execute(
@@ -2650,7 +2797,7 @@ def register_user_if_not_exists(telegram_id: int, username: str, referrer_id):
     
     if not row:
         _exec(
-            "INSERT INTO users (telegram_id, username, registration_date, referred_by) VALUES (?, ?, ?, ?)",
+            "INSERT INTO users (telegram_id, username, registration_date, referred_by, tg_linked) VALUES (?, ?, ?, ?, 1)",
             (telegram_id, username, get_msk_time().replace(tzinfo=None).replace(microsecond=0), referrer_id),
             f"Не удалось зарегистрировать пользователя {telegram_id}"
         )
@@ -2783,7 +2930,7 @@ def create_user_by_email(email: str, password_hash: str) -> dict | None:
             break
             
     cursor = _exec(
-        "INSERT INTO users (telegram_id, username, registration_date, auth_email, auth_pass) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO users (telegram_id, username, registration_date, auth_email, auth_pass, tg_linked) VALUES (?, ?, ?, ?, ?, 0)",
         (telegram_id, "", get_msk_time().replace(tzinfo=None).replace(microsecond=0), email.strip(), password_hash),
         f"Не удалось зарегистрировать пользователя {email}"
     )
@@ -2846,7 +2993,10 @@ def link_telegram_to_email_user(old_telegram_id: int, new_telegram_id: int, new_
                 
                 cursor.execute("DELETE FROM users WHERE telegram_id = ?", (old_telegram_id,))
             else:
-                cursor.execute("UPDATE users SET telegram_id = ?, username = ? WHERE telegram_id = ?", (new_telegram_id, new_username, old_telegram_id))
+                # tg_linked обязательно взводим здесь: без него привязанный
+                # аккаунт продолжал считаться веб-аккаунтом (нет пробного
+                # периода, в кабинете значилось «Без Telegram»)
+                cursor.execute("UPDATE users SET telegram_id = ?, username = ?, tg_linked = 1 WHERE telegram_id = ?", (new_telegram_id, new_username, old_telegram_id))
                 cursor.execute("UPDATE vpn_keys SET user_id = ? WHERE user_id = ?", (new_telegram_id, old_telegram_id))
                 cursor.execute("UPDATE transactions SET user_id = ? WHERE user_id = ?", (new_telegram_id, old_telegram_id))
                 cursor.execute("UPDATE pending_transactions SET user_id = ? WHERE user_id = ?", (new_telegram_id, old_telegram_id))
@@ -3263,6 +3413,237 @@ def get_key_by_remnawave_uuid(remnawave_uuid: str) -> dict | None:
 # ===========================
 
 
+# ===== USERNAME / ИСТОРИЯ ИМЁН =====
+# Подпись для пользователей без телеграм-username: их может не быть
+# у зарегистрировавшихся через мини-апп либо у скрывших имя.
+NO_USERNAME_LABEL = "Безымянный пользователь"
+
+
+def normalize_username(username: str | None) -> str | None:
+    """Приводит имя к каноничному виду: без @, пустое -> None."""
+    if username is None:
+        return None
+    value = str(username).strip().lstrip("@").strip()
+    return value or None
+
+
+def format_username(username: str | None) -> str:
+    """Готовая к показу подпись пользователя."""
+    value = normalize_username(username)
+    return f"@{value}" if value else NO_USERNAME_LABEL
+
+
+def add_username_history(
+    user_id: int,
+    username: str | None,
+    previous_username: str | None = None,
+    source: str = "telegram",
+) -> bool:
+    """Добавляет запись в историю имён."""
+    return _exec(
+        "INSERT INTO username_history (user_id, username, previous_username, source) "
+        "VALUES (?, ?, ?, ?)",
+        (user_id, normalize_username(username), normalize_username(previous_username), source),
+        f"Не удалось записать историю имени пользователя {user_id}"
+    ) is not None
+
+
+def get_username_history(user_id: int, limit: int = 50) -> list[dict]:
+    """История имён пользователя, новые записи первыми."""
+    return _fetch_list(
+        "SELECT id, username, previous_username, source, changed_at "
+        "FROM username_history WHERE user_id = ? "
+        "ORDER BY datetime(changed_at) DESC, id DESC LIMIT ?",
+        (user_id, limit),
+        f"Не удалось получить историю имён пользователя {user_id}"
+    )
+
+
+def set_username(user_id: int, username: str | None, source: str = "telegram") -> dict:
+    """
+    Обновляет имя пользователя и, если оно изменилось, пишет запись
+    в историю. Возвращает {changed, previous, current}.
+    """
+    row = _fetch_row(
+        "SELECT username FROM users WHERE telegram_id = ?",
+        (user_id,),
+        f"Не удалось получить текущее имя пользователя {user_id}"
+    )
+    if row is None:
+        return {"changed": False, "previous": None, "current": None, "found": False}
+
+    previous = normalize_username(row.get("username"))
+    current = normalize_username(username)
+
+    if previous == current:
+        return {"changed": False, "previous": previous, "current": current, "found": True}
+
+    _exec(
+        "UPDATE users SET username = ? WHERE telegram_id = ?",
+        (current, user_id),
+        f"Не удалось обновить имя пользователя {user_id}"
+    )
+    add_username_history(user_id, current, previous, source)
+    return {"changed": True, "previous": previous, "current": current, "found": True}
+
+
+def get_matching_user_ids(q: str | None = None) -> list[int]:
+    """
+    ID всех пользователей, подходящих под тот же фильтр, что и на странице
+    списка. Нужен для действия «выбрать всех», чтобы выбор не ограничивался
+    текущей страницей, но и не игнорировал поиск.
+    """
+    if q and q.strip():
+        q_like = f"%{q.strip()}%"
+        rows = _fetch_list(
+            "SELECT telegram_id FROM users "
+            "WHERE (username LIKE ?) OR (CAST(telegram_id AS TEXT) LIKE ?) "
+            "ORDER BY telegram_id",
+            (q_like, q_like),
+            "Не удалось получить ID пользователей по фильтру"
+        )
+    else:
+        rows = _fetch_list(
+            "SELECT telegram_id FROM users ORDER BY telegram_id",
+            (),
+            "Не удалось получить ID пользователей"
+        )
+    return [int(r["telegram_id"]) for r in (rows or []) if r.get("telegram_id") is not None]
+
+
+def get_all_user_ids() -> list[int]:
+    """Список telegram_id всех пользователей."""
+    rows = _fetch_list(
+        "SELECT telegram_id FROM users ORDER BY telegram_id",
+        (),
+        "Не удалось получить список пользователей"
+    )
+    return [int(r["telegram_id"]) for r in rows if r.get("telegram_id") is not None]
+# ===================================
+
+
+# ===== SUBSCRIPTION RESET COOLDOWN =====
+# Единый на весь проект интервал между пересозданиями подписки.
+# Хранится в БД, поэтому ограничение общее для бота, веб-приложения
+# и переживает перезапуск процессов.
+RESET_SUBSCRIPTION_COOLDOWN_SECONDS = 3600
+
+
+def get_last_subscription_reset(key_id: int) -> int | None:
+    """Unix-время последнего пересоздания подписки или None."""
+    row = _fetch_row(
+        "SELECT last_subscription_reset_at FROM vpn_keys WHERE key_id = ?",
+        (key_id,),
+        f"Не удалось получить время последнего сброса подписки {key_id}"
+    )
+    if not row:
+        return None
+    value = row.get("last_subscription_reset_at")
+    return int(value) if value else None
+
+
+def get_subscription_reset_wait(key_id: int, *, cooldown: int | None = None) -> int:
+    """
+    Сколько секунд осталось ждать до следующего пересоздания.
+    0 — можно сбрасывать прямо сейчас.
+    """
+    import time as _time
+    limit = RESET_SUBSCRIPTION_COOLDOWN_SECONDS if cooldown is None else cooldown
+    if limit <= 0:
+        return 0
+    last = get_last_subscription_reset(key_id)
+    if not last:
+        return 0
+    elapsed = int(_time.time()) - last
+    remaining = limit - elapsed
+    return remaining if remaining > 0 else 0
+
+
+def clear_subscription_reset(key_id: int) -> bool:
+    """Снимает ограничение по частоте для одной подписки."""
+    result = _exec(
+        "UPDATE vpn_keys SET last_subscription_reset_at = NULL WHERE key_id = ?",
+        (key_id,),
+        f"Не удалось снять кулдаун сброса подписки {key_id}"
+    )
+    return result is not None
+
+
+def clear_subscription_reset_for_user(user_id: int) -> int:
+    """
+    Снимает ограничение по частоте для всех подписок пользователя.
+    Возвращает количество затронутых записей.
+    """
+    result = _exec(
+        "UPDATE vpn_keys SET last_subscription_reset_at = NULL "
+        "WHERE user_id = ? AND last_subscription_reset_at IS NOT NULL",
+        (user_id,),
+        f"Не удалось снять кулдаун сброса подписок пользователя {user_id}"
+    )
+    return result.rowcount if result else 0
+
+
+def reset_trial_for_user(user_id: int) -> bool:
+    """Возвращает пользователю право на пробный период."""
+    result = _exec(
+        "UPDATE users SET trial_used = 0 WHERE telegram_id = ?",
+        (user_id,),
+        f"Не удалось сбросить пробный период пользователя {user_id}"
+    )
+    return result is not None
+
+
+def mark_subscription_reset(key_id: int, ts: int | None = None) -> bool:
+    """Отмечает момент пересоздания подписки."""
+    import time as _time
+    stamp = int(ts if ts is not None else _time.time())
+    result = _exec(
+        "UPDATE vpn_keys SET last_subscription_reset_at = ? WHERE key_id = ?",
+        (stamp, key_id),
+        f"Не удалось отметить сброс подписки {key_id}"
+    )
+    return result is not None
+# =======================================
+
+
+# ===== GET_KEY_BY_SHORT_UUID =====
+def get_key_by_short_uuid(short_uuid: str) -> dict | None:
+    """Поиск подписки по короткому идентификатору из ссылки подписки."""
+    if not short_uuid:
+        return None
+    normalized = short_uuid.strip()
+    if not normalized:
+        return None
+    row = _fetch_row(
+        "SELECT * FROM vpn_keys WHERE short_uuid = ? LIMIT 1",
+        (normalized,),
+        f"Не удалось получить подписку по short_uuid {short_uuid}"
+    )
+    return _normalize_key_row(row)
+# =================================
+
+
+# ===== GET_KEY_BY_SUBSCRIPTION_URL =====
+def get_key_by_subscription_url(subscription_url: str) -> dict | None:
+    """
+    Поиск подписки по полной ссылке. Сравнение без учёта регистра и
+    завершающего слэша, чтобы пользователь мог вставить ссылку как есть.
+    """
+    if not subscription_url:
+        return None
+    normalized = subscription_url.strip().rstrip('/')
+    if not normalized:
+        return None
+    row = _fetch_row(
+        "SELECT * FROM vpn_keys "
+        "WHERE LOWER(TRIM(RTRIM(subscription_url, '/'))) = LOWER(?) LIMIT 1",
+        (normalized,),
+        "Не удалось получить подписку по ссылке"
+    )
+    return _normalize_key_row(row)
+# =======================================
+
+
 # ===== UPDATE_KEY_INFO =====
 def update_key_info(key_id: int, new_remnawave_uuid: str, new_expiry_ms: int, **kwargs) -> bool:
     return update_key_fields(
@@ -3583,15 +3964,181 @@ def get_or_create_open_ticket(user_id: int, subject: str | None = None) -> tuple
 
 
 # ===== ADD_SUPPORT_MESSAGE =====
-def add_support_message(ticket_id: int, sender: str, content: str) -> int | None:
+def add_support_message(ticket_id: int, sender: str, content: str, media: str | None = None) -> int | None:
     cursor = _exec(
-        "INSERT INTO support_messages (ticket_id, sender, content) VALUES (?, ?, ?)",
-        (ticket_id, sender, content),
+        "INSERT INTO support_messages (ticket_id, sender, content, media) VALUES (?, ?, ?, ?)",
+        (ticket_id, sender, content, media),
         f"Не удалось добавить сообщение в тикет {ticket_id}"
     )
     if cursor and cursor.lastrowid: mid = cursor.lastrowid; _exec("UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP WHERE ticket_id = ?", (ticket_id,), "Не удалось обновить время тикета"); return mid
     return None
 # =============================
+
+
+# ===== ВЛОЖЕНИЯ ПОДДЕРЖКИ =====
+SUPPORT_MEDIA_DEFAULT_MAX_MB = 10
+SUPPORT_MEDIA_DEFAULT_ALLOWED = "jpg,jpeg,png,webp,gif,mp4,mov,pdf"
+
+
+def get_support_media_settings() -> dict:
+    """Настройки вложений: включены ли, лимит размера, разрешённые форматы."""
+    def _flag(name: str, default: bool) -> bool:
+        raw = (get_setting(name) or "").strip().lower()
+        if not raw:
+            return default
+        return raw in ("1", "true", "on", "yes", "да")
+
+    try:
+        max_mb = float((get_setting("support_media_max_mb") or SUPPORT_MEDIA_DEFAULT_MAX_MB))
+    except Exception:
+        max_mb = SUPPORT_MEDIA_DEFAULT_MAX_MB
+    max_mb = max(0.1, min(max_mb, 50.0))  # Bot API не отдаёт файлы больше 50 МБ
+
+    raw_allowed = (get_setting("support_media_allowed") or SUPPORT_MEDIA_DEFAULT_ALLOWED)
+    allowed = sorted({
+        e.strip().lower().lstrip(".")
+        for e in re.split(r"[\s,;]+", raw_allowed) if e.strip()
+    })
+
+    try:
+        keep_days = int(get_setting("support_media_keep_days") or 0)
+    except Exception:
+        keep_days = 0
+
+    return {
+        "enabled": _flag("support_media_enabled", True),
+        "max_mb": max_mb,
+        "max_bytes": int(max_mb * 1024 * 1024),
+        "allowed": allowed or SUPPORT_MEDIA_DEFAULT_ALLOWED.split(","),
+        "keep_days": max(0, keep_days),
+    }
+
+
+def add_support_media(
+    ticket_id: int,
+    *,
+    message_id: int | None = None,
+    sender: str = "user",
+    kind: str = "photo",
+    file_id: str | None = None,
+    file_unique_id: str | None = None,
+    local_path: str | None = None,
+    file_name: str | None = None,
+    mime_type: str | None = None,
+    file_size: int = 0,
+    width: int | None = None,
+    height: int | None = None,
+) -> int | None:
+    cursor = _exec(
+        "INSERT INTO support_media (ticket_id, message_id, sender, kind, file_id, "
+        "file_unique_id, local_path, file_name, mime_type, file_size, width, height) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (ticket_id, message_id, sender, kind, file_id, file_unique_id, local_path,
+         file_name, mime_type, int(file_size or 0), width, height),
+        f"Не удалось сохранить вложение тикета {ticket_id}"
+    )
+    return cursor.lastrowid if cursor and cursor.lastrowid else None
+
+
+def update_support_media_path(media_id: int, local_path: str, file_size: int = 0) -> bool:
+    """Проставляет локальный путь после дозагрузки файла из Telegram."""
+    cursor = _exec(
+        "UPDATE support_media SET local_path = ?, file_size = CASE WHEN ? > 0 THEN ? ELSE file_size END "
+        "WHERE media_id = ?",
+        (local_path, int(file_size or 0), int(file_size or 0), media_id),
+        f"Не удалось обновить путь вложения {media_id}"
+    )
+    return cursor is not None
+
+
+def get_support_media(media_id: int) -> dict | None:
+    return _fetch_row(
+        "SELECT * FROM support_media WHERE media_id = ?",
+        (media_id,),
+        f"Не удалось получить вложение {media_id}"
+    )
+
+
+def get_media_for_ticket(ticket_id: int) -> list[dict]:
+    return _fetch_list(
+        "SELECT * FROM support_media WHERE ticket_id = ? ORDER BY media_id",
+        (ticket_id,),
+        f"Не удалось получить вложения тикета {ticket_id}"
+    )
+
+
+def get_media_for_messages(message_ids: list[int]) -> dict[int, list[dict]]:
+    """Вложения, сгруппированные по id сообщения (одним запросом)."""
+    ids = [int(m) for m in (message_ids or []) if m]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    rows = _fetch_list(
+        f"SELECT * FROM support_media WHERE message_id IN ({placeholders}) ORDER BY media_id",
+        tuple(ids),
+        "Не удалось получить вложения сообщений"
+    )
+    grouped: dict[int, list[dict]] = {}
+    for r in rows or []:
+        grouped.setdefault(int(r["message_id"]), []).append(r)
+    return grouped
+
+
+def get_support_media_stats() -> dict:
+    """Сводка по хранилищу вложений для страницы обслуживания."""
+    row = _fetch_row(
+        "SELECT COUNT(*) AS cnt, COALESCE(SUM(file_size), 0) AS bytes FROM support_media",
+        (), "Не удалось получить статистику вложений"
+    ) or {}
+    orphan = _fetch_val(
+        "SELECT COUNT(*) FROM support_media m "
+        "LEFT JOIN support_tickets t ON t.ticket_id = m.ticket_id "
+        "WHERE t.ticket_id IS NULL",
+        (), 0, "Не удалось посчитать осиротевшие вложения"
+    ) or 0
+    return {
+        "count": int(row.get("cnt") or 0),
+        "bytes": int(row.get("bytes") or 0),
+        "orphan": int(orphan),
+    }
+
+
+def list_support_media(limit: int = 200, offset: int = 0) -> list[dict]:
+    return _fetch_list(
+        "SELECT * FROM support_media ORDER BY media_id DESC LIMIT ? OFFSET ?",
+        (int(limit), int(offset)),
+        "Не удалось получить список вложений"
+    )
+
+
+def delete_support_media(media_id: int) -> dict | None:
+    """Удаляет запись и возвращает её, чтобы вызывающий убрал файл с диска."""
+    row = get_support_media(media_id)
+    if not row:
+        return None
+    _exec("DELETE FROM support_media WHERE media_id = ?", (media_id,),
+          f"Не удалось удалить вложение {media_id}")
+    return row
+
+
+def get_media_to_cleanup(older_than_days: int = 0, orphan_only: bool = False) -> list[dict]:
+    """Вложения под очистку: осиротевшие и/или старше N дней."""
+    if orphan_only:
+        return _fetch_list(
+            "SELECT m.* FROM support_media m "
+            "LEFT JOIN support_tickets t ON t.ticket_id = m.ticket_id "
+            "WHERE t.ticket_id IS NULL",
+            (), "Не удалось получить осиротевшие вложения"
+        )
+    if older_than_days and older_than_days > 0:
+        return _fetch_list(
+            "SELECT * FROM support_media "
+            "WHERE datetime(created_at) < datetime('now', ?)",
+            (f"-{int(older_than_days)} days",),
+            "Не удалось получить старые вложения"
+        )
+    return []
+# ==============================
 
 
 # ===== UPDATE_TICKET_THREAD_INFO =====

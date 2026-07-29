@@ -13,7 +13,18 @@ from . import remnawave_repository as rw_repo
 logger = logging.getLogger(__name__)
 
 
-BACKUPS_DIR = Path("/app/project/backups")
+# Корень проекта: в докере это /app/project, при локальном запуске —
+# текущая папка. Раньше путь был жёстко прибит к /app/project и каталог
+# создавался прямо на импорте. Вне докера это давало два эффекта: бэкапы
+# уезжали мимо папки backups/ проекта, а сам факт появления /app/project
+# переключал support_media.MEDIA_ROOT на /app/project/media — и вложения
+# поддержки переставали открываться в админке.
+_DOCKER_ROOT = Path("/app/project")
+if (_DOCKER_ROOT / "users.db").exists() or (_DOCKER_ROOT / "src").exists():
+    BACKUPS_DIR = _DOCKER_ROOT / "backups"
+else:
+    BACKUPS_DIR = Path("backups")
+
 BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
 
 

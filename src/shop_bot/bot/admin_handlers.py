@@ -49,7 +49,12 @@ from shop_bot.data_manager.database import (
 )
 from shop_bot.data_manager import backup_manager
 from shop_bot.bot.handlers import show_main_menu, smart_edit_message
-from shop_bot.modules.remnawave_api import create_or_update_key_on_host, delete_client_on_host
+from shop_bot.modules.remnawave_api import (
+    create_or_update_key_on_host,
+    delete_client_on_host,
+    revoke_subscription_on_host,
+    extract_subscription_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1910,6 +1915,115 @@ def get_admin_router() -> Router:
             )
 
 
+
+    @admin_router.callback_query(F.data.regexp(r"^admin_key_reset_\d+$"))
+    async def admin_key_reset_prompt(callback: types.CallbackQuery):
+        """Подтверждение пересоздания ссылки подписки администратором."""
+        if not is_admin(callback.from_user.id):
+            await callback.answer("У вас нет прав.", show_alert=True)
+            return
+        await callback.answer()
+        try:
+            key_id = int(callback.data.split("_")[-1])
+        except Exception:
+            await callback.message.answer("❌ Неверный формат key_id")
+            return
+
+        key = rw_repo.get_key_by_id(key_id)
+        if not key:
+            await callback.message.answer("❌ Подписка не найдена")
+            return
+
+        email = key.get('key_email') or '—'
+        host = key.get('host_name') or '—'
+        owner = key.get('user_id') or '—'
+        try:
+            await callback.message.edit_text(
+                f"🔄 <b>Пересоздать подписку #{key_id}?</b>\n\n"
+                f"Владелец: <code>{owner}</code>\n"
+                f"Email: {email}\n"
+                f"Сервер: {host}\n\n"
+                "Текущая ссылка перестанет работать на всех устройствах пользователя. "
+                "Он получит уведомление с новой ссылкой.",
+                reply_markup=keyboards.create_admin_reset_subscription_confirm_keyboard(key_id)
+            )
+        except Exception:
+            await callback.message.answer(
+                f"🔄 Пересоздать подписку #{key_id}?",
+                reply_markup=keyboards.create_admin_reset_subscription_confirm_keyboard(key_id)
+            )
+
+    @admin_router.callback_query(F.data.startswith("admin_key_reset_confirm_"))
+    async def admin_key_reset_confirm(callback: types.CallbackQuery, bot: Bot):
+        """Пересоздаёт ссылку подписки и уведомляет владельца."""
+        if not is_admin(callback.from_user.id):
+            await callback.answer("У вас нет прав.", show_alert=True)
+            return
+        try:
+            key_id = int(callback.data.split("_")[-1])
+        except Exception:
+            await callback.answer("❌ Неверный формат key_id", show_alert=True)
+            return
+
+        key = rw_repo.get_key_by_id(key_id)
+        if not key:
+            await callback.answer("❌ Подписка не найдена", show_alert=True)
+            return
+
+        client_uuid = key.get('remnawave_user_uuid')
+        host_name = key.get('host_name')
+        owner_id = key.get('user_id')
+        if not client_uuid:
+            await callback.answer("❌ Подписка не привязана к серверу", show_alert=True)
+            return
+
+        await callback.answer("⏳ Пересоздаю...")
+
+        try:
+            result = await revoke_subscription_on_host(client_uuid, host_name=host_name)
+        except Exception as e:
+            logger.error(f"Админ-сброс подписки {key_id}: ошибка API: {e}", exc_info=True)
+            result = None
+
+        if not result:
+            await callback.message.edit_text(
+                f"❌ Не удалось пересоздать подписку #{key_id}. Проверьте доступность панели Remnawave.",
+                reply_markup=keyboards.create_admin_key_actions_keyboard(key_id, owner_id)
+            )
+            return
+
+        rw_repo.mark_subscription_reset(key_id)
+
+        new_sub_url = extract_subscription_url(result) or ''
+        try:
+            rw_repo.update_key(key_id, subscription_url=new_sub_url,
+                               short_uuid=result.get('shortUuid'))
+        except Exception as e:
+            logger.warning(f"Админ-сброс подписки {key_id}: не удалось сохранить ссылку: {e}")
+
+        logger.info(f"Админ {callback.from_user.id} пересоздал подписку {key_id} пользователя {owner_id}")
+
+        # уведомляем владельца
+        notified = False
+        if owner_id:
+            try:
+                key_number = key.get('key_number') or key_id
+                text = (
+                    f"🔄 <b>Подписка #{key_number} пересоздана</b>\n\n"
+                    "Ссылка обновлена администратором. Старая ссылка больше не работает.\n\n"
+                )
+                text += (f"Новая ссылка:\n<code>{new_sub_url}</code>" if new_sub_url
+                         else "Откройте подписку в боте, чтобы получить новую ссылку.")
+                await bot.send_message(chat_id=owner_id, text=text, disable_web_page_preview=True)
+                notified = True
+            except Exception as e:
+                logger.warning(f"Админ-сброс подписки {key_id}: не удалось уведомить {owner_id}: {e}")
+
+        status = "Пользователь уведомлён." if notified else "⚠️ Уведомление доставить не удалось."
+        await callback.message.edit_text(
+            f"✅ <b>Подписка #{key_id} пересоздана</b>\n\n{status}",
+            reply_markup=keyboards.create_admin_key_actions_keyboard(key_id, owner_id)
+        )
 
     @admin_router.callback_query(F.data.regexp(r"^admin_key_delete_\d+$"))
     async def admin_key_delete_prompt(callback: types.CallbackQuery):

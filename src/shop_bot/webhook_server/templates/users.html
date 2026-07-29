@@ -28,11 +28,73 @@
 
 </style>
 
+<!-- Панель массовых действий -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+    <button id="btn-refresh-all-usernames"
+        class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10
+               text-white/80 text-xs font-bold uppercase tracking-wider hover:bg-white/10 transition-all"
+        title="Запросить актуальные имена у Telegram для всех пользователей">
+        <span class="material-symbols-outlined text-base">sync</span>
+        Обновить все имена
+    </button>
+</div>
+
+<div id="bulk-actions-bar"
+    class="hidden mb-4 rounded-2xl border border-primary/30 bg-primary/[0.07] p-3 backdrop-blur-sm">
+    <div class="flex flex-wrap items-center gap-2">
+        <span class="text-xs font-bold text-white px-2">
+            Выбрано: <span id="bulk-selected-count" class="text-primary">0</span>
+            <span id="bulk-scope-all-note" class="hidden text-primary">(все, включая другие страницы)</span>
+        </span>
+
+        <button id="bulk-select-all-matching"
+            class="hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary/15 border border-primary/40 text-primary text-[11px] font-bold uppercase tracking-wider hover:bg-primary/25 transition-all">
+            <span class="material-symbols-outlined text-sm">select_all</span>
+            <span id="bulk-select-all-label">Выбрать всех</span>
+        </button>
+
+        <button data-bulk-action="refresh_username"
+            class="bulk-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 text-[11px] font-bold uppercase tracking-wider hover:bg-white/10 transition-all">
+            <span class="material-symbols-outlined text-sm">sync</span>Обновить имена
+        </button>
+        <button data-bulk-action="reset_trial"
+            class="bulk-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 text-[11px] font-bold uppercase tracking-wider hover:bg-orange-400/15 hover:border-orange-400/30 transition-all">
+            <span class="material-symbols-outlined text-sm">restart_alt</span>Сбросить триал
+        </button>
+        <button data-bulk-action="mark_trial_used"
+            class="bulk-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 text-[11px] font-bold uppercase tracking-wider hover:bg-white/10 transition-all">
+            <span class="material-symbols-outlined text-sm">block</span>Снять триал
+        </button>
+        <button data-bulk-action="reset_cooldown"
+            class="bulk-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 text-[11px] font-bold uppercase tracking-wider hover:bg-amber-400/15 hover:border-amber-400/30 transition-all">
+            <span class="material-symbols-outlined text-sm">timer_off</span>Снять КД
+        </button>
+        <button data-bulk-action="ban"
+            class="bulk-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-bold uppercase tracking-wider hover:bg-red-500/20 transition-all">
+            <span class="material-symbols-outlined text-sm">gavel</span>Забанить
+        </button>
+        <button data-bulk-action="unban"
+            class="bulk-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 text-[11px] font-bold uppercase tracking-wider hover:bg-green-400/15 hover:border-green-400/30 transition-all">
+            <span class="material-symbols-outlined text-sm">lock_open</span>Разбанить
+        </button>
+
+        <button id="bulk-clear"
+            class="ml-auto text-white/40 hover:text-white text-[11px] font-bold uppercase tracking-wider px-2 transition-colors">
+            Снять выбор
+        </button>
+    </div>
+</div>
+
 <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden shadow-xl backdrop-blur-md">
     <div class="overflow-x-auto">
         <table id="users-table" class="w-full text-left border-collapse">
             <thead>
                 <tr class="border-b border-white/5 bg-white/[0.02]">
+                    <th class="pl-5 pr-1 py-4 w-10">
+                        <input type="checkbox" id="users-select-all"
+                            class="w-4 h-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary/40 focus:ring-offset-0 cursor-pointer"
+                            title="Выбрать всех на странице">
+                    </th>
                     <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-widest text-white/40">Telegram ID</th>
                     <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-widest text-white/40">Username</th>
                     <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-widest text-white/40">Статус</th>
@@ -48,7 +110,7 @@
                 data-fetch-url="{{ url_for('users_table_partial', page=current_page, per_page=per_page, q=q) }}"
                 data-fetch-interval="120000">
                 <tr>
-                    <td colspan="6" class="p-8 text-center">
+                    <td colspan="7" class="p-8 text-center">
                         <div class="flex flex-col items-center justify-center text-white/30">
                             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-2"></div>
                             <span class="text-xs">Загрузка пользователей...</span>
@@ -210,6 +272,115 @@
 </div>
 
 <!-- Revoke Key Confirmation Modal -->
+<!-- Общее подтверждение -->
+<div id="genericConfirmModal" class="modal-overlay" style="z-index: 1120;">
+    <div class="modal-content overflow-hidden">
+        <div id="genericConfirmHead" class="p-4 border-b border-white/10 flex items-center justify-between bg-white/[0.03]">
+            <h5 class="text-white font-bold flex items-center gap-2">
+                <span id="genericConfirmIcon" class="material-symbols-outlined text-amber-400">help</span>
+                <span id="genericConfirmTitle">Подтвердите действие</span>
+            </h5>
+            <button onclick="genericConfirmClose(false)" class="text-white/50 hover:text-white">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="p-6">
+            <p id="genericConfirmText" class="text-white text-sm leading-relaxed"></p>
+        </div>
+        <div class="p-4 border-t border-white/10 flex justify-end gap-2 bg-black/20">
+            <button onclick="genericConfirmClose(false)"
+                class="px-4 py-2 rounded-xl bg-white/5 text-white/70 hover:bg-white/10 transition-colors text-sm font-bold uppercase tracking-wider">Отмена</button>
+            <button id="genericConfirmOk"
+                class="px-5 py-2 rounded-xl bg-primary text-black font-bold hover:brightness-110 transition-all text-sm uppercase tracking-wider">Продолжить</button>
+        </div>
+    </div>
+</div>
+
+<!-- История имён пользователя -->
+<div id="usernameHistoryModal" class="modal-overlay" style="z-index: 1100;">
+    <div class="modal-content overflow-hidden">
+        <div class="p-4 border-b border-white/10 flex items-center justify-between bg-white/[0.03]">
+            <h5 class="text-white font-bold flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary">history</span>
+                История имён
+            </h5>
+            <button onclick="closeModal('usernameHistoryModal')" class="text-white/50 hover:text-white">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="p-4 max-h-[60vh] overflow-y-auto">
+            <div id="usernameHistoryBody" class="space-y-2">
+                <div class="text-white/40 text-sm text-center py-6">Загрузка...</div>
+            </div>
+        </div>
+        <div class="p-4 border-t border-white/10 flex justify-end bg-black/20">
+            <button onclick="closeModal('usernameHistoryModal')"
+                class="px-4 py-2 rounded-xl bg-white/5 text-white/70 hover:bg-white/10 transition-colors text-sm font-bold uppercase tracking-wider">Закрыть</button>
+        </div>
+    </div>
+</div>
+
+<!-- Подтверждение пересоздания подписки -->
+<div id="resetSubConfirmModal" class="modal-overlay" style="z-index: 1100;">
+    <div class="modal-content overflow-hidden">
+        <div class="p-4 border-b border-amber-500/30 flex items-center justify-between bg-amber-500/10">
+            <h5 class="text-white font-bold flex items-center gap-2">
+                <span class="material-symbols-outlined text-amber-400">autorenew</span>
+                Пересоздать подписку
+            </h5>
+            <button onclick="closeModal('resetSubConfirmModal')" class="text-white/50 hover:text-white">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="p-6">
+            <p class="text-white mb-3">Пересоздать ссылку подписки
+                <span id="resetSubKeyLabel" class="text-amber-400 font-bold"></span>?
+            </p>
+            <p class="text-white/60 text-sm leading-relaxed">Текущая ссылка перестанет работать на всех устройствах
+                пользователя. Он получит уведомление с новой ссылкой в боте.</p>
+        </div>
+        <div class="p-4 border-t border-white/10 flex justify-end gap-2 bg-black/20">
+            <button onclick="closeModal('resetSubConfirmModal')"
+                class="px-4 py-2 rounded-xl bg-white/5 text-white/70 hover:bg-white/10 transition-colors text-sm font-bold uppercase tracking-wider">Отмена</button>
+            <button id="resetSubConfirmBtn"
+                class="px-5 py-2 rounded-xl bg-amber-500 text-black font-bold hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20 text-sm uppercase tracking-wider">Пересоздать</button>
+        </div>
+    </div>
+</div>
+
+<!-- Удаление пользователя: подтверждение вводом имени -->
+<div id="deleteUserConfirmModal" class="modal-overlay" style="z-index: 1100;">
+    <div class="modal-content overflow-hidden">
+        <div class="p-4 border-b border-red-500/30 flex items-center justify-between bg-red-500/10">
+            <h5 class="text-white font-bold flex items-center gap-2">
+                <span class="material-symbols-outlined text-red-400">person_remove</span>
+                Удаление пользователя
+            </h5>
+            <button onclick="closeModal('deleteUserConfirmModal')" class="text-white/50 hover:text-white">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="p-6">
+            <p class="text-white mb-3">Пользователь и все его подписки будут удалены безвозвратно.
+                Ключи снимутся и с панели Remnawave.</p>
+            <p class="text-white/60 text-sm mb-4">Для подтверждения введите
+                <span class="text-red-400 font-bold" id="deleteUserExpected"></span>:
+            </p>
+            <input type="text" id="deleteUserInput" autocomplete="off" spellcheck="false"
+                class="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white text-sm
+                       focus:border-red-500/50 focus:outline-none transition-colors"
+                placeholder="Введите имя пользователя">
+            <p id="deleteUserError" class="hidden text-red-400 text-xs font-bold mt-2"></p>
+        </div>
+        <div class="p-4 border-t border-white/10 flex justify-end gap-2 bg-black/20">
+            <button onclick="closeModal('deleteUserConfirmModal')"
+                class="px-4 py-2 rounded-xl bg-white/5 text-white/70 hover:bg-white/10 transition-colors text-sm font-bold uppercase tracking-wider">Отмена</button>
+            <button id="deleteUserConfirmBtn" disabled
+                class="px-5 py-2 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 text-sm uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed">Удалить</button>
+        </div>
+    </div>
+</div>
+
 <div id="revokeConfirmModal" class="modal-overlay" style="z-index: 1100;">
     <div class="modal-content overflow-hidden">
         <div class="p-4 border-b border-red-500/30 flex items-center justify-between bg-red-500/10">
@@ -626,7 +797,7 @@
                 </div>
 
                 <!-- Quick Actions Toolbar -->
-                <div class="mb-6 grid grid-cols-4 md:grid-cols-7 gap-3">
+                <div class="mb-6 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
                     <button id="udm-action-pin"
                         class="bg-white/5 border border-white/10 rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/10 hover:border-white/20 transition-all group">
                         <span id="udm-action-pin-icon"
@@ -670,6 +841,34 @@
                         <span
                             class="material-symbols-outlined text-white/50 group-hover:text-red-500 transition-colors">delete_forever</span>
                         <span class="text-[10px] font-bold text-white/60 uppercase tracking-wide">Отозвать</span>
+                    </button>
+                    <button id="udm-action-refresh-username"
+                        class="bg-white/5 border border-white/10 rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/10 hover:border-white/20 transition-all group"
+                        title="Запросить актуальное имя у Telegram">
+                        <span
+                            class="material-symbols-outlined text-white/50 group-hover:text-primary transition-colors">sync</span>
+                        <span class="text-[10px] font-bold text-white/60 uppercase tracking-wide">Обновить имя</span>
+                    </button>
+                    <button id="udm-action-username-history"
+                        class="bg-white/5 border border-white/10 rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/10 hover:border-white/20 transition-all group"
+                        title="Показать историю имён">
+                        <span
+                            class="material-symbols-outlined text-white/50 group-hover:text-primary transition-colors">history</span>
+                        <span class="text-[10px] font-bold text-white/60 uppercase tracking-wide">История имён</span>
+                    </button>
+                    <button id="udm-action-reset-cooldown"
+                        class="bg-white/5 border border-white/10 rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/10 hover:border-white/20 transition-all group"
+                        title="Снять ограничение на пересоздание подписки">
+                        <span
+                            class="material-symbols-outlined text-white/50 group-hover:text-amber-400 transition-colors">timer_off</span>
+                        <span class="text-[10px] font-bold text-white/60 uppercase tracking-wide">Снять КД</span>
+                    </button>
+                    <button id="udm-action-delete-user"
+                        class="bg-red-500/5 border border-red-500/20 rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-red-500/15 hover:border-red-500/40 transition-all group"
+                        title="Полностью удалить пользователя из базы">
+                        <span
+                            class="material-symbols-outlined text-red-400/70 group-hover:text-red-400 transition-colors">person_remove</span>
+                        <span class="text-[10px] font-bold text-red-400/70 group-hover:text-red-400 uppercase tracking-wide">Удалить</span>
                     </button>
                 </div>
 
@@ -1420,7 +1619,8 @@
                     }
 
                     document.getElementById('udm-telegram-id').textContent = data.user.telegram_id || 'N/A';
-                    document.getElementById('udm-username').textContent = '@' + (data.user.username || 'N/A');
+                    document.getElementById('udm-username').textContent =
+                        data.user.username ? '@' + data.user.username : 'Безымянный пользователь';
                     document.getElementById('udm-registration').textContent = data.user.registration_date || 'N/A';
                     document.getElementById('udm-total-spent').textContent = (data.user.total_spent || 0).toFixed(2) + ' ₽';
                     document.getElementById('udm-total-months').textContent = (data.user.total_months || 0) + ' мес.';
@@ -1555,6 +1755,11 @@
                                   <button class="btn-user-edit-comment w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 text-white/70 hover:bg-white/10 hover:text-white border border-white/10 transition-all"
                                           data-key-id="${sub.key_id}" data-current-comment="${(sub.admin_comment || '').replace(/"/g, '&quot;')}" title="Комментарий">
                                       <span class="material-symbols-outlined text-sm">comment</span>
+                                  </button>
+
+                                  <button class="btn-user-reset-sub w-8 h-8 flex items-center justify-center rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 transition-all"
+                                          data-key-id="${sub.key_id}" title="Пересоздать подписку (старая ссылка перестанет работать)">
+                                      <span class="material-symbols-outlined text-sm">autorenew</span>
                                   </button>
 
                                   <button class="btn-user-revoke-key w-8 h-8 flex items-center justify-center rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition-all"
@@ -1811,7 +2016,10 @@
             if (!btn) return;
 
             const uid = document.getElementById('udm-trial-toggle')?.getAttribute('data-user-id');
-            const uname = document.getElementById('udm-username')?.textContent?.replace('@', '') || '';
+            const unameRaw = document.getElementById('udm-username')?.textContent?.trim() || '';
+            // у безымянного пользователя в заголовке подпись, а не @ник
+            const hasUsername = unameRaw.startsWith('@');
+            const uname = hasUsername ? unameRaw.slice(1) : '';
             const balance = document.getElementById('udm-balance')?.textContent || '0.00';
 
             if (!uid) return;
@@ -1820,7 +2028,8 @@
 
             if (action === 'add-bal' || action === 'sub-bal') {
                 const isAdd = action === 'add-bal';
-                document.getElementById('bm-user').textContent = `@${uname} (#${uid})`;
+                document.getElementById('bm-user').textContent =
+                    hasUsername ? `@${uname} (#${uid})` : `Безымянный пользователь (#${uid})`;
                 document.getElementById('bm-balance').textContent = balance;
                 document.getElementById('bm-form').action = `{{ url_for('adjust_balance_route', user_id=0) }}`.replace('/0', `/${uid}`);
                 document.getElementById('bm-refcount').textContent = document.getElementById('udm-ref-count').textContent;
@@ -1835,7 +2044,8 @@
             } else if (action === 'issue') {
                 window.location.href = `{{ url_for('admin_keys_page') }}?user_id=${uid}`;
             } else if (action === 'msg') {
-                document.getElementById('mm-user').textContent = `@${uname} (#${uid})`;
+                document.getElementById('mm-user').textContent =
+                    hasUsername ? `@${uname} (#${uid})` : `Безымянный пользователь (#${uid})`;
                 document.getElementById('mm-form').action = `{{ url_for('send_user_message_route', user_id=0) }}`.replace('/0', `/${uid}`);
                 document.querySelector('#mm-form textarea[name="message"]').value = '';
                 openModal('messageModal');
@@ -1877,7 +2087,9 @@
                         }
                     });
             } else if (action === 'ban') {
-                document.getElementById('banModalText').innerHTML = `Вы уверены, что хотите изменить статус блокировки для <span class="text-primary font-bold">@${uname}</span>?`;
+                document.getElementById('banModalText').innerHTML =
+                    `Вы уверены, что хотите изменить статус блокировки для <span class="text-primary font-bold">` +
+                    (hasUsername ? `@${uname}` : `пользователя #${uid}`) + `</span>?`;
                 const confirmBtn = document.getElementById('banConfirmBtn');
                 confirmBtn.onclick = async () => {
                     const data = await apiRequest(
@@ -2077,6 +2289,419 @@
                     if (currentUserDetailsId) refreshUserDetails(currentUserDetailsId);
                 } else { showToast('danger', 'Ошибка удаления'); }
             } catch (_) { showToast('danger', 'Ошибка сети'); }
+        });
+
+        // ---------- Пересоздание ссылки подписки ----------
+        let resetSubKeyId = null;
+        document.addEventListener('click', e => {
+            const btn = e.target.closest('.btn-user-reset-sub');
+            if (!btn) return;
+            resetSubKeyId = btn.getAttribute('data-key-id');
+            const label = document.getElementById('resetSubKeyLabel');
+            if (label) label.textContent = '#' + resetSubKeyId;
+            openModal('resetSubConfirmModal');
+        });
+
+        document.getElementById('resetSubConfirmBtn')?.addEventListener('click', async (ev) => {
+            if (!resetSubKeyId) return;
+            const uid = document.getElementById('udm-trial-toggle')?.getAttribute('data-user-id');
+            if (!uid) { showToast('danger', 'Не удалось определить пользователя'); return; }
+
+            const btn = ev.currentTarget;
+            const original = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Пересоздаю...';
+
+            try {
+                const resp = await fetch(`/users/${uid}/keys/${resetSubKeyId}/reset-subscription`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    credentials: 'same-origin'
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    showToast('success', 'Подписка пересоздана, пользователь уведомлён');
+                    closeModal('resetSubConfirmModal');
+                    refreshUserDetails(uid);
+                } else {
+                    showToast('danger', data.error || 'Не удалось пересоздать');
+                }
+            } catch (_) {
+                showToast('danger', 'Ошибка сети');
+            }
+
+            btn.disabled = false;
+            btn.textContent = original;
+        });
+
+        // ============ Общее подтверждение (без окон браузера) ============
+        let _genericConfirmResolve = null;
+
+        function genericConfirmClose(result) {
+            closeModal('genericConfirmModal');
+            const r = _genericConfirmResolve;
+            _genericConfirmResolve = null;
+            if (r) r(result);
+        }
+
+        function adminConfirm(message, options = {}) {
+            return new Promise(resolve => {
+                if (_genericConfirmResolve) _genericConfirmResolve(false);
+                _genericConfirmResolve = resolve;
+
+                document.getElementById('genericConfirmTitle').textContent =
+                    options.title || 'Подтвердите действие';
+                document.getElementById('genericConfirmText').textContent = message;
+
+                const okBtn = document.getElementById('genericConfirmOk');
+                okBtn.textContent = options.okText || 'Продолжить';
+                okBtn.className = options.danger
+                    ? 'px-5 py-2 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all text-sm uppercase tracking-wider'
+                    : 'px-5 py-2 rounded-xl bg-primary text-black font-bold hover:brightness-110 transition-all text-sm uppercase tracking-wider';
+
+                const icon = document.getElementById('genericConfirmIcon');
+                icon.textContent = options.icon || 'help';
+                icon.className = 'material-symbols-outlined ' +
+                    (options.danger ? 'text-red-400' : 'text-amber-400');
+
+                okBtn.onclick = () => genericConfirmClose(true);
+                openModal('genericConfirmModal');
+            });
+        }
+
+        // ================= МАССОВЫЙ ВЫБОР =================
+        function bulkSelectedIds() {
+            return Array.from(document.querySelectorAll('.user-select-cb:checked')).map(cb => cb.value);
+        }
+
+        function bulkRefreshBar() {
+            const ids = bulkSelectedIds();
+            const bar = document.getElementById('bulk-actions-bar');
+            const counter = document.getElementById('bulk-selected-count');
+            if (counter) counter.textContent = ids.length;
+            if (bar) bar.classList.toggle('hidden', ids.length === 0);
+
+            const all = document.querySelectorAll('.user-select-cb');
+            const master = document.getElementById('users-select-all');
+            if (master) {
+                master.checked = all.length > 0 && ids.length === all.length;
+                master.indeterminate = ids.length > 0 && ids.length < all.length;
+            }
+
+            // Любое ручное изменение выбора отменяет режим «все страницы»
+            if (bulkScopeAll && ids.length !== all.length) setBulkScopeAll(false);
+
+            const allBtn = document.getElementById('bulk-select-all-matching');
+            if (allBtn) {
+                // Предлагаем расширить выбор, только когда вся страница уже отмечена
+                const pageFull = all.length > 0 && ids.length === all.length;
+                allBtn.classList.toggle('hidden', !pageFull || bulkScopeAll || bulkTotalMatching <= all.length);
+                const label = document.getElementById('bulk-select-all-label');
+                if (label && bulkTotalMatching) label.textContent = `Выбрать всех (${bulkTotalMatching})`;
+            }
+        }
+
+        // ---- Режим «выбраны все, включая другие страницы» ----
+        let bulkScopeAll = false;
+        let bulkTotalMatching = 0;
+
+        function setBulkScopeAll(on) {
+            bulkScopeAll = !!on;
+            document.getElementById('bulk-scope-all-note')?.classList.toggle('hidden', !bulkScopeAll);
+            const counter = document.getElementById('bulk-selected-count');
+            if (counter && bulkScopeAll) counter.textContent = bulkTotalMatching;
+            if (bulkScopeAll) document.getElementById('bulk-select-all-matching')?.classList.add('hidden');
+        }
+
+        function bulkSearchQuery() {
+            const input = document.getElementById('user-search-input') || document.querySelector('input[name=\"q\"]');
+            return (input?.value || new URLSearchParams(location.search).get('q') || '').trim();
+        }
+
+        async function bulkLoadTotal() {
+            try {
+                const resp = await fetch(`/users/count.json?q=${encodeURIComponent(bulkSearchQuery())}`,
+                    { credentials: 'same-origin' });
+                const data = await resp.json();
+                bulkTotalMatching = data.ok ? (data.total || 0) : 0;
+            } catch (_) { bulkTotalMatching = 0; }
+            bulkRefreshBar();
+        }
+        bulkLoadTotal();
+
+        document.getElementById('bulk-select-all-matching')?.addEventListener('click', () => {
+            setBulkScopeAll(true);
+            showToast('success', `Выбраны все пользователи: ${bulkTotalMatching}`);
+        });
+
+        document.addEventListener('change', e => {
+            if (e.target.classList?.contains('user-select-cb')) bulkRefreshBar();
+            if (e.target.id === 'users-select-all') {
+                document.querySelectorAll('.user-select-cb').forEach(cb => { cb.checked = e.target.checked; });
+                bulkRefreshBar();
+            }
+        });
+
+        document.getElementById('bulk-clear')?.addEventListener('click', () => {
+            setBulkScopeAll(false);
+            document.querySelectorAll('.user-select-cb').forEach(cb => { cb.checked = false; });
+            bulkRefreshBar();
+        });
+
+        // таблица перерисовывается автообновлением — сбрасываем панель
+        const _usersTbody = document.getElementById('users-tbody');
+        if (_usersTbody && window.MutationObserver) {
+            new MutationObserver(() => bulkRefreshBar()).observe(_usersTbody, { childList: true });
+        }
+
+        // ================= МАССОВЫЕ ДЕЙСТВИЯ =================
+        const BULK_TITLES = {
+            refresh_username: 'обновить имена',
+            reset_trial: 'сбросить пробный период',
+            mark_trial_used: 'отметить пробный период использованным',
+            reset_cooldown: 'снять ограничение на пересоздание',
+            ban: 'заблокировать',
+            unban: 'разблокировать',
+        };
+
+        document.querySelectorAll('.bulk-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const action = btn.getAttribute('data-bulk-action');
+                const ids = bulkSelectedIds();
+                if (!bulkScopeAll && !ids.length) { showToast('danger', 'Никто не выбран'); return; }
+
+                const affected = bulkScopeAll ? bulkTotalMatching : ids.length;
+
+                if (action === 'ban') {
+                    const ok = await adminConfirm(
+                        `Заблокировать выбранных пользователей (${affected})?`,
+                        { title: 'Массовая блокировка', okText: 'Заблокировать', danger: true });
+                    if (!ok) return;
+                }
+
+                // Действие сразу над всей базой стоит подтвердить отдельно
+                if (bulkScopeAll && action !== 'ban') {
+                    const ok = await adminConfirm(
+                        `Действие затронет всех пользователей: ${affected}. Продолжить?`,
+                        { title: 'Массовое действие', okText: 'Выполнить' });
+                    if (!ok) return;
+                }
+
+                const original = btn.innerHTML;
+                document.querySelectorAll('.bulk-btn').forEach(b => b.disabled = true);
+                btn.innerHTML = '<span class=\"material-symbols-outlined text-sm animate-spin\">progress_activity</span>Выполняю...';
+
+                try {
+                    const resp = await fetch('/users/bulk-action', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(bulkScopeAll
+                            ? { action, scope: 'all', q: bulkSearchQuery() }
+                            : { action, user_ids: ids, scope: 'selected' })
+                    });
+                    const data = await resp.json();
+                    if (data.ok) {
+                        showToast('success', data.message || 'Готово');
+                        setTimeout(() => window.location.reload(), 900);
+                    } else {
+                        showToast('danger', data.error || `Не удалось ${BULK_TITLES[action] || 'выполнить'}`);
+                    }
+                } catch (_) {
+                    showToast('danger', 'Ошибка сети');
+                }
+
+                document.querySelectorAll('.bulk-btn').forEach(b => b.disabled = false);
+                btn.innerHTML = original;
+            });
+        });
+
+        // ================= ОБНОВЛЕНИЕ ВСЕХ ИМЁН =================
+        document.getElementById('btn-refresh-all-usernames')?.addEventListener('click', async (ev) => {
+            const btn = ev.currentTarget;
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class=\"material-symbols-outlined text-base animate-spin\">progress_activity</span>Обновляю...';
+
+            try {
+                const resp = await fetch('/users/username/refresh-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    credentials: 'same-origin'
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    showToast('success', data.message || 'Имена обновлены');
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showToast('danger', data.error || 'Не удалось обновить');
+                }
+            } catch (_) {
+                showToast('danger', 'Ошибка сети');
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = original;
+        });
+
+        // ================= ИМЯ ОДНОГО ПОЛЬЗОВАТЕЛЯ =================
+        document.getElementById('udm-action-refresh-username')?.addEventListener('click', async (ev) => {
+            const uid = document.getElementById('udm-trial-toggle')?.getAttribute('data-user-id');
+            if (!uid) { showToast('danger', 'Не удалось определить пользователя'); return; }
+
+            const btn = ev.currentTarget;
+            btn.disabled = true;
+            try {
+                const resp = await fetch(`/users/${uid}/username/refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    credentials: 'same-origin'
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    showToast('success', data.message || 'Готово');
+                    const nameEl = document.getElementById('udm-username');
+                    if (nameEl && data.label) nameEl.textContent = data.label;
+                    refreshUserDetails(uid);
+                } else {
+                    showToast('danger', data.error || 'Не удалось обновить имя');
+                }
+            } catch (_) { showToast('danger', 'Ошибка сети'); }
+            btn.disabled = false;
+        });
+
+        // ================= ИСТОРИЯ ИМЁН =================
+        document.getElementById('udm-action-username-history')?.addEventListener('click', async () => {
+            const uid = document.getElementById('udm-trial-toggle')?.getAttribute('data-user-id');
+            if (!uid) { showToast('danger', 'Не удалось определить пользователя'); return; }
+
+            const body = document.getElementById('usernameHistoryBody');
+            body.innerHTML = '<div class=\"text-white/40 text-sm text-center py-6\">Загрузка...</div>';
+            openModal('usernameHistoryModal');
+
+            try {
+                const resp = await fetch(`/users/${uid}/username/history.json`, { credentials: 'same-origin' });
+                const data = await resp.json();
+
+                if (!data.ok || !data.items?.length) {
+                    body.innerHTML =
+                        '<div class=\"text-white/40 text-sm text-center py-6\">История пуста.<br>' +
+                        '<span class=\"text-xs\">Записи появятся после первого обновления имени.</span></div>';
+                    return;
+                }
+
+                body.innerHTML = data.items.map(it => `
+                    <div class=\"rounded-xl border border-white/10 bg-white/[0.03] p-3\">
+                        <div class=\"flex items-center gap-2 flex-wrap text-sm\">
+                            <span class=\"text-white/40 line-through\">${escapeHtmlSafe(it.previous_label)}</span>
+                            <span class=\"material-symbols-outlined text-white/30 text-base\">arrow_forward</span>
+                            <span class=\"text-white font-bold\">${escapeHtmlSafe(it.label)}</span>
+                        </div>
+                        <div class=\"text-[11px] text-white/35 mt-1.5\">${escapeHtmlSafe(it.changed_at || '')} · ${escapeHtmlSafe(it.source || '')}</div>
+                    </div>`).join('');
+            } catch (_) {
+                body.innerHTML = '<div class=\"text-red-400 text-sm text-center py-6\">Не удалось загрузить историю</div>';
+            }
+        });
+
+        function escapeHtmlSafe(v) {
+            return String(v ?? '').replace(/[&<>\"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        // ---------- Снятие кулдауна пересоздания ----------
+        document.getElementById('udm-action-reset-cooldown')?.addEventListener('click', async () => {
+            const uid = document.getElementById('udm-trial-toggle')?.getAttribute('data-user-id');
+            if (!uid) { showToast('danger', 'Не удалось определить пользователя'); return; }
+            try {
+                const resp = await fetch(`/users/${uid}/reset-cooldown`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    credentials: 'same-origin'
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    showToast('success', data.message || 'Ограничение снято');
+                } else {
+                    showToast('danger', data.error || 'Не удалось снять ограничение');
+                }
+            } catch (_) { showToast('danger', 'Ошибка сети'); }
+        });
+
+        // ---------- Удаление пользователя ----------
+        let deleteUserId = null;
+        let deleteUserExpectedNames = [];
+
+        document.getElementById('udm-action-delete-user')?.addEventListener('click', () => {
+            const uid = document.getElementById('udm-trial-toggle')?.getAttribute('data-user-id');
+            if (!uid) { showToast('danger', 'Не удалось определить пользователя'); return; }
+
+            deleteUserId = uid;
+            // имя берём с карточки; если username нет — подтверждаем по ID
+            const nameEl = document.getElementById('udm-username');
+            const raw = (nameEl?.textContent || '').trim().replace(/^@/, '');
+            const expected = raw && raw !== '—' && raw.toLowerCase() !== 'n/a' ? raw : String(uid);
+            deleteUserExpectedNames = [expected.toLowerCase(), String(uid)];
+
+            document.getElementById('deleteUserExpected').textContent = expected;
+            const input = document.getElementById('deleteUserInput');
+            const confirmBtn = document.getElementById('deleteUserConfirmBtn');
+            const err = document.getElementById('deleteUserError');
+            if (input) input.value = '';
+            if (confirmBtn) confirmBtn.disabled = true;
+            if (err) err.classList.add('hidden');
+
+            openModal('deleteUserConfirmModal');
+            setTimeout(() => input?.focus(), 80);
+        });
+
+        document.getElementById('deleteUserInput')?.addEventListener('input', (e) => {
+            const typed = e.target.value.trim().replace(/^@/, '').toLowerCase();
+            const btn = document.getElementById('deleteUserConfirmBtn');
+            if (btn) btn.disabled = !deleteUserExpectedNames.includes(typed);
+        });
+
+        document.getElementById('deleteUserConfirmBtn')?.addEventListener('click', async (ev) => {
+            if (!deleteUserId) return;
+            const input = document.getElementById('deleteUserInput');
+            const err = document.getElementById('deleteUserError');
+            const btn = ev.currentTarget;
+            const original = btn.textContent;
+
+            btn.disabled = true;
+            btn.textContent = 'Удаляю...';
+            if (err) err.classList.add('hidden');
+
+            try {
+                const resp = await fetch(`/users/${deleteUserId}/delete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ confirm_name: input ? input.value.trim() : '' })
+                });
+                const data = await resp.json();
+
+                if (data.ok) {
+                    showToast('success', data.message || 'Пользователь удалён');
+                    closeModal('deleteUserConfirmModal');
+                    closeModal('userDetailsModal');
+                    setTimeout(() => window.location.reload(), 800);
+                    return;
+                }
+                if (err) {
+                    err.textContent = data.error || 'Не удалось удалить';
+                    err.classList.remove('hidden');
+                }
+            } catch (_) {
+                if (err) {
+                    err.textContent = 'Ошибка сети';
+                    err.classList.remove('hidden');
+                }
+            }
+
+            btn.disabled = false;
+            btn.textContent = original;
         });
 
         async function refreshUserDetails(uid) {

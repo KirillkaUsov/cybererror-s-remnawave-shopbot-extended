@@ -1,5 +1,10 @@
 {% for user in users %}
 <tr class="hover:bg-white/[0.02] transition-colors border-b border-white/5 last:border-0 group">
+    <td class="pl-5 pr-1 py-4">
+        <input type="checkbox" class="user-select-cb w-4 h-4 rounded border-white/20 bg-white/5 text-primary
+                      focus:ring-primary/40 focus:ring-offset-0 cursor-pointer"
+            value="{{ user.telegram_id }}" aria-label="Выбрать пользователя {{ user.telegram_id }}">
+    </td>
     <td class="px-6 py-4 whitespace-nowrap user-id">
         <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-white">{{ user.telegram_id }}</span>
@@ -10,7 +15,11 @@
         </div>
     </td>
     <td class="px-6 py-4 whitespace-nowrap user-name">
-        <span class="text-sm text-white demo-blur-username">@{{ user.username or 'N/A' }}</span>
+        {% if user.username %}
+        <span class="text-sm text-white demo-blur-username">@{{ user.username }}</span>
+        {% else %}
+        <span class="text-sm text-white/40 italic">Безымянный пользователь</span>
+        {% endif %}
     </td>
     <td class="px-6 py-4 whitespace-nowrap">
         {% if user.is_banned %}

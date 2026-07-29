@@ -667,6 +667,81 @@ async def reset_user_traffic(user_uuid: str) -> bool:
     return True
 
 
+async def update_user_description(
+    user_uuid: str,
+    description: str,
+    *,
+    host_name: str | None = None,
+) -> bool:
+    """
+    Обновляет поле «Описание» пользователя в панели Remnawave.
+
+    Меняется только description — ни username, ни email, ни лимиты не трогаются,
+    поэтому действующие подключения и ссылка подписки остаются рабочими.
+    Remnawave ограничивает длину описания, поэтому текст подрезается.
+    """
+    if not user_uuid:
+        return False
+
+    text = (description or "").strip()
+    if len(text) > 500:
+        text = text[:497].rstrip() + "..."
+
+    payload = {"uuid": user_uuid.strip(), "description": text}
+
+    try:
+        if host_name:
+            await _request_for_host(host_name, "PATCH", "/api/users",
+                                    json_payload=payload, expected_status=(200, 201))
+        else:
+            await _request("PATCH", "/api/users",
+                           json_payload=payload, expected_status=(200, 201))
+        logger.info("Remnawave: описание пользователя %s обновлено", user_uuid)
+        return True
+    except RemnawaveAPIError as exc:
+        logger.warning("Remnawave: не удалось обновить описание %s: %s", user_uuid, exc)
+        return False
+    except Exception:
+        logger.exception("Remnawave: непредвиденная ошибка обновления описания %s", user_uuid)
+        return False
+
+
+async def revoke_subscription_on_host(user_uuid: str, *, host_name: str | None = None) -> dict[str, Any] | None:
+    """
+    Отзывает текущую ссылку подписки пользователя и генерирует новую (новый shortUuid).
+    Сам аккаунт в Remnawave (uuid, лимиты трафика/устройств, срок действия) не меняется —
+    меняется только ссылка подписки, старая ссылка перестаёт работать.
+
+    Возвращает актуальные данные пользователя (с новым subscriptionUrl) или None при ошибке.
+    """
+    if not user_uuid:
+        return None
+    encoded_uuid = quote(user_uuid.strip())
+    path = f"/api/users/{encoded_uuid}/actions/revoke"
+
+    try:
+        if host_name:
+            response = await _request_for_host(host_name, "POST", path, expected_status=(200, 201))
+        else:
+            response = await _request("POST", path, expected_status=(200, 201))
+
+        payload = response.json()
+        user_payload = payload.get("response") if isinstance(payload, dict) else None
+        if user_payload:
+            logger.info(
+                "Remnawave%s: подписка пользователя %s пересоздана (новая ссылка)",
+                f"[{host_name}]" if host_name else "",
+                user_uuid,
+            )
+        return user_payload
+    except RemnawaveAPIError as exc:
+        logger.error("Remnawave: ошибка сброса подписки для %s: %s", user_uuid, exc)
+        return None
+    except Exception:
+        logger.exception("Remnawave: непредвиденная ошибка сброса подписки для %s", user_uuid)
+        return None
+
+
 async def set_user_status(user_uuid: str, active: bool) -> bool:
     if not user_uuid:
         return False
