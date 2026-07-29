@@ -1,16 +1,15 @@
-# 🛍️ Remnawave ShopBot
+# 🛍️ Remnawave ShopBot Extended
 
 > **Telegram-бот для полностью автоматизированной продажи VPN-конфигураций с веб-панелью управления**
->  
+>
+> Расширенный форк [CyberERROR/remnawave-shopbot](https://github.com/CyberERROR/remnawave-shopbot)
 
 <div align="center">
 
-[![Release](https://img.shields.io/github/v/release/CyberERROR/remnawave-shopbot?label=release&style=flat-square)](https://github.com/CyberERROR/remnawave-shopbot/releases)
-[![Downloads](https://img.shields.io/github/downloads/CyberERROR/remnawave-shopbot/total?label=downloads&style=flat-square)](https://github.com/CyberERROR/remnawave-shopbot/releases)
-[![License](https://img.shields.io/github/license/CyberERROR/remnawave-shopbot?label=license&style=flat-square)](LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/CyberERROR/remnawave-shopbot?label=last%20commit&style=flat-square)](https://github.com/CyberERROR/remnawave-shopbot/commits)
-[![Issues](https://img.shields.io/github/issues/CyberERROR/remnawave-shopbot?label=issues&style=flat-square)](https://github.com/CyberERROR/remnawave-shopbot/issues)
-[![Stars](https://img.shields.io/github/stars/CyberERROR/remnawave-shopbot?label=stars&style=flat-square)](https://github.com/CyberERROR/remnawave-shopbot/stargazers)
+[![License](https://img.shields.io/github/license/KirillkaUsov/cybererror-s-remnawave-shopbot-extended?label=license&style=flat-square)](LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/KirillkaUsov/cybererror-s-remnawave-shopbot-extended?label=last%20commit&style=flat-square)](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/commits)
+[![Issues](https://img.shields.io/github/issues/KirillkaUsov/cybererror-s-remnawave-shopbot-extended?label=issues&style=flat-square)](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/issues)
+[![Stars](https://img.shields.io/github/stars/KirillkaUsov/cybererror-s-remnawave-shopbot-extended?label=stars&style=flat-square)](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/stargazers)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue?style=flat-square)](https://www.python.org/downloads/)
 
 [Установка](#️-быстрая-установка-под-ключ) • [Документация](#️-первичная-конфигурация) • [Платёжные системы](#-платёжные-системы) • [Скриншоты](#️-скриншоты) • [Поддержка](#-техническая-поддержка)
@@ -24,8 +23,7 @@
 
 <div align="center">
 
-### <img src="https://upload.wikimedia.org/wikipedia/commons/5/5c/Telegram_Messenger.png" width="22" height="22" alt="Telegram"> Наш Telegram
-[Присоединяйтесь к сообществу](https://t.me/+YV_BO1cmGWw5OTdi)
+**Форк проекта [Remnawave ShopBot](https://github.com/CyberERROR/remnawave-shopbot)** от [@CyberERROR](https://github.com/CyberERROR)
 
 </div>
 
@@ -33,7 +31,17 @@
 
 ## 📋 Описание
 
-**Remnawave ShopBot** — комплексное решение для автоматизированной продажи VPN-конфигураций через Telegram. Проект объединяет мощный Telegram-бот с интуитивной веб-панелью на базе Tabler для полного управления услугой.
+**Remnawave ShopBot Extended** — комплексное решение для автоматизированной продажи VPN-конфигураций через Telegram. Проект объединяет Telegram-бот с веб-панелью управления и Telegram Mini App для пользователей.
+
+Это форк [CyberERROR/remnawave-shopbot](https://github.com/CyberERROR/remnawave-shopbot): вся базовая функциональность — оригинального автора, здесь она доработана под свои задачи.
+
+### Чем отличается от оригинала
+
+- 🪟 **Telegram Mini App** для пользователей: кабинет, покупка и продление ключей, инструкции, обращения в поддержку
+- 🔗 **Привязка Telegram-аккаунта** к веб-приложению через `initData`
+- 📎 **Вложения в поддержке**: фото, видео, голосовые и документы из обращений с локальными копиями и разделом управления в панели
+- 🎨 **Единая тёмная тема** панели и мини-аппа — сиреневый акцент вместо неонового зелёного
+- 📐 **Правки вёрстки** мини-аппа и панели под все размеры экранов, от 390 px до десктопа
 
 ---
 
@@ -104,7 +112,7 @@ ssh root@your-server-ip
 ### 2️⃣ Запустите установщик
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/CyberERROR/remnawave-shopbot/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/main/install.sh | bash
 ```
 
 ### 3️⃣ Следуйте инструкциям
@@ -172,7 +180,7 @@ truncate -s 0 /var/lib/docker/containers/*/*-json.log
 
 ```bash
 # Запустить установщик (загружает свежую версию)
-curl -sSL https://raw.githubusercontent.com/CyberERROR/remnawave-shopbot/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/main/install.sh | bash
 
 ```
 
@@ -185,7 +193,7 @@ cd /root/remnawave-shopbot && docker-compose down && docker-compose up -d --buil
 ### 🗑 Полное удаление
 ```bash
 # Запустить скрипт удаления (полностью удаляет бота и связанные контейнеры)
-curl -sSL https://raw.githubusercontent.com/CyberERROR/remnawave-shopbot/main/uninstall.sh | bash
+curl -sSL https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/main/uninstall.sh | bash
 ```
 
 ---
@@ -313,17 +321,21 @@ https://t.me/<bot_username>?start=ref_<telegram_id>
 
 Если вы нашли баг или хотите предложить улучшение:
 
-1. Проверьте [Issues](https://github.com/CyberERROR/remnawave-shopbot/issues) — возможно, это уже известно
+1. Проверьте [Issues](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/issues) — возможно, это уже известно
 2. Создайте новый issue с описанием:
    - Что произошло
    - Как это воспроизвести
    - Ваша ОС и версия бота
 
+⚠️ Баги, которые воспроизводятся и в оригинальном проекте, лучше сообщать [в апстрим](https://github.com/CyberERROR/remnawave-shopbot/issues) — сюда стоит писать про то, что появилось в форке.
+
 ---
 
-## 📄 Лицензия
+## 📄 Лицензия и происхождение
 
-Проект распространяется по лицензии [GPLv3](LICENSE).
+Проект распространяется по лицензии [GPLv3](LICENSE) — той же, что и оригинал.
+
+Основан на [Remnawave ShopBot](https://github.com/CyberERROR/remnawave-shopbot) © [@CyberERROR](https://github.com/CyberERROR). Авторство базового кода принадлежит ему, изменения в этом форке — [@KirillkaUsov](https://github.com/KirillkaUsov).
 
 Вы можете свободно использовать, изучать, модифицировать и распространять этот код при условии соблюдения лицензии.
 
@@ -333,5 +345,5 @@ https://t.me/<bot_username>?start=ref_<telegram_id>
 
 **Сделано с ❤️ для сообщества**
 
-[⭐ Звёздочка на GitHub](https://github.com/CyberERROR/remnawave-shopbot) поддержит развитие проекта
+[⭐ Звёздочка на GitHub](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended) поддержит развитие проекта
 

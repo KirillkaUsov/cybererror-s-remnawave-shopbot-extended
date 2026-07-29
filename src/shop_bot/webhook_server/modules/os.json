@@ -1,15 +1,17 @@
 {
-    "_comment": "Конфигурация проекта.",
+    "_comment": "Конфигурация проекта. Ссылка update ведёт на os.json этого репозитория: проверка обновлений сравнивает version с нашей версией, а не с версией апстрима.",
     "project": {
         "version": "1.5.7",
-        "name": "Remnawave Shopbot",
+        "name": "Remnawave ShopBot Extended",
         "links": {
-            "repository": "https://github.com/CyberERROR/remnawave-shopbot",
-            "releases": "https://github.com/CyberERROR/remnawave-shopbot/releases",
-            "telegram": "https://t.me/+gwNP6nFYuYo4MDUy",
-            "developer": "https://github.com/CyberERROR",
-            "update": "https://raw.githubusercontent.com/CyberERROR/remnawave-shopbot/refs/heads/main/src/shop_bot/webhook_server/modules/os.json"
+            "repository": "https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended",
+            "releases": "https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/releases",
+            "telegram": "",
+            "developer": "https://github.com/KirillkaUsov",
+            "upstream": "https://github.com/CyberERROR/remnawave-shopbot",
+            "update": "https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/refs/heads/main/src/shop_bot/webhook_server/modules/os.json"
         },
-        "author": "GitHub @CyberERROR"
+        "author": "GitHub @KirillkaUsov",
+        "based_on": "Remnawave ShopBot by GitHub @CyberERROR (GPLv3)"
     }
 }

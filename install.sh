@@ -10,7 +10,9 @@ PURPLE='\033[0;35m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-REPO_URL="https://github.com/CyberERROR/remnawave-shopbot.git"
+REPO_URL="https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended.git"
+# имя каталога, конфига nginx и контейнера не меняем: от него зависят уже
+# развёрнутые установки и скрипт удаления
 PROJECT_NAME="remnawave-shopbot"
 
 # === ИСПРАВЛЕНИЕ ПУТИ === 
@@ -32,16 +34,15 @@ YOOKASSA_PORT=""
 show_header() {
     clear
     echo -e "${PURPLE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${PURPLE}${BOLD}           REMNAWAVE SHOPBOT INSTALLER & UPDATER              ${NC}"
+    echo -e "${PURPLE}${BOLD}       REMNAWAVE SHOPBOT EXTENDED - INSTALLER & UPDATER       ${NC}"
     echo -e "${PURPLE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
 
 show_footer() {
     echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${CYAN}Репозиторий:${NC}  https://github.com/CyberERROR/remnawave-shopbot"
-    echo -e "${CYAN}Telegram:${NC}      https://t.me/+7hUhNxAdzBpjNWRi"
-    echo -e "${CYAN}Разработчик:${NC}   https://github.com/CyberERROR"
+    echo -e "${CYAN}Репозиторий:${NC}  https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended"
+    echo -e "${CYAN}Форк проекта:${NC} https://github.com/CyberERROR/remnawave-shopbot"
     echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }

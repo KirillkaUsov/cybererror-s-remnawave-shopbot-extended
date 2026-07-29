@@ -244,12 +244,12 @@ EOF
     log_success "✔ Конфигурация Nginx обновлена."
 }
 
-REPO_URL="https://github.com/CyberERROR/remnawave-shopbot.git"
+REPO_URL="https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended.git"
 PROJECT_DIR="remnawave-shopbot"
 NGINX_CONF="/etc/nginx/sites-available/${PROJECT_DIR}.conf"
 NGINX_LINK="/etc/nginx/sites-enabled/${PROJECT_DIR}.conf"
 
-log_success "--- Запуск скрипта установки/обновления Remnawave ShopBot ---"
+log_success "--- Запуск скрипта установки/обновления Remnawave ShopBot Extended ---"
 
 if [[ -f "$NGINX_CONF" ]]; then
     log_info "\nОбнаружена существующая конфигурация. Запускается режим обновления."
@@ -281,7 +281,7 @@ else
     log_warn "Каталог $PROJECT_DIR уже существует. Будет использована текущая версия."
 fi
 cd "$PROJECT_DIR"
-log_success "✔ Репозиторий Remnawave ShopBot готов."
+log_success "✔ Репозиторий Remnawave ShopBot Extended готов."
 
 log_info "\nШаг 3: настройка домена и SSL"
 
@@ -355,7 +355,7 @@ sudo docker-compose up -d --build
 cat <<SUMMARY
 
 ${GREEN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}
-${GREEN}┃${NC}  🎉 ${BOLD}Установка Remnawave ShopBot завершена!${NC} 🎉                ${GREEN}┃${NC}
+${GREEN}┃${NC}  🎉 ${BOLD}Установка Remnawave ShopBot Extended завершена!${NC} 🎉       ${GREEN}┃${NC}
 ${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}
 
 ${BOLD}Веб‑панель:${NC}
