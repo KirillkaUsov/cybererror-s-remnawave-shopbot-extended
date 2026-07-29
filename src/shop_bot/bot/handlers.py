@@ -350,27 +350,27 @@ async def send_instruction_response(callback: types.CallbackQuery, os_type: str,
     if not instruction_text:
         defaults = {
             "android": (
-                "<b>Подключение на Android</b>\n\n"
+                "🤖 <b>Подключение на Android</b>\n\n"
                 "1. <b>Установите V2RayTun:</b> Google Play.\n"
                 "2. <b>Скопируйте ссылку подписки:</b> В разделе «Моя подписка».\n"
                 "3. <b>Импорт:</b> В приложении нажмите «+» -> «Импорт из буфера».\n"
                 "4. <b>Подключение:</b> Нажмите кнопку подключения."
             ),
             "ios": (
-                "<b>Подключение на iOS</b>\n\n"
+                "🍏 <b>Подключение на iOS</b>\n\n"
                 "1. <b>Установите V2RayTun:</b> App Store.\n"
                 "2. <b>Скопируйте ссылку подписки:</b> В боте.\n"
                 "3. <b>Импорт:</b> В приложении нажмите «+» -> «Импорт из буфера».\n"
                 "4. <b>Подключение:</b> Включите переключатель."
             ),
             "windows": (
-                "<b>Подключение на Windows</b>\n\n"
+                "🪟 <b>Подключение на Windows</b>\n\n"
                 "1. <b>Скачайте Nekoray:</b> GitHub.\n"
                 "2. <b>Импорт:</b> Скопируйте ссылку подписки -> Server -> Import from clipboard.\n"
                 "3. <b>Запуск:</b> Server -> Start."
             ),
             "linux": (
-                "<b>Подключение на Linux</b>\n\n"
+                "🐧 <b>Подключение на Linux</b>\n\n"
                 "Используйте Nekoray или любой клиент с поддержкой VLESS."
             )
         }
@@ -805,7 +805,7 @@ def get_user_router() -> Router:
             await show_main_menu(message)
             return
 
-        welcome_parts = ["<b>Добро пожаловать!</b>\n"]
+        welcome_parts = ["👋 <b>Добро пожаловать!</b>\n"]
         if is_subscription_forced and channel_url: welcome_parts.append("Для доступа к функциям, пожалуйста, подпишитесь на наш канал.")
         
         if terms_url and privacy_url:
@@ -971,7 +971,7 @@ def get_user_router() -> Router:
         topup_amount_image = get_setting("topup_amount_image")
         msg = await smart_edit_message(
             callback.message,
-            "💰 <b>Пополнение баланса</b>\n\nВведите сумму пополнения в рублях:\n🔹 Минимум: 10 RUB\n🔹 Максимум: 100 000 RUB",
+            "💰 <b>Пополнение баланса</b>\n\nВведите сумму пополнения в рублях:\n\n📉 <b>Минимум:</b> 10 RUB\n📈 <b>Максимум:</b> 100 000 RUB",
             keyboards.create_back_to_menu_keyboard(),
             topup_amount_image
         )
@@ -2148,7 +2148,7 @@ def get_user_router() -> Router:
     # Логика генерации уникального email, регистрации ключа на хосте и уведомления пользователя
     async def process_trial_key_creation(message: types.Message, host_name: str):
         user_id = message.chat.id
-        await smart_edit_message(message, f"⚙️ <b>Подготовка конфигурации...</b>\nСоздаю бесплатный доступ на {get_setting('trial_duration_days')} дня на сервере «{host_name}»")
+        await smart_edit_message(message, f"⚙️ <b>Готовлю подписку...</b>\nСоздаю бесплатный доступ на {get_setting('trial_duration_days')} дня на сервере «{host_name}»")
 
         try:
             user_data = get_user(user_id) or {}
@@ -2175,7 +2175,7 @@ def get_user_router() -> Router:
             result = await remnawave_api.create_or_update_key_on_host(host_name=host_name, email=candidate_email, days_to_add=int(get_setting("trial_duration_days")), telegram_id=user_id, traffic_limit_gb=trial_traffic if trial_traffic > 0 else None, hwid_limit=trial_hwid if trial_hwid > 0 else None)
             
             if not result:
-                await smart_edit_message(message, "❌ <b>Ошибка сервера</b>\nНе удалось сгенерировать конфигурацию. Попробуйте выбрать другой сервер.")
+                await smart_edit_message(message, "❌ <b>Ошибка сервера</b>\nНе удалось создать подписку. Попробуйте выбрать другой сервер.")
                 return
 
             set_trial_used(user_id)
@@ -2394,7 +2394,7 @@ def get_user_router() -> Router:
             expiry_ms = int(datetime.fromisoformat(key['expiry_date']).timestamp() * 1000)
         except: expiry_ms = int((get_msk_time().replace(tzinfo=None) + timedelta(days=1)).timestamp() * 1000)
 
-        await smart_edit_message(callback.message, f"🚀 <b>Перенос конфигурации...</b>\nМиграция на сервер «{new_host}». Пожалуйста, подождите.")
+        await smart_edit_message(callback.message, f"🚀 <b>Переношу подписку...</b>\nМиграция на сервер «{new_host}». Пожалуйста, подождите.")
 
         try:
             hw_lim = key.get('hwid_limit')
@@ -2456,7 +2456,7 @@ def get_user_router() -> Router:
                 await callback.message.edit_media(
                     media=InputMediaPhoto(
                         media=BufferedInputFile(bio.read(), filename="vpn_qr.png"),
-                        caption=f"📸 <b>QR-код для конфигурации #{kid}</b>\n\nОтсканируйте его в вашем VPN-клиенте для быстрого импорта."
+                        caption=f"📸 <b>QR-код подписки #{kid}</b>\n\nОтсканируйте его в вашем VPN-клиенте для быстрого импорта."
                     ),
                     reply_markup=keyboards.create_qr_keyboard(kid)
                 )
@@ -2506,7 +2506,7 @@ def get_user_router() -> Router:
                 hwid_limit = user_info.get('hwidDeviceLimit')
         limit_str = str(hwid_limit) if hwid_limit else "∞"
 
-        text = f"🖥 <b>Подключённые устройства</b>\n\nВсего: <b>{len(devices)} из {limit_str}</b> доступных!\n\n"
+        text = f"🖥 <b>Подключённые устройства</b>\n\n📱 <b>Занято слотов:</b> {len(devices)} / {limit_str}\n\n"
         for i, dev in enumerate(current_devices):
             ua = dev.get('userAgent', 'Unknown') 
             
@@ -3615,7 +3615,7 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
         proc_msg = None
         if not str(uid).startswith("999"):
             try:
-                if bot: proc_msg = await bot.send_message(uid, f"⏳ <b>Оплата принята!</b>\nФормируем конфигурацию на сервере «{host}»...")
+                if bot: proc_msg = await bot.send_message(uid, f"⏳ <b>Оплата принята!</b>\nГотовлю подписку на сервере «{host}»...")
             except Exception: pass
         
         try:
@@ -3797,7 +3797,7 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
             logger.error(f"Ошибка логики VPN ({uid}): {e}", exc_info=True)
             if not str(uid).startswith("999"):
                 try:
-                    if bot: await bot.send_message(uid, "❌ <b>Ошибка при выдаче подписки</b>\nВаша оплата зафиксирована, но произошел сбой при создании конфигурации. Свяжитесь с поддержкой.")
+                    if bot: await bot.send_message(uid, "❌ <b>Ошибка при выдаче подписки</b>\nОплата зафиксирована, но создать подписку не удалось. Свяжитесь с поддержкой.")
                 except Exception: pass
             return False
     except Exception as e:

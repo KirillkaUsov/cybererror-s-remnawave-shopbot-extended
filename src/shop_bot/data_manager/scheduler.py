@@ -58,9 +58,9 @@ async def send_subscription_notification(bot: Bot, user_id: int, key_id: int, ti
         expiry_str = expiry_date.strftime('%d.%m.%Y в %H:%M')
         
         message = (
-            f"⚠️ **Внимание!** ⚠️\n\n"
-            f"Срок действия вашей подписки истекает через **{time_text}**.\n"
-            f"Дата окончания: **{expiry_str}**\n\n"
+            f"⚠️ <b>Подписка скоро закончится</b>\n\n"
+            f"⏳ <b>Осталось:</b> {time_text}\n"
+            f"🕙 <b>Истекает:</b> {expiry_str}\n\n"
             f"Продлите подписку, чтобы не остаться без доступа к свободному интернету!"
         )
         
@@ -69,7 +69,7 @@ async def send_subscription_notification(bot: Bot, user_id: int, key_id: int, ti
         builder.button(text="🔄 Продлить эту подписку", callback_data=f"extend_key_{key_id}")
         builder.adjust(2)
         
-        await bot.send_message(chat_id=user_id, text=message, reply_markup=builder.as_markup(), parse_mode='Markdown')
+        await bot.send_message(chat_id=user_id, text=message, reply_markup=builder.as_markup(), parse_mode='HTML')
         logger.debug(f"Scheduler: Отправлено уведомление пользователю {user_id} по ключу {key_id} (осталось {time_left_hours} ч).")
         
     except Exception as e:
