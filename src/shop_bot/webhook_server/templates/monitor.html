@@ -110,7 +110,9 @@
             class="absolute -left-16 -top-16 w-64 h-64 bg-primary/5 rounded-full blur-3xl transition-all duration-700 pointer-events-none">
         </div>
 
-        <div class="flex items-center justify-between mb-4 relative z-10">
+        <!-- переключатель периода не влезал в строку на телефоне: карточка
+             обрезает по overflow-hidden, и «Месяц» становился недоступен -->
+        <div class="flex flex-wrap gap-3 items-center justify-between mb-4 relative z-10">
             <div class="flex items-center gap-3">
                 <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                     <span class="material-symbols-outlined text-sm">ssid_chart</span>
@@ -118,7 +120,7 @@
                 <h4 class="text-white font-bold text-sm tracking-tight">Производительность</h4>
             </div>
 
-            <div class="flex bg-black/30 p-1 rounded-lg border border-white/5 items-center">
+            <div class="flex bg-black/30 p-1 rounded-lg border border-white/5 items-center max-w-full overflow-x-auto">
                 <button
                     class="period-btn px-3 py-1.5 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all bg-primary/20 text-primary hover:bg-primary/30"
                     data-period="6">6 Часов</button>
@@ -159,7 +161,7 @@
                     <span class="material-symbols-outlined text-[14px] text-white/50 shrink-0">expand_more</span>
                 </button>
                 <div
-                    class="soft-select-menu absolute right-0 mt-2 w-48 bg-[#0a1812] border border-white/10 rounded-xl shadow-xl overflow-hidden hidden transform origin-top-right transition-all">
+                    class="soft-select-menu absolute right-0 mt-2 w-48 bg-[#141519] border border-white/10 rounded-xl shadow-xl overflow-hidden hidden transform origin-top-right transition-all">
                     <div class="soft-select-item px-3 py-2 hover:bg-white/5 cursor-pointer text-xs font-bold text-white/80 transition-colors border-l-2 border-transparent hover:border-primary flex items-center gap-2 is-active"
                         data-value="local">
                         <span class="material-symbols-outlined text-xs text-primary">dns</span> Локальная
@@ -586,14 +588,14 @@
                         {
                             label: 'CPU',
                             data: [],
-                            borderColor: '#13ec80',
-                            backgroundColor: 'rgba(19, 236, 128, 0.05)',
+                            borderColor: '#d7abff',
+                            backgroundColor: 'rgba(215, 171, 255, 0.05)',
                             borderWidth: 2,
                             fill: true,
                             tension: 0.4,
                             pointRadius: 2,
                             pointHoverRadius: 6,
-                            pointBackgroundColor: '#13ec80'
+                            pointBackgroundColor: '#d7abff'
                         },
                         {
                             label: 'RAM',
@@ -693,7 +695,7 @@
                 type: 'doughnut',
                 data: {
                     labels: ['CPU', 'RAM', 'Disk'],
-                    datasets: [{ data: [0, 0, 0], backgroundColor: ['#13ec80', '#22c55e', '#facc15'], borderWidth: 0, hoverOffset: 4 }]
+                    datasets: [{ data: [0, 0, 0], backgroundColor: ['#d7abff', '#22c55e', '#facc15'], borderWidth: 0, hoverOffset: 4 }]
                 },
                 options: {
                     responsive: true,

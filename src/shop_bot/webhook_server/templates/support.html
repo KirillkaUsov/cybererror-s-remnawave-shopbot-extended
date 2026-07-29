@@ -57,14 +57,14 @@
 
     .stat-card:hover {
         background: rgba(255, 255, 255, 0.06);
-        border-color: rgba(19, 236, 128, 0.2);
+        border-color: rgba(215, 171, 255, 0.2);
         transform: translateY(-4px);
     }
 
     .stat-card.active {
-        background: rgba(19, 236, 128, 0.08);
-        border-color: rgba(19, 236, 128, 0.4);
-        box-shadow: 0 10px 30px -10px rgba(19, 236, 128, 0.2);
+        background: rgba(215, 171, 255, 0.08);
+        border-color: rgba(215, 171, 255, 0.4);
+        box-shadow: 0 10px 30px -10px rgba(215, 171, 255, 0.2);
     }
 
     .stat-icon {
@@ -81,9 +81,9 @@
 
     /* Цвета для подложек иконок */
     .icon-box-primary {
-        background: rgba(19, 236, 128, 0.1);
-        color: #13ec80;
-        box-shadow: 0 4px 15px -5px rgba(19, 236, 128, 0.4);
+        background: rgba(215, 171, 255, 0.1);
+        color: #d7abff;
+        box-shadow: 0 4px 15px -5px rgba(215, 171, 255, 0.4);
     }
 
     .icon-box-orange {
@@ -159,7 +159,7 @@
             position: sticky;
             top: 0;
             z-index: 1;
-            background: rgba(16, 34, 25, 0.8);
+            background: rgba(25, 26, 31, 0.8);
             backdrop-filter: blur(20px);
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             padding: 1rem;
@@ -184,14 +184,14 @@
 
         .chat-item:active {
             transform: scale(0.98);
-            background: rgba(19, 236, 128, 0.05);
+            background: rgba(215, 171, 255, 0.05);
         }
 
         .chat-avatar {
             width: 3.25rem;
             height: 3.25rem;
             border-radius: 50%;
-            background: linear-gradient(135deg, #13ec80 0%, #0b9e56 100%);
+            background: linear-gradient(135deg, #d7abff 0%, #9a6fd6 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -199,7 +199,7 @@
             font-weight: 900;
             color: #fff;
             margin-right: 1rem;
-            box-shadow: 0 4px 12px rgba(19, 236, 128, 0.2);
+            box-shadow: 0 4px 12px rgba(215, 171, 255, 0.2);
         }
 
         .chat-content {
@@ -236,7 +236,7 @@
         }
 
         .chat-preview.highlight {
-            color: #13ec80;
+            color: #d7abff;
             font-weight: 700;
         }
     }
@@ -353,18 +353,18 @@
 
 <!-- Gemini Settings Modal -->
 <div id="geminiModal" class="modal-overlay" onclick="if(event.target===this)event.stopPropagation()">
-    <div class="modal-content premium-card !bg-[#0a0f0d] !border-primary/20 w-full max-w-3xl p-0 overflow-hidden transform transition-all duration-300 scale-95 opacity-0"
+    <div class="modal-content premium-card !bg-[#141519] !border-primary/20 w-full max-w-3xl p-0 overflow-hidden transform transition-all duration-300 scale-95 opacity-0"
         id="geminiModalContent">
         <div class="p-6 border-b border-white/5 bg-primary/5 flex items-center justify-between">
             <div class="flex items-center gap-4">
                 <div
-                    class="w-10 h-10 rounded-xl bg-primary/20 border border-primary/20 flex items-center justify-center text-primary shadow-[0_0_15px_rgba(19,236,128,0.3)]">
+                    class="w-10 h-10 rounded-xl bg-primary/20 border border-primary/20 flex items-center justify-center text-primary shadow-[0_0_15px_rgba(215, 171, 255,0.3)]">
                     <span class="material-symbols-outlined text-xl">auto_awesome</span>
                 </div>
                 <div>
                     <h3 class="text-lg font-black text-white uppercase tracking-wider flex items-center gap-2">
                         AI Assistant
-                        <span class="px-1.5 py-0.5 rounded bg-primary text-[#0a0f0d] text-[10px] font-bold">PRO</span>
+                        <span class="px-1.5 py-0.5 rounded bg-primary text-[#141519] text-[10px] font-bold">PRO</span>
                     </h3>
                     <p class="text-[10px] font-bold text-white/40 uppercase tracking-widest">Генерация ответов</p>
                 </div>

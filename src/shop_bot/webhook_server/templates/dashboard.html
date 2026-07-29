@@ -66,7 +66,9 @@
 <!-- ===== Конец заголовка ===== -->
 
 <!-- ===== СЕКЦИЯ: Карточки статистики ===== -->
-<section id="dash-stats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 mb-8"
+<!-- пять колонок только с 1536px: на 1280 карточка сужалась до 190px и
+     заголовки вроде «Не купили ключ» обрезались многоточием -->
+<section id="dash-stats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 mb-8"
     data-fetch-url="{{ url_for('dashboard_stats_partial') }}" data-fetch-interval="120000">
     {% set _stats_html %}{% include 'partials/dashboard_stats.html' %}{% endset %}{{ _stats_html|strip_bom }}
 </section>
@@ -546,7 +548,7 @@
             const isDark = document.documentElement.classList.contains('dark');
             return {
                 bg: isDark ? 'rgba(11, 15, 14, 0.95)' : 'rgba(167, 243, 208, 0.98)',
-                text: isDark ? '#e0e0e0' : '#102219',
+                text: isDark ? '#e0e0e0' : '#191a1f',
                 border: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(16, 77, 48, 0.2)'
             };
         };
@@ -771,8 +773,8 @@
             const ctx = document.getElementById(id)?.getContext('2d');
             if (!ctx) return;
             const dates = Object.keys(obj || {}).sort();
-            const color = id === 'newUsersChart' ? '#13ec80' : '#3b82f6';
-            const colorRgba = id === 'newUsersChart' ? 'rgba(19, 236, 128, 1)' : 'rgba(59, 130, 246, 1)';
+            const color = id === 'newUsersChart' ? '#d7abff' : '#3b82f6';
+            const colorRgba = id === 'newUsersChart' ? 'rgba(215, 171, 255, 1)' : 'rgba(59, 130, 246, 1)';
             const dataLen = dates.length;
 
             window.dashCharts[id] = new Chart(ctx, {
@@ -1150,7 +1152,7 @@
                     if (dateEl) dateEl.textContent = last.created_at;
                     const method = last.method ? `<span class='px-1.5 py-0.5 rounded-md bg-primary/10 border border-primary/15 text-primary text-[8px] font-black uppercase tracking-[0.18em]'>${last.method.toUpperCase()}</span>` : '';
                     const ping = `<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[12px] text-white/40">timer</span><span class="text-white/60 font-bold">${last.ping_ms ?? '—'}</span><span class="text-white/25 text-[9px]">ms</span></span>`;
-                    const down = `<span class="whitespace-nowrap flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[#13ec80] shadow-sm shadow-[#13ec80]/50"></span><span class="text-white/60 font-bold">${last.download_mbps ?? '—'}</span><span class="text-white/25 text-[9px]">Mbps</span></span>`;
+                    const down = `<span class="whitespace-nowrap flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[#d7abff] shadow-sm shadow-[#d7abff]/50"></span><span class="text-white/60 font-bold">${last.download_mbps ?? '—'}</span><span class="text-white/25 text-[9px]">Mbps</span></span>`;
                     const up = `<span class="whitespace-nowrap flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[#00bfff] shadow-sm shadow-[#00bfff]/50"></span><span class="text-white/60 font-bold">${last.upload_mbps ?? '—'}</span><span class="text-white/25 text-[9px]">Mbps</span></span>`;
 
                     latestBox.innerHTML = `
@@ -1179,12 +1181,12 @@
                         {
                             label: 'Загрузка',
                             data: items.map(it => parseFloat(it.download_mbps) || 0),
-                            borderColor: '#13ec80',
-                            backgroundColor: createGrad(ctx, 'rgba(19, 236, 128, 1)', 0.18, 0.04),
+                            borderColor: '#d7abff',
+                            backgroundColor: createGrad(ctx, 'rgba(215, 171, 255, 1)', 0.18, 0.04),
                             fill: true, tension: 0.4,
                             pointRadius: stLen > 40 ? 0 : stLen > 20 ? 2 : 3,
                             pointHoverRadius: 6,
-                            pointBackgroundColor: '#13ec80',
+                            pointBackgroundColor: '#d7abff',
                             pointBorderColor: 'rgba(11, 15, 14, 0.8)',
                             pointBorderWidth: 2,
                             pointHoverBorderWidth: 2,
@@ -1253,8 +1255,8 @@
             if (!data?.ok) return;
             const items = data.items.slice().reverse();
             const ctx = canvas.getContext('2d'); if (detailChart) detailChart.destroy();
-            const metricColor = metric === 'ping_ms' ? '#f59e0b' : (metric === 'upload_mbps' ? '#00bfff' : '#13ec80');
-            const metricColorRgba = metric === 'ping_ms' ? 'rgba(245, 158, 11, 1)' : (metric === 'upload_mbps' ? 'rgba(0, 191, 255, 1)' : 'rgba(19, 236, 128, 1)');
+            const metricColor = metric === 'ping_ms' ? '#f59e0b' : (metric === 'upload_mbps' ? '#00bfff' : '#d7abff');
+            const metricColorRgba = metric === 'ping_ms' ? 'rgba(245, 158, 11, 1)' : (metric === 'upload_mbps' ? 'rgba(0, 191, 255, 1)' : 'rgba(215, 171, 255, 1)');
             const metricUnit = metric === 'ping_ms' ? 'ms' : 'Mbps';
             const metricLabel = metric === 'ping_ms' ? 'Пинг' : (metric === 'upload_mbps' ? 'Отдача' : 'Загрузка');
             const dtLen = items.length;
