@@ -42,7 +42,7 @@
                     onclick="document.getElementById('add-ssh-form').classList.toggle('hidden'); document.getElementById('add-ssh-icon').classList.toggle('rotate-180')">
                     <div class="flex items-center gap-3.5">
                         <div class="relative">
-                            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-emerald-500/10 flex items-center justify-center text-primary border border-primary/15 shadow-lg shadow-primary/10">
+                            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary border border-primary/15 shadow-lg shadow-primary/10">
                                 <span class="material-symbols-outlined text-xl">add_circle</span>
                             </div>
                         </div>
@@ -156,7 +156,7 @@
                             class="material-symbols-outlined text-white/15 cursor-grab active:cursor-grabbing hover:text-white/50 drag-handle transition-colors duration-200 text-lg flex-shrink-0"
                             onclick="event.stopPropagation()">drag_indicator</span>
                         <div class="relative flex-shrink-0" onclick="event.stopPropagation()">
-                            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-emerald-500/10 flex items-center justify-center border border-primary/15 shadow-lg shadow-primary/10">
+                            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center border border-primary/15 shadow-lg shadow-primary/10">
                                 <span class="material-symbols-outlined text-primary text-xl">terminal</span>
                             </div>
                         </div>
@@ -365,7 +365,7 @@
             <div class="flex items-center justify-between mb-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-white/[0.04] to-white/[0.01] border border-white/[0.08] shadow-xl backdrop-blur-md">
                 <div class="flex items-center gap-3.5">
                     <div class="relative">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-emerald-500/10 flex items-center justify-center text-primary border border-primary/15 shadow-lg shadow-primary/10">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary border border-primary/15 shadow-lg shadow-primary/10">
                             <span class="material-symbols-outlined text-xl">terminal</span>
                         </div>
                         <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-primary border-2 border-[#191a1f] shadow-lg shadow-primary/50 animate-pulse"></div>
@@ -415,9 +415,9 @@
 <div id="deployNodeModal" class="modal-overlay">
     <div class="modal-content max-w-4xl rounded-3xl bg-[radial-gradient(circle_at_top_left,_rgba(215, 171, 255,0.08),_transparent_35%),linear-gradient(135deg,_#191a1f,_#141519_55%,_#101013)] border border-white/[0.08] shadow-2xl shadow-black/60 overflow-hidden backdrop-blur-xl">
         <div class="relative px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
-            <div class="absolute inset-0 bg-gradient-to-r from-primary/[0.05] via-emerald-500/[0.02] to-transparent pointer-events-none"></div>
+            <div class="absolute inset-0 bg-gradient-to-r from-primary/[0.05] via-primary/[0.02] to-transparent pointer-events-none"></div>
             <div class="relative flex items-center gap-3.5">
-                <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary/20 to-emerald-500/10 flex items-center justify-center border border-primary/15 shadow-lg shadow-primary/10">
+                <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center border border-primary/15 shadow-lg shadow-primary/10">
                     <span class="material-symbols-outlined text-primary text-xl">rocket_launch</span>
                 </div>
                 <div>
@@ -445,7 +445,7 @@
                 </div>
                 <div class="w-full bg-white/[0.06] rounded-full h-1 overflow-hidden">
                     <div id="deploy-progress-bar"
-                        class="h-full bg-gradient-to-r from-primary/80 to-emerald-400/60 transition-all duration-700 shadow-sm shadow-primary/20 rounded-full"
+                        class="h-full bg-gradient-to-r from-primary/80 to-primary/60 transition-all duration-700 shadow-sm shadow-primary/20 rounded-full"
                         style="width: 20%"></div>
                 </div>
             </div>
@@ -627,7 +627,7 @@
                     </button>
                 </div>
                 <div id="deploy-output"
-                    class="p-4 font-mono text-[11px] text-emerald-400/80 max-h-52 overflow-y-auto whitespace-pre-wrap leading-relaxed bg-black/20 selection:bg-emerald-500/30">
+                    class="p-4 font-mono text-[11px] text-primary/80 max-h-52 overflow-y-auto whitespace-pre-wrap leading-relaxed bg-black/20 selection:bg-primary/30">
                     <span class="text-white/20">Ожидание действий...</span>
                 </div>
             </div>
@@ -1016,7 +1016,7 @@
                 <div id="warp-content-json" class="hidden">
                     <p class="text-white/30 text-[10px] mb-2 uppercase tracking-wider font-bold">Для Remnawave Профилей (Outbound):</p>
                     <textarea readonly
-                        class="w-full h-40 bg-black/30 border border-white/[0.05] rounded-xl p-3 text-[11px] font-mono text-emerald-400/80 focus:outline-none selection:bg-emerald-500/30"
+                        class="w-full h-40 bg-black/30 border border-white/[0.05] rounded-xl p-3 text-[11px] font-mono text-primary/80 focus:outline-none selection:bg-primary/30"
                         id="warp-json-output">
 {
   "tag": "warp",
@@ -1101,7 +1101,7 @@
             <div id="warp-logs-container"
                 class="mt-4 hidden rounded-xl bg-black/40 border border-white/[0.05] overflow-hidden">
                 <div class="px-3.5 py-2 bg-white/[0.02] text-[9px] text-white/20 font-bold uppercase tracking-wider border-b border-white/[0.05]">Лог операций</div>
-                <div class="p-3.5 font-mono text-[11px] text-emerald-400/80 max-h-48 overflow-y-auto whitespace-pre-wrap"
+                <div class="p-3.5 font-mono text-[11px] text-primary/80 max-h-48 overflow-y-auto whitespace-pre-wrap"
                     id="warp-logs"></div>
             </div>
         </div>
@@ -1111,10 +1111,10 @@
 <div id="executeCommandModal" class="modal-overlay" style="z-index: 60;">
     <div class="modal-content max-w-6xl rounded-2xl bg-gradient-to-br from-[#191a1f] to-[#141519] border border-white/[0.08] shadow-2xl shadow-black/50 overflow-hidden backdrop-blur-xl">
         <div class="relative px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
-            <div class="absolute inset-0 bg-gradient-to-r from-emerald-500/[0.03] to-transparent pointer-events-none"></div>
+            <div class="absolute inset-0 bg-gradient-to-r from-primary/[0.03] to-transparent pointer-events-none"></div>
             <div class="relative flex items-center gap-3.5">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-green-500/10 flex items-center justify-center border border-emerald-500/15 shadow-lg shadow-emerald-500/10">
-                    <span class="material-symbols-outlined text-emerald-400 text-xl">terminal</span>
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center border border-primary/15 shadow-lg shadow-primary/10">
+                    <span class="material-symbols-outlined text-primary text-xl">terminal</span>
                 </div>
                 <div>
                     <h5 class="text-[13px] font-bold text-white tracking-tight">Терминал</h5>
@@ -1156,17 +1156,17 @@
                     </div>
                 </div>
                 <div id="exec-output"
-                    class="terminal-output p-4 font-mono text-[11px] flex-1 overflow-y-auto whitespace-pre-wrap leading-relaxed selection:bg-emerald-500/30">
+                    class="terminal-output p-4 font-mono text-[11px] flex-1 overflow-y-auto whitespace-pre-wrap leading-relaxed selection:bg-primary/30">
                     <span class="text-white/20">Ожидание команды...</span>
                 </div>
             </div>
             <form id="exec-command-form" class="mt-3 flex-shrink-0">
                 <div class="flex items-center gap-2">
                     <div class="flex-1 relative flex items-start">
-                        <span class="absolute left-3 top-[11px] text-emerald-400/50 text-[12px] font-bold font-mono">$</span>
+                        <span class="absolute left-3 top-[11px] text-primary/50 text-[12px] font-bold font-mono">$</span>
                         <textarea id="exec-command-input"
                             placeholder="Введите команды... (Shift+Enter для новой строки)"
-                            class="w-full bg-black/30 border border-white/[0.05] rounded-xl pl-7 pr-4 py-2.5 text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 focus:border-emerald-500/20 font-mono text-[12px] transition-all duration-200 resize-none overflow-y-auto"
+                            class="w-full bg-black/30 border border-white/[0.05] rounded-xl pl-7 pr-4 py-2.5 text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/20 font-mono text-[12px] transition-all duration-200 resize-none overflow-y-auto"
                             rows="1" style="min-height: 42px; max-height: 200px;"
                             oninput="this.style.height = ''; this.style.height = Math.min(this.scrollHeight, 200) + 'px'"></textarea>
                     </div>
@@ -1176,8 +1176,8 @@
                         <span class="material-symbols-outlined text-red-400/70 text-xl group-hover:text-red-400 transition-colors">close</span>
                     </button>
                     <button type="submit" id="btn-exec-command"
-                        class="w-[42px] h-[42px] rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/15 flex items-center justify-center transition-all duration-200 group">
-                        <span class="material-symbols-outlined text-emerald-400/70 text-xl group-hover:text-emerald-400 transition-colors">send</span>
+                        class="w-[42px] h-[42px] rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/15 flex items-center justify-center transition-all duration-200 group">
+                        <span class="material-symbols-outlined text-primary/70 text-xl group-hover:text-primary transition-colors">send</span>
                     </button>
                 </div>
             </form>
@@ -1195,17 +1195,17 @@
     }
 
     .terminal-output::-webkit-scrollbar-thumb {
-        background: rgba(16, 185, 129, 0.3);
+        background: rgba(215, 171, 255, 0.3);
         border-radius: 4px;
     }
 
     .terminal-output::-webkit-scrollbar-thumb:hover {
-        background: rgba(16, 185, 129, 0.5);
+        background: rgba(215, 171, 255, 0.5);
     }
 
     .terminal-output {
         scrollbar-width: thin;
-        scrollbar-color: rgba(16, 185, 129, 0.3) rgba(0, 0, 0, 0.2);
+        scrollbar-color: rgba(215, 171, 255, 0.3) rgba(0, 0, 0, 0.2);
     }
 
     .term-line {
@@ -1306,7 +1306,7 @@
         <div class="relative px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
             <div class="absolute inset-0 bg-gradient-to-r from-[#d7abff]/[0.02] to-transparent pointer-events-none"></div>
             <div class="relative flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#d7abff]/20 to-emerald-500/10 flex items-center justify-center border border-[#d7abff]/15 shadow-lg shadow-[#d7abff]/10">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#d7abff]/20 to-primary/10 flex items-center justify-center border border-[#d7abff]/15 shadow-lg shadow-[#d7abff]/10">
                     <span class="material-symbols-outlined text-[#d7abff] text-xl">dns</span>
                 </div>
                 <div>
@@ -2117,7 +2117,7 @@
                             <span class="material-symbols-outlined text-lg">drag_indicator</span>
                         </div>
                         <div class="relative flex-shrink-0">
-                            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-emerald-500/10 flex items-center justify-center border border-primary/15 shadow-lg shadow-primary/10 group-hover/card:shadow-primary/20 transition-shadow duration-300">
+                            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center border border-primary/15 shadow-lg shadow-primary/10 group-hover/card:shadow-primary/20 transition-shadow duration-300">
                                 <span class="material-symbols-outlined text-primary text-xl">show_chart</span>
                             </div>
                             <div class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#191a1f] bg-primary shadow-lg shadow-primary/50" id="target-status-${idx}"></div>
@@ -4156,7 +4156,7 @@
             return '<span class="text-white/90">' + text + '</span>';
         }
 
-        appendTerminalLine('<span class="text-emerald-400/60">$ </span><span class="text-white">' + command.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>');
+        appendTerminalLine('<span class="text-primary/60">$ </span><span class="text-white">' + command.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>');
 
         document.getElementById('exec-command-input').value = '';
         document.getElementById('exec-command-input').style.height = '';

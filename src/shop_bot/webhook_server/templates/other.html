@@ -416,7 +416,7 @@
 
                         <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden mb-6">
                             <div id="broadcast-progress-bar"
-                                class="h-full bg-gradient-to-r from-primary via-emerald-400 to-primary background-animate rounded-full transition-all duration-500 ease-out shadow-[0_0_15px_rgba(var(--primary-rgb),0.4)]"
+                                class="h-full bg-gradient-to-r from-primary via-[#e4c4ff] to-primary background-animate rounded-full transition-all duration-500 ease-out shadow-[0_0_15px_rgba(var(--primary-rgb),0.4)]"
                                 style="width: 0%"></div>
                         </div>
 
@@ -902,7 +902,7 @@
         <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
             <div class="flex items-center gap-3">
                 <div
-                    class="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/30 to-emerald-500/10 flex items-center justify-center border border-primary/30">
+                    class="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center border border-primary/30">
                     <span class="material-symbols-outlined text-primary text-lg">rocket_launch</span>
                 </div>
                 <div>
@@ -930,7 +930,7 @@
                 </div>
                 <div class="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
                     <div id="deploy-progress-bar"
-                        class="h-full bg-gradient-to-r from-primary to-emerald-400 transition-all duration-500"
+                        class="h-full bg-gradient-to-r from-primary to-[#e4c4ff] transition-all duration-500"
                         style="width: 20%"></div>
                 </div>
             </div>
@@ -1104,7 +1104,7 @@
                     </button>
                 </div>
                 <div id="deploy-output"
-                    class="p-4 font-mono text-xs text-emerald-400/90 max-h-52 overflow-y-auto whitespace-pre-wrap leading-relaxed selection:bg-emerald-500/30">
+                    class="p-4 font-mono text-xs text-primary/90 max-h-52 overflow-y-auto whitespace-pre-wrap leading-relaxed selection:bg-primary/30">
                     <span class="text-white/30">Ожидание действий...</span>
                 </div>
             </div>
@@ -1930,7 +1930,7 @@
                 <div id="warp-content-json" class="hidden">
                     <p class="text-white/50 text-sm mb-2">Для Remnawave Профилей (Outbound):</p>
                     <textarea readonly
-                        class="w-full h-40 bg-black/30 border border-white/10 rounded-lg p-3 text-xs font-mono text-green-400 focus:outline-none selection:bg-green-500/30"
+                        class="w-full h-40 bg-black/30 border border-white/10 rounded-lg p-3 text-xs font-mono text-primary focus:outline-none selection:bg-primary/30"
                         id="warp-json-output">
 {
   "tag": "warp",
@@ -2024,7 +2024,7 @@
             <div id="warp-logs-container"
                 class="mt-4 hidden bg-black/80 border border-white/10 rounded-lg overflow-hidden">
                 <div class="px-3 py-1 bg-white/5 text-xs text-white/50 border-b border-white/5">Лог операций</div>
-                <div class="p-3 font-mono text-xs text-green-400 max-h-48 overflow-y-auto whitespace-pre-wrap"
+                <div class="p-3 font-mono text-xs text-primary max-h-48 overflow-y-auto whitespace-pre-wrap"
                     id="warp-logs"></div>
             </div>
         </div>
@@ -2036,8 +2036,8 @@
         <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
             <div class="flex items-center gap-3">
                 <div
-                    class="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500/20 to-green-500/10 flex items-center justify-center border border-emerald-500/20">
-                    <span class="material-symbols-outlined text-emerald-400 text-lg">terminal</span>
+                    class="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center border border-primary/20">
+                    <span class="material-symbols-outlined text-primary text-lg">terminal</span>
                 </div>
                 <div>
                     <h5 class="text-white font-semibold text-sm">Терминал</h5>
@@ -2081,7 +2081,7 @@
                     </div>
                 </div>
                 <div id="exec-output"
-                    class="terminal-output p-4 font-mono text-xs flex-1 overflow-y-auto whitespace-pre-wrap leading-relaxed selection:bg-emerald-500/30">
+                    class="terminal-output p-4 font-mono text-xs flex-1 overflow-y-auto whitespace-pre-wrap leading-relaxed selection:bg-primary/30">
                     <span class="text-white/30">Ожидание команды...</span>
                 </div>
             </div>
@@ -2089,10 +2089,10 @@
             <form id="exec-command-form" class="mt-3 flex-shrink-0">
                 <div class="flex items-center gap-2">
                     <div class="flex-1 relative flex items-start">
-                        <span class="absolute left-3 top-[11px] text-emerald-400/60 text-sm font-bold">$</span>
+                        <span class="absolute left-3 top-[11px] text-primary/60 text-sm font-bold">$</span>
                         <textarea id="exec-command-input"
                             placeholder="Введите команды... (Shift+Enter для новой строки)"
-                            class="w-full bg-black/30 border border-white/[0.06] rounded-lg pl-7 pr-4 py-2.5 text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 font-mono text-sm transition-all resize-none overflow-y-auto"
+                            class="w-full bg-black/30 border border-white/[0.06] rounded-lg pl-7 pr-4 py-2.5 text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 font-mono text-sm transition-all resize-none overflow-y-auto"
                             rows="1" style="min-height: 42px; max-height: 200px;"
                             oninput="this.style.height = ''; this.style.height = Math.min(this.scrollHeight, 200) + 'px'"></textarea>
                     </div>
@@ -2102,9 +2102,9 @@
                         <span class="material-symbols-outlined text-red-400 text-xl transition-transform">close</span>
                     </button>
                     <button type="submit" id="btn-exec-command"
-                        class="w-[42px] h-[42px] rounded-lg bg-emerald-500/10 hover:border-emerald-500/30 border border-emerald-500/30 flex items-center justify-center transition-all group">
+                        class="w-[42px] h-[42px] rounded-lg bg-primary/10 hover:border-primary/30 border border-primary/30 flex items-center justify-center transition-all group">
                         <span
-                            class="material-symbols-outlined text-emerald-400 text-xl transition-transform">send</span>
+                            class="material-symbols-outlined text-primary text-xl transition-transform">send</span>
                     </button>
                 </div>
             </form>
@@ -2122,17 +2122,17 @@
     }
 
     .terminal-output::-webkit-scrollbar-thumb {
-        background: rgba(16, 185, 129, 0.3);
+        background: rgba(215, 171, 255, 0.3);
         border-radius: 4px;
     }
 
     .terminal-output::-webkit-scrollbar-thumb:hover {
-        background: rgba(16, 185, 129, 0.5);
+        background: rgba(215, 171, 255, 0.5);
     }
 
     .terminal-output {
         scrollbar-width: thin;
-        scrollbar-color: rgba(16, 185, 129, 0.3) rgba(0, 0, 0, 0.2);
+        scrollbar-color: rgba(215, 171, 255, 0.3) rgba(0, 0, 0, 0.2);
     }
 
     .term-line {
@@ -2506,7 +2506,7 @@
         function updateLogStatus(connected) {
             if (!logsStatusDot || !logsStatusText) return;
             if (connected) {
-                logsStatusDot.className = 'w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)] animate-pulse';
+                logsStatusDot.className = 'w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(124,197,155,0.5)] animate-pulse';
                 logsStatusText.textContent = 'Live';
                 logsStatusText.className = 'text-[10px] uppercase tracking-widest font-bold text-green-400';
             } else {
@@ -4943,7 +4943,7 @@
                 return '<span class="text-white/90">' + text + '</span>';
             }
 
-            appendTerminalLine('<span class="text-emerald-400/60">$ </span><span class="text-white">' + command.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>');
+            appendTerminalLine('<span class="text-primary/60">$ </span><span class="text-white">' + command.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>');
 
             document.getElementById('exec-command-input').value = '';
             document.getElementById('exec-command-input').style.height = '';
