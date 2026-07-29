@@ -208,7 +208,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
    копирования на пару секунд меняет подпись */
 .link-actions .btn{white-space:nowrap}
 .link-actions .btn--primary{flex:1 1 auto;min-width:0}
-.link-actions .btn--ghost{flex:0 0 auto;min-width:0}
+/* ...но если строка всё-таки перенеслась (узкие экраны), «Открыть» занимает
+   свою строку целиком, а не висит огрызком слева */
+.link-actions .btn--ghost{flex:1 0 auto;min-width:0}
 
 /* ---------- catalog ---------- */
 .buy-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
@@ -225,7 +227,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 /* варианты по устройствам тянутся на всю строку — пустые «хвосты» сетки
    выглядели как недорисованный ряд */
 .device-grid{display:flex;flex-wrap:wrap;gap:8px}
-.device-opt{flex:1 1 84px}
+/* на телефоне ровно по два в ряд: с базисом 84px четвёртый вариант не влезал
+   в строку и растягивался на всю ширину — ряд выглядел сломанным */
+.device-opt{flex:1 1 calc(50% - 4px)}
 .device-note{display:flex;align-items:center;gap:9px;padding:12px 14px;font-size:13px;color:var(--dim)}
 .device-note b{color:var(--text);font-weight:600}
 .device-opt{border:1px solid var(--line);background:rgba(236,238,242,.025);color:var(--dim);border-radius:var(--r-sm);padding:11px 5px;text-align:center}
@@ -296,6 +300,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .composer{display:flex;gap:9px;align-items:flex-end;padding:10px var(--pad);margin:0 calc(var(--pad) * -1);border-top:1px solid var(--line);background:var(--bg-elev)}
 .composer textarea{flex:1;resize:none;max-height:104px;min-height:44px;border:1px solid var(--line);border-radius:var(--r-md);background:rgba(0,0,0,.24);color:var(--text);padding:11px 14px;outline:none;font-size:14px}
 .composer textarea:focus{border-color:var(--accent-line)}
+/* у закрытого обращения поля ввода нет — вместо пустоты внизу объясняем,
+   почему написать нельзя */
+.thread-closed{padding:13px var(--pad);margin:0 calc(var(--pad) * -1);border-top:1px solid var(--line);background:var(--bg-elev);color:var(--dim);font-size:12.5px;text-align:center}
 
 /* ---------- profile ---------- */
 .stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -318,7 +325,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .panel-card__label{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);display:block;margin:0 0 11px}
 .panel-card .promo-result{padding-top:8px}
 .panel-card .info-row{padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:rgba(236,238,242,.025)}
-.panel-card .info-row + .info-row,.panel-card .info-row + .btn,.panel-card .btn + .btn{margin-top:9px}
+/* только прямые соседи в стопке: иначе отступ доставался и кнопкам внутри
+   .btn-row, где они стоят в ряд — вторая съезжала на 9px вниз */
+.panel-card > .info-row + .info-row,.panel-card > .info-row + .btn,.panel-card > .btn + .btn{margin-top:9px}
 /* карточке аккаунта нельзя обрезать ID и дату — в узкой колонке она
    переносит строку, а не прячет половину под многоточие */
 .info-row--wrap{flex-wrap:wrap}
@@ -413,6 +422,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 /* ---------- tablet ---------- */
 @media(min-width:600px){
   :root{--pad:22px}
+  .device-opt{flex:1 1 84px}
   .stat-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
   .trial-banner{grid-template-columns:auto minmax(0,1fr) auto}
   .trial-banner .btn{grid-column:auto}
@@ -452,8 +462,11 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   .sidenav__user-main span{display:block;font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:2px}
 
   .container{max-width:1240px;padding:28px var(--pad) 44px}
-  #view-profile{max-width:1120px;margin-inline:auto}
-  #view-help{max-width:920px;margin-inline:auto}
+  /* ширину ограничиваем, но по левому краю — иначе на широком экране заголовок
+     кабинета и инструкции уезжает вправо относительно остальных разделов,
+     и при переключении вкладок содержимое прыгает по горизонтали */
+  #view-profile{max-width:1120px;margin-inline:0 auto}
+  #view-help{max-width:920px;margin-inline:0 auto}
   .page-head{margin-bottom:20px;min-height:44px;padding-bottom:16px;border-bottom:1px solid var(--line)}
   .page-head h1{font-size:26px}
   .page-head__desktop-only{display:flex}
@@ -507,10 +520,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   .main.is-chat .container{padding-bottom:28px}
   .main.is-chat .support-layout{display:grid;flex:1;min-height:0}
   .composer{margin:0 -18px;padding:12px 18px;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent}
+  .thread-closed{margin:0 -18px;padding:14px 18px;background:transparent}
   .bubble{max-width:min(72%,620px)}
 
   /* кабинет: слева деньги и статистика, справа аккаунт и действия */
-  .profile-grid{grid-template-columns:minmax(0,1.22fr) minmax(0,.78fr);gap:18px}
   .profile-col{gap:18px}
   .panel-card{padding:18px 20px}
   .stat-grid{gap:12px}
@@ -541,6 +554,13 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 /* движение — украшение, а не смысл: если система просит покоя, выключаем */
 @media(prefers-reduced-motion:reduce){
   *,*:before,*:after{animation-duration:.01ms !important;animation-delay:0ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+}
+
+/* две колонки в кабинете — только когда каждой хватает места: на 1000–1199 px
+   после боковой панели остаётся ~690 px, колонки выходили по 400 и 270 px,
+   и в них ломались плитки статистики и реферальная ссылка */
+@media(min-width:1200px){
+  .profile-grid{grid-template-columns:minmax(0,1.22fr) minmax(0,.78fr);gap:18px}
 }
 
 /* ---------- wide desktop ---------- */
@@ -687,6 +707,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
                 <textarea id="messageInput" placeholder="Сообщение…" rows="1" oninput="autoGrow(this)"></textarea>
                 <button class="btn btn--primary btn--icon" onclick="sendSupportMessage()" title="Отправить"><svg class="icon"><use href="#ic-send"/></svg></button>
               </div>
+              <div class="thread-closed is-hidden" id="threadClosed">Обращение закрыто. Если вопрос остался — создайте новое.</div>
             </div>
           </div>
         </section>
@@ -1848,6 +1869,7 @@ function renderThread(scrollBottom){
     }).join('');
   }
   toggle('threadComposer', !open);
+  toggle('threadClosed', open);
   if(scrollBottom) scrollThreadToBottom();
 }
 function scrollThreadToBottom(){
