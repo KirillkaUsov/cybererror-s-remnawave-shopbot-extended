@@ -11,7 +11,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32x32.png') }}" />
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon-16x16.png') }}" />
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon-32x32.png') }}" />
-    <meta name="theme-color" content="#13ec80" />
+    <meta name="theme-color" content="#d7abff" />
     <meta name="csrf-token" content="{{ csrf_token() }}" />
 
 
@@ -44,9 +44,9 @@
             theme: {
                 extend: {
                     colors: {
-                        "primary": "#13ec80",
-                        "background-light": "#f6f8f7",
-                        "background-dark": "#000000",
+                        "primary": "#d7abff",
+                        "background-light": "#f4f2f7",
+                        "background-dark": "#101013",
                     },
                     fontFamily: {
                         "display": ["Inter", "ui-sans-serif", "system-ui", "Apple Color Emoji", "Segoe UI Emoji", "sans-serif"]
@@ -138,8 +138,8 @@
         }
 
         .modal-content {
-            background: rgba(16, 34, 25, 0.95);
-            /* #102219 with opacity */
+            background: rgba(25, 26, 31, 0.95);
+            /* #191a1f with opacity */
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 1rem;
@@ -209,10 +209,12 @@
             border: 1px solid transparent;
         }
 
+        /* успех остаётся зелёным, но в оттенке веб-аппа (--ok), иначе зелёный
+           текст лежал на сиреневой подложке */
         .toast-success {
-            background: rgba(19, 236, 128, 0.15);
-            border-color: rgba(19, 236, 128, 0.2);
-            color: #4ade80;
+            background: rgba(124, 197, 155, 0.14);
+            border-color: rgba(124, 197, 155, 0.3);
+            color: #7cc59b;
         }
 
         .toast-danger {
@@ -265,7 +267,7 @@
             left: 0;
             right: 0;
             margin-top: 0.25rem;
-            background: #1a2f24;
+            background: #1f2027;
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 0.5rem;
             max-height: 300px;
@@ -296,8 +298,8 @@
 
         .soft-select-item:hover,
         .soft-select-item.is-active {
-            background: rgba(19, 236, 128, 0.1);
-            color: #13ec80;
+            background: rgba(215, 171, 255, 0.1);
+            color: #d7abff;
         }
 
         .soft-select select {
@@ -399,12 +401,12 @@
             0%,
             100% {
                 opacity: 1;
-                filter: drop-shadow(0 0 5px rgba(19, 236, 128, 0.8));
+                filter: drop-shadow(0 0 5px rgba(215, 171, 255, 0.8));
             }
 
             50% {
                 opacity: 0.6;
-                filter: drop-shadow(0 0 15px rgba(19, 236, 128, 0.4));
+                filter: drop-shadow(0 0 15px rgba(215, 171, 255, 0.4));
             }
         }
 
@@ -430,7 +432,7 @@
 
             0%,
             0% {
-                background-color: #13ec80;
+                background-color: #d7abff;
                 color: #000;
             }
 
@@ -445,7 +447,7 @@
             }
 
             100% {
-                background-color: #13ec80;
+                background-color: #d7abff;
                 color: #000;
             }
         }
@@ -464,43 +466,43 @@
         }
 
         ::-webkit-scrollbar-thumb {
-            background: rgba(19, 236, 128, 0.2) !important;
+            background: rgba(215, 171, 255, 0.2) !important;
             border-radius: 10px !important;
             transition: background 0.3s ease !important;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: rgba(19, 236, 128, 0.4) !important;
+            background: rgba(215, 171, 255, 0.4) !important;
         }
 
         /* Firefox */
         * {
             scrollbar-width: thin !important;
-            scrollbar-color: rgba(19, 236, 128, 0.2) rgba(255, 255, 255, 0.02) !important;
+            scrollbar-color: rgba(215, 171, 255, 0.2) rgba(255, 255, 255, 0.02) !important;
         }
     </style>
     {% block head %}{% endblock %}
 </head>
 
 <body
-    class="bg-[#102219] dark:bg-black font-display text-[#e0e0e0] transition-colors duration-300 {% if settings.dashboard_layout == 'sidebar' %}overflow-hidden{% endif %}">
+    class="bg-[#191a1f] dark:bg-black font-display text-[#e0e0e0] transition-colors duration-300 {% if settings.dashboard_layout == 'sidebar' %}overflow-hidden{% endif %}">
     {% macro nav_link(endpoint, label, icon, group=[]) %}
     {% set is_active = request.endpoint == endpoint or request.endpoint in group %}
     <a href="{{ url_for(endpoint) }}" title="{{ label }}"
         class="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 relative group overflow-hidden {{ 'bg-white/10 text-white border border-white/10 shadow-[0_4px_20px_-5px_rgba(255,255,255,0.05)]' if is_active else 'text-white/60 hover:text-white hover:bg-white/5' }}">
         {% if is_active %}
-        <div class="absolute inset-y-0 left-0 w-1 bg-primary rounded-r-full shadow-[0_0_10px_rgba(19,236,128,0.8)]">
+        <div class="absolute inset-y-0 left-0 w-1 bg-primary rounded-r-full shadow-[0_0_10px_rgba(215, 171, 255,0.8)]">
         </div>
         {% endif %}
         <span
-            class="material-symbols-outlined text-[22px] flex-shrink-0 transition-transform group-hover:scale-110 {{ 'text-primary drop-shadow-[0_0_8px_rgba(19,236,128,0.5)]' if is_active else 'group-hover:text-white/80' }}">{{
+            class="material-symbols-outlined text-[22px] flex-shrink-0 transition-transform group-hover:scale-110 {{ 'text-primary drop-shadow-[0_0_8px_rgba(215, 171, 255,0.5)]' if is_active else 'group-hover:text-white/80' }}">{{
             icon }}</span>
         <span
             class="text-[14px] font-semibold tracking-wide whitespace-nowrap sidebar-text {{ 'text-white' if is_active else '' }}">{{
             label }}</span>
         {% if endpoint == 'support_list_page' %}
         <span id="sidebar-support-badge"
-            class="hidden absolute right-3 w-5 h-5 rounded-full bg-primary text-background-dark text-[10px] font-bold items-center justify-center shadow-[0_0_10px_rgba(19,236,128,0.4)] sidebar-badge"></span>
+            class="hidden absolute right-3 w-5 h-5 rounded-full bg-primary text-background-dark text-[10px] font-bold items-center justify-center shadow-[0_0_10px_rgba(215, 171, 255,0.4)] sidebar-badge"></span>
         {% endif %}
     </a>
     {% endmacro %}
@@ -543,7 +545,7 @@
                 onclick="toggleSidebar()"></div>
 
             <aside id="main-sidebar"
-                class="fixed lg:static inset-y-0 left-0 z-50 w-72 bg-[#14281e] dark:bg-[#0a0f0d] border-r border-white/5 flex flex-col transition-transform duration-300 transform -translate-x-full lg:translate-x-0 overflow-y-auto no-scrollbar shadow-2xl lg:shadow-none pt-4 lg:pt-0 rounded-tr-3xl rounded-br-3xl">
+                class="fixed lg:static inset-y-0 left-0 z-50 w-72 bg-[#1f2027] dark:bg-[#141519] border-r border-white/5 flex flex-col transition-transform duration-300 transform -translate-x-full lg:translate-x-0 overflow-y-auto no-scrollbar shadow-2xl lg:shadow-none pt-4 lg:pt-0 rounded-tr-3xl rounded-br-3xl">
                 <script>
                     if (localStorage.getItem('sidebar-collapsed') === 'true' && window.innerWidth >= 1024) {
                         const sb = document.getElementById('main-sidebar');
@@ -811,11 +813,11 @@
             {% endif %}
 
             <div
-                class="flex-1 flex flex-col {% if settings.dashboard_layout == 'sidebar' %}h-screen overflow-hidden{% endif %} bg-[#102219] dark:bg-black transition-colors duration-300">
+                class="flex-1 flex flex-col {% if settings.dashboard_layout == 'sidebar' %}h-screen overflow-hidden{% endif %} bg-[#191a1f] dark:bg-black transition-colors duration-300">
 
                 {% if settings.dashboard_layout == 'sidebar' %}
                 <header
-                    class="w-full border-b border-white/5 p-3 lg:hidden sticky top-0 z-40 bg-[#102219]/90 dark:bg-black/90 backdrop-blur-md transition-colors duration-300">
+                    class="w-full border-b border-white/5 p-3 lg:hidden sticky top-0 z-40 bg-[#191a1f]/90 dark:bg-black/90 backdrop-blur-md transition-colors duration-300">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <button type="button" onclick="toggleSidebar()"
@@ -831,7 +833,7 @@
                 </header>
                 {% else %}
                 <header
-                    class="w-full bg-[#102219] dark:bg-black border-b border-white/10 p-4 lg:p-6 sticky top-0 z-50 transition-colors duration-300">
+                    class="w-full bg-[#191a1f] dark:bg-black border-b border-white/10 p-4 lg:p-6 sticky top-0 z-50 transition-colors duration-300">
                     <div class="max-w-7xl mx-auto">
                         <div class="flex items-center justify-between mb-6">
                             <div class="flex items-center gap-4">
@@ -944,14 +946,14 @@
                                     <div
                                         class="absolute right-0 top-full pt-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible z-[9999]">
                                         <div
-                                            class="w-[180px] bg-[#102219]/40 dark:bg-[#000000]/40 backdrop-blur-md border border-white/10 rounded-2xl p-1.5 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] flex flex-col gap-0.5">
+                                            class="w-[180px] bg-[#191a1f]/40 dark:bg-[#000000]/40 backdrop-blur-md border border-white/10 rounded-2xl p-1.5 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] flex flex-col gap-0.5">
                                             <a href="{{ url_for('monitor_page') }}"
-                                                class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-[#06bd5d] hover:bg-white/5 transition-all group/item">
+                                                class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-[#9a6fd6] hover:bg-white/5 transition-all group/item">
                                                 <span class="material-symbols-outlined text-[16px]">monitoring</span>
                                                 <span class="text-[12px] font-semibold">Мониторинг</span>
                                             </a>
                                             <a href="{{ url_for('button_constructor_page') }}"
-                                                class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-[#06bd5d] hover:bg-white/5 transition-all">
+                                                class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-[#9a6fd6] hover:bg-white/5 transition-all">
                                                 <span class="material-symbols-outlined text-[16px]">build</span>
                                                 <span class="text-[12px] font-semibold">Конструктор кнопок</span>
                                             </a>
@@ -1087,7 +1089,7 @@
 
                 <div class="p-6 space-y-6">
                     <div id="update-notification"
-                        class="hidden relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border border-primary/30 p-5 shadow-[0_0_30px_-10px_rgba(19,236,128,0.3)] group transition-all duration-500 hover:shadow-[0_0_40px_-5px_rgba(19,236,128,0.4)] backdrop-blur-xl">
+                        class="hidden relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border border-primary/30 p-5 shadow-[0_0_30px_-10px_rgba(215, 171, 255,0.3)] group transition-all duration-500 hover:shadow-[0_0_40px_-5px_rgba(215, 171, 255,0.4)] backdrop-blur-xl">
                         <div
                             class="absolute -right-10 -top-10 w-32 h-32 bg-primary/20 rounded-full blur-3xl group-hover:bg-primary/30 transition-all duration-700">
                         </div>
@@ -1101,7 +1103,7 @@
                                     <h4 class="text-white font-black text-lg tracking-tight">Новая версия!
                                     </h4>
                                     <span id="latest-version"
-                                        class="ml-3 px-3 py-1 rounded-full bg-primary text-[#1a2f24] text-sm font-black uppercase ring-1 ring-[#1a2f24]/20"></span>
+                                        class="ml-3 px-3 py-1 rounded-full bg-primary text-[#1f2027] text-sm font-black uppercase ring-1 ring-[#1f2027]/20"></span>
                                 </div>
                                 <p class="text-white/60 text-xs leading-relaxed mb-0">Стабильное
                                     обновление готово к

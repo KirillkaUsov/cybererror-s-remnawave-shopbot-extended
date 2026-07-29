@@ -6,7 +6,7 @@
     <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
     <title>Вход в панель управления | Login</title>
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32x32.png') }}" />
-    <meta name="theme-color" content="#13ec80" />
+    <meta name="theme-color" content="#d7abff" />
     <meta name="csrf-token" content="{{ csrf_token() }}" />
 
     <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
@@ -23,8 +23,8 @@
             theme: {
                 extend: {
                     colors: {
-                        "primary": "#13ec80",
-                        "background-dark": "#050a08",
+                        "primary": "#d7abff",
+                        "background-dark": "#101013",
                     },
                     fontFamily: {
                         "display": ["Inter", "sans-serif"]
@@ -37,7 +37,7 @@
     <style>
         :root {
             --site-scale: 0.85;
-            --primary-rgb: 19, 236, 128;
+            --primary-rgb: 215, 171, 255;
         }
 
         html {
@@ -69,7 +69,7 @@
 
         .particle {
             position: absolute;
-            background: rgba(19, 236, 128, 0.4);
+            background: rgba(215, 171, 255, 0.4);
             border-radius: 50%;
             filter: blur(2px);
             animation: float-around var(--duration) linear infinite;
@@ -145,8 +145,8 @@
             right: 0;
             bottom: 0;
             background-image:
-                radial-gradient(circle at 0% 0%, rgba(19, 236, 128, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 100% 100%, rgba(19, 236, 128, 0.05) 0%, transparent 50%);
+                radial-gradient(circle at 0% 0%, rgba(215, 171, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 100% 100%, rgba(215, 171, 255, 0.05) 0%, transparent 50%);
             z-index: 1;
         }
 
@@ -177,9 +177,9 @@
 
         @media (min-width: 900px) {
             .modern-input:focus {
-                background: rgba(19, 236, 128, 0.04) !important;
-                border-color: rgba(19, 236, 128, 0.4) !important;
-                box-shadow: 0 0 20px rgba(19, 236, 128, 0.1), inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+                background: rgba(215, 171, 255, 0.04) !important;
+                border-color: rgba(215, 171, 255, 0.4) !important;
+                box-shadow: 0 0 20px rgba(215, 171, 255, 0.1), inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
                 outline: none !important;
             }
         }
@@ -211,10 +211,10 @@
 
         @media (min-width: 900px) {
             .group:focus-within .input-icon-wrapper {
-                background: rgba(19, 236, 128, 0.1);
-                border-color: rgba(19, 236, 128, 0.3);
-                color: #13ec80;
-                box-shadow: 0 0 15px rgba(19, 236, 128, 0.1);
+                background: rgba(215, 171, 255, 0.1);
+                border-color: rgba(215, 171, 255, 0.3);
+                color: #d7abff;
+                box-shadow: 0 0 15px rgba(215, 171, 255, 0.1);
             }
         }
 
@@ -306,7 +306,7 @@
             left: 0;
             width: 100%;
             height: 2px;
-            background: linear-gradient(90deg, transparent, rgba(19, 236, 128, 0.5), transparent);
+            background: linear-gradient(90deg, transparent, rgba(215, 171, 255, 0.5), transparent);
             animation: scan 3s linear infinite;
             z-index: 2;
         }
@@ -322,7 +322,7 @@
         }
 
         .cyber-btn {
-            background: #13ec80;
+            background: #d7abff;
             color: #050a08;
             position: relative;
             overflow: hidden;
@@ -331,8 +331,8 @@
 
         .cyber-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 20px 40px -10px rgba(19, 236, 128, 0.5);
-            background: #00ff85;
+            box-shadow: 0 20px 40px -10px rgba(215, 171, 255, 0.5);
+            background: #d7abff;
         }
 
         .cyber-btn:active {
@@ -340,13 +340,13 @@
         }
 
         .stats-badge {
-            background: rgba(19, 236, 128, 0.1);
-            border: 1px solid rgba(19, 236, 128, 0.2);
+            background: rgba(215, 171, 255, 0.1);
+            border: 1px solid rgba(215, 171, 255, 0.2);
             padding: 0.5rem 1rem;
             border-radius: 1rem;
             font-size: 0.75rem;
             font-weight: 700;
-            color: #13ec80;
+            color: #d7abff;
             text-transform: uppercase;
             letter-spacing: 0.1em;
             display: flex;
@@ -391,7 +391,7 @@
                             style="perspective: 2000px; margin-top: -2rem;">
                             <span class="material-symbols-outlined text-primary animate-pulse" style="font-size: 14rem; 
                                          transform: rotateY(-25deg) rotateX(15deg) translateZ(60px); 
-                                         filter: drop-shadow(0 0 50px rgba(19, 236, 128, 0.25)); 
+                                         filter: drop-shadow(0 0 50px rgba(215, 171, 255, 0.25)); 
                                          opacity: 0.15;
                                          display: block;">security</span>
                         </div>

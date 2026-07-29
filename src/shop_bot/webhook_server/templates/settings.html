@@ -1702,7 +1702,7 @@
                                             class="material-symbols-outlined text-white/30 text-[16px]">expand_more</span>
                                     </div>
                                     <div
-                                        class="absolute z-50 bottom-full left-0 right-0 mb-1 bg-[#1a2f24] border border-white/10 rounded-xl shadow-2xl overflow-hidden hidden group-focus-within/select:block">
+                                        class="absolute z-50 bottom-full left-0 right-0 mb-1 bg-[#1f2027] border border-white/10 rounded-xl shadow-2xl overflow-hidden hidden group-focus-within/select:block">
                                         <div class="p-1">
                                             {% for key, lbl in strategy_labels.items() %}
                                             <div onclick="selectTrafficStrategy('{{ host.host_name }}', '{{ key }}', '{{ lbl }}')"
@@ -3167,7 +3167,7 @@
             if (data && data.items && data.items.length > 0) {
                 const last = data.items[0];
                 const ping = `<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[12px] text-white/50">timer</span>${last.ping_ms ?? '—'} <span class="text-[8px] text-white/30">ms</span></span>`;
-                const down = `<span class="flex items-center gap-1 text-[#13ec80]"><span class="material-symbols-outlined text-[12px]">download</span>${last.download_mbps ?? '—'} <span class="text-[8px] text-white/30">Mbps</span></span>`;
+                const down = `<span class="flex items-center gap-1 text-[#d7abff]"><span class="material-symbols-outlined text-[12px]">download</span>${last.download_mbps ?? '—'} <span class="text-[8px] text-white/30">Mbps</span></span>`;
                 const up = `<span class="flex items-center gap-1 text-[#00bfff]"><span class="material-symbols-outlined text-[12px]">upload</span>${last.upload_mbps ?? '—'} <span class="text-[8px] text-white/30">Mbps</span></span>`;
 
                 dataContainer.innerHTML = `${down}${up}${ping}`;
