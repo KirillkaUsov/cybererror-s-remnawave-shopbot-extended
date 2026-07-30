@@ -1509,6 +1509,46 @@ async def api_wheel_spin(auth: dict = Depends(webapp_user)):
         return {"ok": False, "error": "Не удалось прокрутить колесо"}
 
 
+class WheelClaimRequest(BaseModel):
+    key_id: int
+
+
+@app.post("/api/wheel/claim")
+async def api_wheel_claim(req: WheelClaimRequest, auth: dict = Depends(webapp_user)):
+    """Выбор подписки для выигранных дней."""
+    try:
+        return await fortune_wheel.claim_days(session_user_id(auth), req.key_id)
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка выдачи дней из колеса: {e}", exc_info=True)
+        return {"ok": False, "error": "Не удалось начислить дни"}
+
+
+@app.post("/api/wheel/ticket")
+async def api_wheel_ticket(auth: dict = Depends(webapp_user)):
+    """Покупка билета за баланс."""
+    try:
+        return fortune_wheel.buy_ticket(session_user_id(auth))
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка покупки билета: {e}")
+        return {"ok": False, "error": "Не удалось купить билет"}
+
+
+class WheelNotifyRequest(BaseModel):
+    enabled: bool
+
+
+@app.post("/api/wheel/notify")
+async def api_wheel_notify(req: WheelNotifyRequest, auth: dict = Depends(webapp_user)):
+    """Персональное согласие на напоминания о прокруте."""
+    try:
+        from shop_bot.data_manager import database as db
+        db.set_wheel_notify(session_user_id(auth), req.enabled)
+        return {"ok": True, "notify": req.enabled}
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка настройки напоминаний колеса: {e}")
+        return {"ok": False, "error": "Не удалось сохранить настройку"}
+
+
 @app.post("/api/payment-methods")
 async def api_get_payment_methods(req: PaymentMethodsRequest, auth: dict = Depends(webapp_user)):
     user_id = session_user_id(auth)

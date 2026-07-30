@@ -488,6 +488,7 @@ async def periodic_subscription_check(bot_controller: BotController):
                 bot = bot_controller.get_bot_instance()
                 if bot:
                     await check_expiring_subscriptions(bot)
+                    await _notify_wheel_ready(bot)
                 else:
                     logger.warning("Scheduler: Бот помечен как запущенный, но экземпляр недоступен.")
             else:
@@ -498,6 +499,58 @@ async def periodic_subscription_check(bot_controller: BotController):
             
         logger.info(f"Scheduler: Цикл завершён. Следующая проверка через {CHECK_INTERVAL_SECONDS} сек.")
         await asyncio.sleep(CHECK_INTERVAL_SECONDS)
+
+# ===== НАПОМИНАНИЯ О КОЛЕСЕ УДАЧИ =====
+# Не чаще одного раза за кулдаун и только тем, кто уже крутил: иначе
+# напоминание прилетело бы всем зарегистрированным разом.
+WHEEL_NOTIFY_BATCH = 40
+
+
+async def _notify_wheel_ready(bot):
+    from shop_bot.modules import fortune_wheel
+
+    try:
+        if not fortune_wheel.is_enabled() or not fortune_wheel.reminders_enabled():
+            return
+        if not fortune_wheel.get_prizes():
+            return
+
+        now = get_msk_time().replace(tzinfo=None)
+        cooldown = fortune_wheel.cooldown_hours()
+        ready_before = (now - timedelta(hours=cooldown)).strftime("%Y-%m-%d %H:%M:%S")
+        # повторно напоминаем не раньше, чем через ещё один кулдаун
+        quiet_since = (now - timedelta(hours=cooldown)).strftime("%Y-%m-%d %H:%M:%S")
+
+        candidates = rw_repo.database.get_wheel_notify_candidates(ready_before, quiet_since) or []
+        if not candidates:
+            return
+
+        sent = 0
+        for user in candidates[:WHEEL_NOTIFY_BATCH]:
+            uid = user.get("telegram_id")
+            try:
+                tickets = rw_repo.database.get_wheel_tickets(uid)
+                extra = f"\nУ вас ещё {tickets} билет(ов) — можно крутить не дожидаясь суток." if tickets else ""
+                await bot.send_message(
+                    chat_id=uid,
+                    text=("🎰 <b>Колесо удачи снова доступно</b>\n\n"
+                          f"Бесплатный прокрут восстановился.{extra}\n\n"
+                          "<i>Отключить напоминания можно в самом колесе.</i>"),
+                    parse_mode="HTML",
+                )
+                rw_repo.database.mark_wheel_notified(uid, now.strftime("%Y-%m-%d %H:%M:%S"))
+                sent += 1
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                # заблокировавшим бота больше не пишем — гасим напоминания
+                rw_repo.database.mark_wheel_notified(uid, now.strftime("%Y-%m-%d %H:%M:%S"))
+                logger.debug(f"Колесо: не удалось напомнить {uid}: {e}")
+        if sent:
+            logger.info(f"Колесо: отправлено напоминаний о прокруте: {sent}")
+    except Exception as e:
+        logger.error(f"Колесо: ошибка рассылки напоминаний: {e}", exc_info=True)
+# ===== Конец блока напоминаний =====
+
 
 async def _maybe_run_periodic_speedtests():
     global _last_speedtests_run_at

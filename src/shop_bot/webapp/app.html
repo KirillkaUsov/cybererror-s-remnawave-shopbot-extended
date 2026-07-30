@@ -212,26 +212,74 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .link-actions .btn{white-space:nowrap}
 
 /* ---------- колесо удачи ---------- */
-.wheel-card{display:flex;align-items:center;gap:13px}
-.wheel-card__icon{width:42px;height:42px;border-radius:var(--r-md);display:grid;place-items:center;font-size:21px;background:var(--accent-soft);border:1px solid var(--accent-line);flex:0 0 auto}
-.wheel-card__body{min-width:0;flex:1}
-.wheel-card__body b{display:block;font-size:14px;font-weight:600}
-.wheel-card__body span{display:block;font-size:12.5px;color:var(--dim);margin-top:2px}
-/* Диск рисуем conic-градиентом: секторов может быть сколько угодно, и
-   картинку под каждый набор не нарисуешь. */
-.wheel-stage{display:grid;place-items:center;padding:6px 0 2px}
-.wheel-disc-wrap{position:relative;width:min(240px,70vw);aspect-ratio:1}
-.wheel-disc{width:100%;height:100%;border-radius:50%;border:2px solid var(--line-2);
-  transition:transform 3.4s cubic-bezier(.15,.85,.2,1);transform:rotate(0deg)}
-.wheel-pin{position:absolute;top:-6px;left:50%;transform:translateX(-50%);
-  width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-top:16px solid var(--accent);
-  filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}
-.wheel-hub{position:absolute;inset:38%;border-radius:50%;background:var(--surface-2);border:1px solid var(--line-2);display:grid;place-items:center;font-size:19px}
-.wheel-legend{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:14px;font-size:12px;color:var(--dim)}
-.wheel-legend span{display:flex;align-items:center;gap:6px}
-.wheel-legend i{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
-.wheel-result{text-align:center;font-size:14px;margin:14px 0 0;min-height:22px}
-.wheel-result b{color:var(--text)}
+/* Кнопка живёт в шапке: колесо — не раздел кабинета, а разовое действие,
+   и до него должно быть дотянуться с любого экрана. */
+.wheel-btn{position:relative;width:40px;height:40px;border-radius:var(--r-md);flex:0 0 auto;
+  display:grid;place-items:center;background:var(--accent-soft);border:1px solid var(--accent-line);
+  transition:transform .14s var(--ease),background .14s ease}
+.wheel-btn:active{transform:scale(.94)}
+.wheel-btn__face{font-size:19px;line-height:1;filter:saturate(1.1)}
+.wheel-btn__badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;
+  border-radius:99px;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:700;
+  display:grid;place-items:center;border:2px solid var(--bg-elev)}
+/* когда билетов нет, но бесплатный прокрут созрел — маленькая точка */
+.wheel-btn__dot{position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;
+  background:var(--accent);border:2px solid var(--bg-elev);animation:wheel-pulse 1.9s var(--ease) infinite}
+@keyframes wheel-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.sidenav__emoji{width:18px;text-align:center;flex:0 0 auto;font-size:15px}
+.sidenav__count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:99px;
+  background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:700;display:grid;place-items:center}
+
+.wheel-head{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.wheel-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;
+  border:1px solid var(--line);background:rgba(236,238,242,.035);font-size:12.5px;color:var(--dim)}
+.wheel-chip b{color:var(--text);font-weight:600}
+.wheel-chip--ready{border-color:var(--accent-line);background:var(--accent-soft);color:var(--text)}
+
+.wheel-stage{position:relative;display:grid;place-items:center;padding:4px 0 2px}
+.wheel-disc-wrap{position:relative;width:min(268px,74vw);aspect-ratio:1}
+/* Обод отдельным слоем: без него сектора упираются в фон и колесо выглядит
+   плоской диаграммой, а не колесом. */
+.wheel-rim{position:absolute;inset:0;border-radius:50%;padding:7px;
+  background:linear-gradient(160deg,rgba(236,238,242,.16),rgba(236,238,242,.03) 45%,rgba(0,0,0,.5));
+  box-shadow:0 18px 40px rgba(0,0,0,.45),inset 0 0 0 1px rgba(236,238,242,.06)}
+.wheel-disc{position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;
+  transition:transform 4s cubic-bezier(.12,.72,.12,1);transform:rotate(0deg);
+  box-shadow:inset 0 0 26px rgba(0,0,0,.45)}
+.wheel-disc.is-idle{transition:none}
+.wheel-label{position:absolute;transform:translate(-50%,-50%);
+  font-size:11.5px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;pointer-events:none;
+  text-shadow:0 1px 2px rgba(0,0,0,.18)}
+.wheel-pin{position:absolute;top:-3px;left:50%;transform:translateX(-50%);z-index:2;
+  width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;
+  border-top:20px solid var(--accent);filter:drop-shadow(0 3px 5px rgba(0,0,0,.6))}
+.wheel-hub{position:absolute;inset:36%;border-radius:50%;z-index:2;display:grid;place-items:center;
+  font-size:21px;background:radial-gradient(circle at 32% 28%,var(--surface-2),#0c0d10);
+  border:1px solid var(--line-2);box-shadow:0 6px 18px rgba(0,0,0,.55)}
+.wheel-disc-wrap.is-spinning .wheel-hub{animation:wheel-shake .35s linear infinite}
+@keyframes wheel-shake{0%,100%{transform:translate(0,0)}50%{transform:translate(.6px,-.6px)}}
+
+.wheel-result{margin:16px 0 0;padding:13px 14px;border-radius:var(--r-md);text-align:center;
+  border:1px solid var(--line);background:rgba(236,238,242,.03);font-size:13.5px;color:var(--dim);min-height:22px}
+.wheel-result b{display:block;font-size:15px;color:var(--text);margin-bottom:3px}
+.wheel-result--win{border-color:var(--accent-line);background:var(--accent-soft);color:var(--text)}
+.wheel-result code{font-family:var(--mono);font-size:13px;color:var(--accent)}
+.wheel-odds{margin-top:12px}
+.wheel-odds summary{cursor:pointer;font-size:12.5px;color:var(--dim);list-style:none;padding:6px 0}
+.wheel-odds summary::-webkit-details-marker{display:none}
+.wheel-odds summary::before{content:'▸ ';color:var(--faint)}
+.wheel-odds[open] summary::before{content:'▾ '}
+.wheel-odds__row{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--dim);padding:4px 0}
+.wheel-odds__row i{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.wheel-odds__row b{margin-left:auto;color:var(--text);font-weight:600;font-family:var(--mono);font-size:11.5px}
+.wheel-earn{margin-top:12px;font-size:12.5px;color:var(--dim);line-height:1.7}
+.wheel-keys{display:grid;gap:8px;margin-top:4px}
+.wheel-key{display:flex;align-items:center;gap:10px;padding:12px 13px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:rgba(236,238,242,.025);text-align:left;width:100%}
+.wheel-key:hover{border-color:var(--accent-line)}
+.wheel-key__main{min-width:0;flex:1}
+.wheel-key__main b{display:block;font-size:13.5px;font-weight:600}
+.wheel-key__main span{display:block;font-size:12px;color:var(--dim);margin-top:2px}
 
 /* ---------- catalog ---------- */
 .buy-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
@@ -632,6 +680,11 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
       <span class="brand__mark brand__fallback" id="brandFallbackMobile">C</span>
       <span class="brand__title">{{ panel_brand_title }}</span>
     </div>
+    <button class="wheel-btn is-hidden" id="wheelBtn" type="button" onclick="openWheel()" title="Колесо удачи">
+      <span class="wheel-btn__face">🎰</span>
+      <span class="wheel-btn__badge is-hidden" id="wheelBtnBadge">0</span>
+      <span class="wheel-btn__dot is-hidden" id="wheelBtnDot"></span>
+    </button>
   </header>
 
   <nav class="sidenav">
@@ -643,6 +696,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
     <div class="sidenav__section label">Меню</div>
     <div id="sidenavLinks" style="display:contents"></div>
     <div class="sidenav__spacer"></div>
+    <button class="sidenav__link is-hidden" type="button" id="wheelNavLink" onclick="openWheel()"><span class="sidenav__emoji">🎰</span><span>Колесо удачи</span><span class="sidenav__count is-hidden" id="wheelNavCount">0</span></button>
     <button class="sidenav__link" type="button" data-nav="help" onclick="showScreen('help')"><svg class="icon"><use href="#ic-shield"/></svg><span>Подключение</span></button>
     <div class="sidenav__foot">
       <button class="sidenav__user" type="button" onclick="showScreen('profile')" title="Кабинет">
@@ -790,8 +844,14 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
     <div class="sheet__handle"></div>
     <h2>Колесо удачи</h2>
     <div class="sheet__sub" id="wheelSub">Бесплатный прокрут</div>
-    <div id="wheelBody"><div class="card skeleton" style="min-height:140px"></div></div>
-    <button class="btn btn--primary btn--block" id="wheelSpinBtn" style="margin-top:12px" onclick="spinWheel()">Крутить</button>
+    <div id="wheelBody"><div class="card skeleton" style="min-height:200px"></div></div>
+    <button class="btn btn--primary btn--block is-hidden" id="wheelSpinBtn" style="margin-top:12px" onclick="spinWheel()">Крутить</button>
+    <button class="btn btn--ghost btn--block is-hidden" id="wheelBuyBtn" style="margin-top:9px" onclick="buyWheelTicket()">Купить билет</button>
+    <label class="card switch-row is-hidden" id="wheelNotifyRow" style="margin-top:9px">
+      <span class="switch-row__main"><b>Напоминать о прокруте</b><span>Сообщение в боте, когда снова можно крутить</span></span>
+      <input type="checkbox" id="wheelNotifyInput" onchange="toggleWheelNotify(this.checked)">
+      <span class="switch"></span>
+    </label>
     <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('wheelModal')">Закрыть</button>
   </div>
 </div>
@@ -1320,9 +1380,14 @@ function pickAddon(keyId, devices, price){
 
 /* ===== колесо удачи ===== */
 /* Диск рисуется по секторам, которые прислал сервер, а результат приходит
-   оттуда же — крутим анимацию уже зная, куда встать. Иначе выигрыш можно
+   оттуда же — крутим анимацию, уже зная, куда встать. Иначе выигрыш можно
    было бы подделать на клиенте. */
-const WHEEL_COLORS = ['#d7abff','#8b52b8','#e4c4ff','#6b3d90','#c48ff2','#4d2b68','#ebd8ff','#a96fd9'];
+const WHEEL_SECTOR_COLORS = [
+  {bg:'#d7abff', ink:'#2a1740'}, {bg:'#4d2b68', ink:'#f4e9ff'},
+  {bg:'#ebd8ff', ink:'#2a1740'}, {bg:'#6b3d90', ink:'#f4e9ff'},
+  {bg:'#c48ff2', ink:'#241436'}, {bg:'#8b52b8', ink:'#f9f4ff'},
+  {bg:'#f4e9ff', ink:'#2a1740'}, {bg:'#a96fd9', ink:'#1d1029'},
+];
 let wheelTurns = 0;
 
 function wheelSectors(prizes){
@@ -1330,19 +1395,33 @@ function wheelSectors(prizes){
   let from = 0;
   return prizes.map((p, i) => {
     const size = Number(p.weight||0) * 360 / total;
-    const sector = { label: p.label, color: WHEEL_COLORS[i % WHEEL_COLORS.length], from, to: from + size,
-                     mid: from + size / 2, chance: Number(p.weight||0) * 100 / total };
+    const c = WHEEL_SECTOR_COLORS[i % WHEEL_SECTOR_COLORS.length];
+    const sector = { label: p.label, bg: c.bg, ink: c.ink, from, to: from + size,
+                     mid: from + size / 2, size, chance: Number(p.weight||0) * 100 / total };
     from += size;
     return sector;
   });
 }
-function wheelGradient(sectors){
-  return 'conic-gradient(' + sectors.map(s => `${s.color} ${s.from.toFixed(2)}deg ${s.to.toFixed(2)}deg`).join(',') + ')';
+function wheelDiscHtml(sectors){
+  const grad = sectors.map(s => `${s.bg} ${s.from.toFixed(2)}deg ${s.to.toFixed(2)}deg`).join(',');
+  /* Подписи ставим на сами сектора: легенда под колесом заставляет
+     сопоставлять цвета глазами. Позицию считаем тригонометрией и держим
+     текст горизонтальным — повёрнутый вдоль радиуса встаёт вверх ногами
+     на нижней половине колеса. */
+  const labels = sectors.map(s => {
+    if(s.size < 20) return '';
+    const short = s.label.length > 12 ? s.label.slice(0, 11) + '…' : s.label;
+    const rad = (s.mid - 90) * Math.PI / 180;
+    const x = (50 + 30 * Math.cos(rad)).toFixed(2);
+    const y = (50 + 30 * Math.sin(rad)).toFixed(2);
+    return `<span class="wheel-label" style="color:${s.ink};left:${x}%;top:${y}%">${esc(short)}</span>`;
+  }).join('');
+  return `<div class="wheel-disc" id="wheelDisc" style="background:conic-gradient(${grad})">${labels}</div>`;
 }
 async function openWheel(){
   openModal('wheelModal');
-  $('wheelBody').innerHTML = '<div class="card skeleton" style="min-height:140px"></div>';
-  $('wheelSpinBtn').disabled = true;
+  $('wheelBody').innerHTML = '<div class="card skeleton" style="min-height:200px"></div>';
+  ['wheelSpinBtn','wheelBuyBtn','wheelNotifyRow'].forEach(id => toggle(id, true));
   try{
     const d = await api('/api/wheel/state');
     if(!d.ok) throw new Error(d.error || 'Колесо недоступно');
@@ -1350,67 +1429,163 @@ async function openWheel(){
     renderWheel(d);
   }catch(e){ $('wheelBody').innerHTML = `<p class="empty-hint">${esc(e.message)}</p>`; }
 }
+function wheelChips(d){
+  const chips = [];
+  if(d.tickets) chips.push(`<span class="wheel-chip">🎟 Билетов <b>${d.tickets}</b></span>`);
+  chips.push(d.wait_seconds > 0
+    ? `<span class="wheel-chip">⏳ Бесплатно через <b>${esc(d.wait_text || '')}</b></span>`
+    : '<span class="wheel-chip wheel-chip--ready">✅ Бесплатный прокрут готов</span>');
+  return `<div class="wheel-head">${chips.join('')}</div>`;
+}
+function wheelEarnHtml(d){
+  const ways = [];
+  if(d.tickets_per_purchase) ways.push(`покупка подписки — ${d.tickets_per_purchase} 🎟`);
+  if(d.tickets_per_referral) ways.push(`приглашённый друг — ${d.tickets_per_referral} 🎟`);
+  if(Number(d.ticket_price) > 0) ways.push(`покупка за ${money(d.ticket_price)}`);
+  return ways.length ? `<div class="wheel-earn"><b>Как получить билеты:</b><br>${ways.map(esc).join('<br>')}</div>` : '';
+}
 function renderWheel(d, resultHtml){
+  /* невыданный приз важнее самого колеса: пока человек не выберет
+     подписку, крутить нельзя, и объяснить это надо первым делом */
+  if(d.pending){ renderWheelChoice(d.pending); return; }
+
   const sectors = wheelSectors(d.prizes || []);
   state.wheelSectors = sectors;
-  $('wheelSub').textContent = d.can_spin
-    ? `Бесплатно раз в ${d.cooldown_hours} ч`
-    : (d.wait_text ? `Следующий прокрут через ${d.wait_text}` : (d.note || ''));
-  $('wheelBody').innerHTML = `
-    <div class="wheel-stage">
-      <div class="wheel-disc-wrap">
-        <div class="wheel-pin"></div>
-        <div class="wheel-disc" id="wheelDisc" style="background:${wheelGradient(sectors)}"></div>
-        <div class="wheel-hub">🎰</div>
-      </div>
-    </div>
-    <div class="wheel-legend">${sectors.map(s => `<span><i style="background:${s.color}"></i>${esc(s.label)} · ${s.chance.toFixed(0)}%</span>`).join('')}</div>
-    <p class="wheel-result" id="wheelResult">${resultHtml || ''}</p>`;
-  const btn = $('wheelSpinBtn');
-  btn.disabled = !d.can_spin;
-  btn.textContent = d.can_spin ? 'Крутить' : (d.wait_text ? `Ждём ${d.wait_text}` : 'Недоступно');
+  $('wheelSub').textContent = d.enabled
+    ? `Бесплатно раз в ${d.cooldown_hours} ч, а ещё по билету в любой момент`
+    : (d.note || 'Колесо выключено');
+  $('wheelBody').innerHTML = wheelChips(d)
+    + `<div class="wheel-stage"><div class="wheel-disc-wrap" id="wheelWrap">
+         <div class="wheel-rim">${wheelDiscHtml(sectors)}</div>
+         <div class="wheel-pin"></div><div class="wheel-hub">🎰</div>
+       </div></div>`
+    + `<div class="wheel-result" id="wheelResult">${resultHtml || 'Крутите — и посмотрим, что выпадет.'}</div>`
+    + `<details class="wheel-odds"><summary>Шансы секторов</summary>${
+        sectors.map(x => `<div class="wheel-odds__row"><i style="background:${x.bg}"></i>${esc(x.label)}<b>${x.chance.toFixed(1)}%</b></div>`).join('')
+      }</details>`
+    + wheelEarnHtml(d);
+
+  const spin = $('wheelSpinBtn');
+  toggle('wheelSpinBtn', !d.can_spin);
+  if(d.can_spin) spin.textContent = d.source === 'free' ? 'Крутить бесплатно' : 'Крутить за билет';
+  spin.disabled = false;
+  toggle('wheelBuyBtn', !(Number(d.ticket_price) > 0));
+  $('wheelBuyBtn').textContent = `Купить билет — ${money(d.ticket_price)}`;
+  $('wheelBuyBtn').disabled = false;
+  toggle('wheelNotifyRow', false);
+  $('wheelNotifyInput').checked = !!d.notify;
+}
+/* выбор подписки для выигранных дней */
+function renderWheelChoice(pending){
+  $('wheelSub').textContent = 'Выберите подписку — к ней добавятся выигранные дни';
+  $('wheelBody').innerHTML = `<div class="wheel-result wheel-result--win"><b>🎁 ${esc(pending.label)}</b>Осталось выбрать, куда их зачислить.</div>
+    <div class="wheel-keys">${(pending.keys || []).map(k => `
+      <button class="wheel-key" onclick="claimWheelDays(${Number(k.key_id)})">
+        <span class="wheel-card__icon">🔑</span>
+        <span class="wheel-key__main"><b>${esc(k.host_name || 'Подписка')}</b><span>действует до ${esc(k.expiry_text || '—')}</span></span>
+        <svg class="icon icon--sm" style="color:var(--faint)"><use href="#ic-chevron-right"/></svg>
+      </button>`).join('')}</div>`;
+  ['wheelSpinBtn','wheelBuyBtn','wheelNotifyRow'].forEach(id => toggle(id, true));
+}
+async function claimWheelDays(keyId){
+  try{
+    const d = await api('/api/wheel/claim', { method:'POST', headers: JSON_H, body: JSON.stringify({ key_id: keyId }) });
+    if(!d.ok) throw new Error(d.error || 'Не удалось начислить дни');
+    haptic();
+    await refreshAll();
+    const st = await api('/api/wheel/state');
+    state.wheel = st;
+    renderWheel(st, `<b>🎉 ${esc(d.label)}</b>${d.detail || ''}`);
+    $('wheelResult').classList.add('wheel-result--win');
+    refreshWheelButton(st);
+  }catch(e){ toast(e.message, true); }
 }
 async function spinWheel(){
   const btn = $('wheelSpinBtn');
   btn.disabled = true; btn.textContent = 'Крутим…';
+  const wrap = $('wheelWrap');
+  if(wrap) wrap.classList.add('is-spinning');
   try{
     const d = await api('/api/wheel/spin', { method:'POST', headers: JSON_H });
     if(!d.ok){
+      if(wrap) wrap.classList.remove('is-spinning');
       $('wheelResult').innerHTML = `<b>${esc(d.error || 'Сейчас крутить нельзя')}</b>`;
-      btn.textContent = d.wait_text ? `Ждём ${d.wait_text}` : 'Недоступно';
-      return;
+      btn.disabled = false;
+      return openWheel();
     }
     const sectors = state.wheelSectors || [];
     const target = sectors.find(s => s.label === d.label) || sectors[0];
     const disc = $('wheelDisc');
     /* стрелка сверху: доводим середину нужного сектора до 0° и добавляем
        несколько полных оборотов, чтобы это выглядело как настоящий прокрут */
-    wheelTurns += 5;
+    wheelTurns += 6;
     if(disc && target) disc.style.transform = `rotate(${wheelTurns * 360 - target.mid}deg)`;
     haptic();
-    await new Promise(r => setTimeout(r, 3500));
-    $('wheelResult').innerHTML = d.won
-      ? `🎉 <b>${esc(d.label)}</b><br>${d.detail || ''}`
-      : `<b>${esc(d.label)}</b><br>В этот раз мимо — возвращайтесь через ${d.cooldown_hours} ч.`;
-    btn.textContent = `Ждём ${d.cooldown_hours} ч`;
+    await new Promise(r => setTimeout(r, 4100));
+    if(wrap) wrap.classList.remove('is-spinning');
+
+    if(d.needs_choice){
+      haptic();
+      renderWheelChoice({ label: d.label, keys: d.keys || [] });
+      return;
+    }
+    const box = $('wheelResult');
+    box.classList.toggle('wheel-result--win', !!d.won);
+    box.innerHTML = d.won
+      ? `<b>🎉 ${esc(d.label)}</b>${d.detail || ''}`
+      : `<b>${esc(d.label)}</b>В этот раз мимо — попробуйте по билету или через ${d.cooldown_hours} ч.`;
     await refreshAll();
-    loadWheelEntry();
+    const st = await api('/api/wheel/state');
+    state.wheel = st;
+    toggle('wheelSpinBtn', !st.can_spin);
+    if(st.can_spin) btn.textContent = st.source === 'free' ? 'Крутить бесплатно' : 'Крутить за билет';
+    btn.disabled = false;
+    refreshWheelButton(st);
   }catch(e){
+    if(wrap) wrap.classList.remove('is-spinning');
     $('wheelResult').innerHTML = `<b>${esc(e.message)}</b>`;
     btn.disabled = false; btn.textContent = 'Крутить';
   }
 }
-/* строку в кабинете показываем, только когда колесо включено */
-async function loadWheelEntry(){
+async function buyWheelTicket(){
+  const btn = $('wheelBuyBtn');
+  btn.disabled = true; btn.textContent = 'Покупаем…';
   try{
-    const d = await api('/api/wheel/state');
-    const show = d.ok && d.enabled && (d.prizes || []).length;
-    toggle('wheelEntry', !show);
+    const d = await api('/api/wheel/ticket', { method:'POST', headers: JSON_H });
+    if(!d.ok) throw new Error(d.error || 'Не удалось купить билет');
+    haptic();
+    toast(`Билет куплен за ${money(d.spent)}`);
+    state.profile = null;
+    await openWheel();
+    refreshWheelButton();
+  }catch(e){
+    toast(e.message, true);
+    btn.disabled = false; btn.textContent = 'Купить билет';
+  }
+}
+async function toggleWheelNotify(on){
+  try{
+    await api('/api/wheel/notify', { method:'POST', headers: JSON_H, body: JSON.stringify({ enabled: !!on }) });
+    toast(on ? 'Буду напоминать' : 'Напоминать не буду');
+  }catch(e){ toast(e.message, true); }
+}
+/* кнопка в шапке: счётчик билетов, точка — когда созрел бесплатный прокрут */
+async function refreshWheelButton(known){
+  try{
+    const d = known || await api('/api/wheel/state');
+    const show = d.ok !== false && d.enabled && (d.prizes || []).length;
+    toggle('wheelBtn', !show);
+    toggle('wheelNavLink', !show);
     if(!show) return;
-    $('wheelEntryNote').textContent = d.can_spin
-      ? 'Бесплатный прокрут доступен'
-      : (d.wait_text ? `Следующий прокрут через ${d.wait_text}` : (d.note || ''));
-  }catch(e){ toggle('wheelEntry', true); }
+    const tickets = Number(d.tickets || 0);
+    toggle('wheelBtnBadge', !tickets);
+    toggle('wheelNavCount', !tickets);
+    if(tickets){
+      $('wheelBtnBadge').textContent = tickets > 99 ? '99+' : tickets;
+      $('wheelNavCount').textContent = tickets > 99 ? '99+' : tickets;
+    }
+    toggle('wheelBtnDot', !(!tickets && (d.can_spin || d.pending)));
+  }catch(e){ toggle('wheelBtn', true); toggle('wheelNavLink', true); }
 }
 
 /* ===== catalog ===== */
@@ -1808,13 +1983,12 @@ function setAccountChip(p){
   $('sidenavAva').textContent = (name.replace('@','').trim()[0] || '·').toUpperCase();
 }
 async function loadProfile(){
-  if(state.profile){ renderProfile(); loadWheelEntry(); return; }
+  if(state.profile){ renderProfile(); return; }
   try{
     const d = await api('/api/profile-stats?user_id=' + USER_ID);
     if(!d.ok) throw new Error(d.error || 'Профиль недоступен');
     state.profile = d;
     renderProfile();
-    loadWheelEntry();
   }catch(e){
     $('profileContent').innerHTML = errorCard('Профиль недоступен', e.message);
   }
@@ -1844,13 +2018,6 @@ function renderProfile(){
           ${statCard('Заработано', `${esc(p.referral_earned||0)} <small>₽</small>`, 'С рефералов')}
           ${statCard('Оплачено', Number(p.total_months||0), 'Месяцев подписки')}
           ${statCard('Подписок', Number(p.keys_count ?? state.keys.length), 'Активных')}
-        </div>
-        <div class="card panel-card wheel-entry is-hidden" id="wheelEntry" onclick="openWheel()" role="button" tabindex="0">
-          <div class="wheel-card">
-            <span class="wheel-card__icon">🎰</span>
-            <span class="wheel-card__body"><b>Колесо удачи</b><span id="wheelEntryNote">Бесплатный прокрут</span></span>
-            <svg class="icon icon--sm" style="color:var(--faint)"><use href="#ic-chevron-right"/></svg>
-          </div>
         </div>
         <div class="card panel-card">
           <span class="panel-card__label">Промокод</span>
@@ -2233,6 +2400,7 @@ function init(){
   applyBrandLogo('brandLogoDesktop','brandFallbackDesktop');
 
   syncViewportHeight();
+  refreshWheelButton();
   /* переход мобильная ⇄ десктопная раскладка меняет схему панелей поддержки */
   MQ_DESKTOP.addEventListener('change', () => { if(currentScreen === 'support') applySupportPanes(); });
   window.addEventListener('resize', syncViewportHeight, { passive:true });

@@ -548,7 +548,7 @@ async def show_main_menu(message: types.Message, edit_message: bool = False):
     photo_path = main_menu_image if (main_menu_image and os.path.exists(main_menu_image)) else None
     try: balance = get_balance(user_id)
     except Exception: balance = 0.0
-    try: keyboard = keyboards.create_dynamic_main_menu_keyboard(user_keys, trial_available, is_admin_flag, balance)
+    try: keyboard = keyboards.create_dynamic_main_menu_keyboard(user_keys, trial_available, is_admin_flag, balance, user_id=user_id)
     except Exception as e:
         logger.warning(f"Ошибка формирования динамического меню: {e}")
         keyboard = keyboards.create_main_menu_keyboard(user_keys, trial_available, is_admin_flag, balance)
@@ -675,11 +675,15 @@ def get_user_router() -> Router:
         if referrer_id:
             try:
                 display_name = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
+                tickets = fortune_wheel.grant_for_referral(referrer_id, f"реферал {user_id}")
+                ticket_line = (f"🎟 Вам начислено билетов для колеса удачи: <b>{tickets}</b>\n\n"
+                               if tickets else "")
                 await bot.send_message(
                     chat_id=referrer_id,
                     text=(
                         "🎉 <b>У вас новый реферал!</b>\n"
-                        f"📃 user: {display_name} / id: <code>{user_id}</code>\n\n" 
+                        f"📃 user: {display_name} / id: <code>{user_id}</code>\n\n"
+                        f"{ticket_line}"
                     )
                 )
             except Exception as e:
@@ -1860,36 +1864,50 @@ def get_user_router() -> Router:
     # ===== Конец функции topup_pay_tonconnect =====
 
     # ===== КОЛЕСО УДАЧИ =====
-    # Бесплатный прокрут раз в сутки: сектора и вероятности задаются в панели
-    async def _render_wheel(message, user_id: int, note: str | None = None):
-        st = fortune_wheel.state(user_id)
-        img = get_setting("wheel_image")
-
+    # Бесплатный прокрут раз в сутки плюс билеты: за покупку, за рефералов,
+    # за баланс или выданные админом. Сектора и веса задаются в панели.
+    def _wheel_text(st: dict, note: str | None = None) -> str:
         if not st['enabled'] or st['reason'] in ('disabled', 'no_prizes'):
-            text = f"🎰 <b>Колесо удачи</b>\n\n{fortune_wheel.DECLINE_TEXT.get(st['reason'] or 'disabled')}"
-            return await smart_edit_message(message, text, keyboards.create_wheel_keyboard(False), img)
+            return f"🎰 <b>Колесо удачи</b>\n\n{fortune_wheel.DECLINE_TEXT.get(st['reason'] or 'disabled')}"
+
+        lines = ["🎰 <b>Колесо удачи</b>", ""]
+
+        tickets = st['tickets']
+        if tickets:
+            word = keyboards.get_declension(tickets, ['билет', 'билета', 'билетов'])
+            lines.append(f"🎟 Билетов: <b>{tickets}</b> {word}")
+        if st['wait_seconds'] > 0:
+            lines.append(f"⏳ Бесплатный прокрут через <b>{fortune_wheel.format_wait(st['wait_seconds'])}</b>")
+        else:
+            lines.append("✅ Бесплатный прокрут доступен")
+
+        if st['pending']:
+            lines += ["", f"🎁 Не выдан приз: <b>{html.quote(str(st['pending']['label']))}</b>",
+                      "Выберите подписку, к которой добавить дни."]
+        lines.append("")
 
         # Шансы показываем честно: колесо, где неизвестно что и с какой
         # вероятностью выпадает, доверия не вызывает
         total = sum(p['weight'] for p in st['prizes']) or 1
-        sectors = "\n".join(
-            f"  • {html.quote(str(p['label']))} — {p['weight'] * 100 / total:.0f}%"
-            for p in st['prizes']
-        )
+        lines.append("<b>Что стоит на колесе</b>")
+        for p in st['prizes']:
+            lines.append(f"  {html.quote(str(p['label']))} — {p['weight'] * 100 / total:.0f}%")
 
-        if st['can_spin']:
-            head = ("🎰 <b>Колесо удачи</b>\n\n"
-                    f"Раз в {st['cooldown_hours']} ч можно крутить бесплатно.\n\n")
-            tail = "\n\nЖмите кнопку — и посмотрим, что выпадет."
-        else:
-            head = ("🎰 <b>Колесо удачи</b>\n\n"
-                    f"⏳ Следующий прокрут через <b>{fortune_wheel.format_wait(st['wait_seconds'])}</b>\n\n")
-            tail = ""
+        earn = []
+        if st['tickets_per_purchase']:
+            earn.append(f"за покупку подписки — {st['tickets_per_purchase']}")
+        if st['tickets_per_referral']:
+            earn.append(f"за приглашённого друга — {st['tickets_per_referral']}")
+        if earn:
+            lines += ["", "<b>Как получить билеты</b>"] + [f"  • {e}" for e in earn]
 
-        text = head + "<b>Что стоит на колесе:</b>\n" + sectors + tail
-        if note:
-            text = note + "\n\n" + text
-        await smart_edit_message(message, text, keyboards.create_wheel_keyboard(st['can_spin']), img)
+        text = "\n".join(lines)
+        return (note + "\n\n" + text) if note else text
+
+    async def _render_wheel(message, user_id: int, note: str | None = None):
+        st = fortune_wheel.state(user_id)
+        await smart_edit_message(message, _wheel_text(st, note),
+                                 keyboards.create_wheel_keyboard(st), get_setting("wheel_image"))
 
     @user_router.callback_query(F.data == "wheel_open")
     @anti_spam
@@ -1899,6 +1917,62 @@ def get_user_router() -> Router:
         await _render_wheel(callback.message, callback.from_user.id)
     # ===== Конец функции wheel_open_handler =====
 
+    # ===== ПОКУПКА БИЛЕТА =====
+    @user_router.callback_query(F.data == "wheel_buy")
+    @anti_spam
+    @registration_required
+    async def wheel_buy_handler(callback: types.CallbackQuery):
+        result = fortune_wheel.buy_ticket(callback.from_user.id)
+        if not result.get('ok'):
+            await callback.answer(result.get('error') or "Не получилось", show_alert=True)
+            return await _render_wheel(callback.message, callback.from_user.id)
+        await callback.answer("Билет куплен")
+        await _render_wheel(callback.message, callback.from_user.id,
+                            note=f"🎟 Билет куплен за {result['spent']:.0f} ₽.")
+    # ===== Конец функции wheel_buy_handler =====
+
+    # ===== НАПОМИНАНИЯ О ПРОКРУТЕ =====
+    @user_router.callback_query(F.data == "wheel_notify_toggle")
+    @anti_spam
+    @registration_required
+    async def wheel_notify_handler(callback: types.CallbackQuery):
+        uid = callback.from_user.id
+        enabled = not rw_repo.database.get_wheel_notify(uid)
+        rw_repo.database.set_wheel_notify(uid, enabled)
+        await callback.answer("Буду напоминать" if enabled else "Напоминать не буду")
+        await _render_wheel(callback.message, uid)
+    # ===== Конец функции wheel_notify_handler =====
+
+    # ===== ВЫБОР ПОДПИСКИ ДЛЯ ВЫИГРАННЫХ ДНЕЙ =====
+    @user_router.callback_query(F.data == "wheel_choose")
+    @anti_spam
+    @registration_required
+    async def wheel_choose_handler(callback: types.CallbackQuery):
+        await callback.answer()
+        st = fortune_wheel.state(callback.from_user.id)
+        if not st['pending']:
+            return await _render_wheel(callback.message, callback.from_user.id)
+        text = (f"🎁 <b>{html.quote(str(st['pending']['label']))}</b>\n\n"
+                f"К какой подписке добавить дни?")
+        await smart_edit_message(callback.message, text,
+                                 keyboards.create_wheel_keys_keyboard(st['pending']['keys']),
+                                 get_setting("wheel_image"))
+
+    @user_router.callback_query(F.data.startswith("wheel_key_"))
+    @anti_spam
+    @registration_required
+    async def wheel_key_handler(callback: types.CallbackQuery):
+        await callback.answer("Начисляю...")
+        try: kid = int(callback.data.split("_")[2])
+        except (ValueError, IndexError): return await _render_wheel(callback.message, callback.from_user.id)
+        result = await fortune_wheel.claim_days(callback.from_user.id, kid)
+        if not result.get('ok'):
+            return await _render_wheel(callback.message, callback.from_user.id,
+                                       note=f"⚠️ {result.get('error')}")
+        await _render_wheel(callback.message, callback.from_user.id,
+                            note=f"🎉 <b>{html.quote(str(result['label']))}</b>\n{result['detail']}")
+    # ===== Конец функций выбора подписки =====
+
     # ===== ПРОКРУТ КОЛЕСА =====
     @user_router.callback_query(F.data == "wheel_spin")
     @anti_spam
@@ -1907,13 +1981,13 @@ def get_user_router() -> Router:
         uid = callback.from_user.id
         await callback.answer("Крутим! 🎡")
 
-        # Кнопку убираем сразу: пока идёт анимация, второй тап уже ничего
-        # не изменит — попытка занята в базе, — но и мигать ей незачем
+        # Кадры крутим, пока сервер считает результат: ждать оба этапа
+        # подряд заметно дольше, чем показать анимацию поверх запроса
         frames = [
-            "🎰 <b>Колесо удачи</b>\n\n🟥 🟨 🟩 🟦 🟪\nРазгоняется...",
-            "🎰 <b>Колесо удачи</b>\n\n🟨 🟩 🟦 🟪 🟥\nБыстрее...",
-            "🎰 <b>Колесо удачи</b>\n\n🟩 🟦 🟪 🟥 🟨\nПролетаем крупный приз...",
-            "🎰 <b>Колесо удачи</b>\n\n🟦 🟪 🟥 🟨 🟩\nТормозим...",
+            "🎰 <b>Колесо удачи</b>\n\n╺━━━━━━━━━━╸\n🟪 🟦 🟩 🟨 🟥\n╺━━━━━━━━━━╸\n\n<i>Разгоняется…</i>",
+            "🎰 <b>Колесо удачи</b>\n\n╺━━━━━━━━━━╸\n🟥 🟪 🟦 🟩 🟨\n╺━━━━━━━━━━╸\n\n<i>Быстрее…</i>",
+            "🎰 <b>Колесо удачи</b>\n\n╺━━━━━━━━━━╸\n🟨 🟥 🟪 🟦 🟩\n╺━━━━━━━━━━╸\n\n<i>Пролетаем крупный приз…</i>",
+            "🎰 <b>Колесо удачи</b>\n\n╺━━━━━━━━━━╸\n🟩 🟨 🟥 🟪 🟦\n╺━━━━━━━━━━╸\n\n<i>Тормозим…</i>",
         ]
         spin_task = asyncio.create_task(fortune_wheel.spin(uid))
         for frame in frames:
@@ -1932,12 +2006,18 @@ def get_user_router() -> Router:
             logger.info(f"Колесо: отказ пользователю {uid} — {result.get('reason')}")
             return await _render_wheel(callback.message, uid, note=f"⚠️ {result.get('error')}")
 
+        label = html.quote(str(result['label']))
+        if result.get('needs_choice'):
+            text = (f"🎉 <b>Выпало: {label}</b>\n\nК какой подписке добавить дни?")
+            return await smart_edit_message(callback.message, text,
+                                            keyboards.create_wheel_keys_keyboard(result['keys']),
+                                            get_setting("wheel_image"))
         if result['won']:
-            note = (f"🎉 <b>Выпало: {html.quote(str(result['label']))}</b>\n{result['detail']}").strip()
+            note = f"🎉 <b>Выпало: {label}</b>\n{result['detail']}".strip()
             logger.info(f"Колесо: пользователь {uid} выиграл {result['label']}")
         else:
-            note = (f"😔 <b>Выпало: {html.quote(str(result['label']))}</b>\n"
-                    f"В этот раз мимо — попробуйте через {result['cooldown_hours']} ч.")
+            note = (f"😔 <b>Выпало: {label}</b>\n"
+                    f"В этот раз мимо — попробуйте ещё раз по билету или через {result['cooldown_hours']} ч.")
         await _render_wheel(callback.message, uid, note=note)
     # ===== Конец функции wheel_spin_handler =====
 
@@ -3978,6 +4058,12 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
                             except: pass
 
             update_user_stats(uid, price, months)
+
+            # Билет за покупку: докупка устройств покупкой подписки не
+            # считается, иначе билеты сыпались бы за каждую мелочь
+            wheel_tickets = 0
+            if action in ("new", "extend", "renew"):
+                wheel_tickets = fortune_wheel.grant_for_purchase(uid, f"оплата {p_log_id}")
             
             # Подготовка метаданных для истории
             tx_meta = dict(metadata or {})
@@ -4025,6 +4111,9 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
                 )
             else:
                 txt = get_purchase_success_text(action=("extend" if action == "extend" else "new"), key_number=k_num, expiry_date=exp, connection_string=(conn or ""), email=c_email)
+                if wheel_tickets:
+                    word = keyboards.get_declension(wheel_tickets, ['билет', 'билета', 'билетов'])
+                    txt += f"\n\n🎟 Бонус: {wheel_tickets} {word} для колеса удачи."
             
             if not str(uid).startswith("999"):
                 try:
