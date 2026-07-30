@@ -25,7 +25,7 @@
 {% set active_keys_ratio = (active_keys_count * 100 / user_count) if user_count else 0 %}
 
 {% macro stat_card(title, value, icon, accent, shell, glow, subtitle='', percent=None, progress=None, suffix='', extra_class='') %}
-<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b0f0e]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl {{ extra_class }}">
+<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0d0c12]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl {{ extra_class }}">
     <div class="absolute inset-0 bg-gradient-to-br from-white/[0.035] via-transparent to-transparent pointer-events-none"></div>
     <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent pointer-events-none"></div>
     <div class="absolute -top-10 -right-8 w-24 h-24 {{ glow }} rounded-full blur-3xl opacity-80 pointer-events-none"></div>
@@ -69,7 +69,7 @@
 {{ stat_card('TG Stars', "{:,.0f}".format(stars_income).replace(',', ' '), 'grade', 'text-amber-300', 'bg-amber-500/10 border-amber-500/15', 'bg-amber-500/[0.10]', 'Доля от общего платежного потока', (stars_income * 100 / payment_total) if payment_total else 0, (stars_income * 100 / payment_total) if payment_total else 0, '₽', 'payment-stat-block') }}
 {{ stat_card('CryptoBot', "{:,.0f}".format(cryptobot_income).replace(',', ' '), 'currency_bitcoin', 'text-violet-300', 'bg-violet-500/10 border-violet-500/15', 'bg-violet-500/[0.10]', 'Доля от общего платежного потока', (cryptobot_income * 100 / payment_total) if payment_total else 0, (cryptobot_income * 100 / payment_total) if payment_total else 0, '₽', 'payment-stat-block') }}
 
-<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b0f0e]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block"
+<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0d0c12]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block"
     id="toggle-stats-card">
     <div class="absolute inset-0 bg-gradient-to-br from-white/[0.035] via-transparent to-transparent pointer-events-none"></div>
     <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent pointer-events-none"></div>
@@ -137,7 +137,7 @@
     </script>
 </div>
 
-<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b0f0e]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block">
+<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0d0c12]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block">
     <div class="absolute inset-0 bg-gradient-to-br from-white/[0.035] via-transparent to-transparent pointer-events-none"></div>
     <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent pointer-events-none"></div>
     <div class="absolute -top-10 -right-8 w-24 h-24 bg-slate-500/[0.10] rounded-full blur-3xl opacity-80 pointer-events-none"></div>
@@ -159,7 +159,7 @@
     </div>
 </div>
 
-<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b0f0e]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block">
+<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0d0c12]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block">
     <div class="absolute inset-0 bg-gradient-to-br from-white/[0.035] via-transparent to-transparent pointer-events-none"></div>
     <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent pointer-events-none"></div>
     <div class="absolute -top-10 -right-8 w-24 h-24 bg-orange-500/[0.10] rounded-full blur-3xl opacity-80 pointer-events-none"></div>
@@ -181,7 +181,7 @@
     </div>
 </div>
 
-<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b0f0e]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block">
+<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0d0c12]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block">
     <div class="absolute inset-0 bg-gradient-to-br from-white/[0.035] via-transparent to-transparent pointer-events-none"></div>
     <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent pointer-events-none"></div>
     <div class="absolute -top-10 -right-8 w-24 h-24 bg-pink-500/[0.10] rounded-full blur-3xl opacity-80 pointer-events-none"></div>
@@ -203,7 +203,7 @@
     </div>
 </div>
 
-<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b0f0e]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block">
+<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0d0c12]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block">
     <div class="absolute inset-0 bg-gradient-to-br from-white/[0.035] via-transparent to-transparent pointer-events-none"></div>
     <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent pointer-events-none"></div>
     <div class="absolute -top-10 -right-8 w-24 h-24 bg-teal-500/[0.10] rounded-full blur-3xl opacity-80 pointer-events-none"></div>
@@ -225,7 +225,7 @@
     </div>
 </div>
 
-<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b0f0e]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block">
+<div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0d0c12]/80 p-3.5 sm:p-4 min-h-[108px] group shadow-2xl shadow-black/30 backdrop-blur-2xl payment-stat-block">
     <div class="absolute inset-0 bg-gradient-to-br from-white/[0.035] via-transparent to-transparent pointer-events-none"></div>
     <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent pointer-events-none"></div>
     <div class="absolute -top-10 -right-8 w-24 h-24 bg-fuchsia-500/[0.10] rounded-full blur-3xl opacity-80 pointer-events-none"></div>

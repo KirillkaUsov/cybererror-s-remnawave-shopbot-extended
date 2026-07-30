@@ -472,7 +472,7 @@ def _render_banned_page(webapp_settings: dict):
             theme: {{
                 extend: {{
                     colors: {{
-                        primary: '#10b981',
+                        primary: '#d7abff',
                         surface: {{
                             dark: '#121212',
                             card: '#1e1e1e',
@@ -495,7 +495,7 @@ def _render_banned_page(webapp_settings: dict):
     </div>
 
     <div class="relative z-10 flex flex-col items-center text-center max-w-sm w-full">
-        {f'<img src="{logo}" class="h-20 mb-8 drop-shadow-[0_0_20px_rgba(16,185,129,0.3)]">' if logo else f'<div class="w-20 h-20 bg-primary/20 rounded-3xl flex items-center justify-center mb-8 border border-primary/30 shadow-[0_0_30px_rgba(16,185,129,0.2)]"><span class="material-icons-round text-primary text-4xl">block</span></div>'}
+        {f'<img src="{logo}" class="h-20 mb-8 drop-shadow-[0_0_20px_rgba(215,171,255,0.3)]">' if logo else f'<div class="w-20 h-20 bg-primary/20 rounded-3xl flex items-center justify-center mb-8 border border-primary/30 shadow-[0_0_30px_rgba(215,171,255,0.2)]"><span class="material-icons-round text-primary text-4xl">block</span></div>'}
         
         <h1 class="text-3xl font-black mb-3 tracking-tight">Доступ ограничен</h1>
         <p class="text-gray-400 font-medium leading-relaxed mb-8">

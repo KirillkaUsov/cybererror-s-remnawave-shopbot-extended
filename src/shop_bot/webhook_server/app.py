@@ -867,7 +867,7 @@ def create_webhook_app(bot_controller_instance):
                     <a href="/support/{ticket['ticket_id']}" class="chat-item pr-14 {'ring-1 ring-yellow-500/30 bg-yellow-500/5' if ticket['status'] == 'open' and ticket['last_sender'] == 'user' else ''}">
                         <div class="chat-avatar {'grayscale opacity-50' if ticket['status'] != 'open' else ''} relative">
                             {(ticket['username'][0].upper() if ticket['username'] else 'U')}
-                            {'<div class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-yellow-500 border-2 border-[#0a110d] animate-pulse"></div>' if ticket['status'] == 'open' and ticket['last_sender'] == 'user' else ''}
+                            {'<div class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-yellow-500 border-2 border-[#0c0b12] animate-pulse"></div>' if ticket['status'] == 'open' and ticket['last_sender'] == 'user' else ''}
                         </div>
                         <div class="chat-content">
                             <div class="chat-header items-start">
