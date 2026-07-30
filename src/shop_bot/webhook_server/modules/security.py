@@ -8,6 +8,9 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from shop_bot.data_manager.admin_notifier import notify_admins_threadsafe
+from shop_bot.data_manager.remnawave_repository import is_admin
+
 logger = logging.getLogger(__name__)
 
 BANNED_DATA = {
@@ -99,16 +102,16 @@ def format_security_msg(title, info):
         
     return "\n".join(lines)
 
-async def send_notification(bot, chat_id, text, reply_markup=None):
-    try:
-        await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode="HTML")
-    except Exception as e:
-        logger.error(f"Security notify error: {e}")
-
 def notify_admin(bot, loop, admin_id, title, info, is_alert=False):
+    """Сообщение о входе в панель — всем администраторам.
+
+    Параметр admin_id остался ради совместимости вызовов: получателей
+    модуль берёт сам, иначе вход в панель видел только главный админ, а
+    дополнительные не узнавали о попытках подбора пароля вовсе.
+    """
     text = format_security_msg(title, info)
     kb = None
-    
+
     if is_alert:
         kb = InlineKeyboardBuilder()
         kb.button(text="✅ Да", callback_data="sec_it_was_me")
@@ -117,24 +120,23 @@ def notify_admin(bot, loop, admin_id, title, info, is_alert=False):
         kb.adjust(2)
         kb = kb.as_markup()
 
-    if loop and loop.is_running():
-        asyncio.run_coroutine_threadsafe(send_notification(bot, admin_id, text, kb), loop)
-    else:
-        try:
-            asyncio.run(send_notification(bot, admin_id, text, kb))
-        except Exception:
-            pass
+    notify_admins_threadsafe(bot, loop, text, reply_markup=kb)
 
 def get_security_router():
     router = Router()
     
     @router.callback_query(F.data == "sec_it_was_me")
     async def handle_was_me(callback: CallbackQuery):
+        if not is_admin(callback.from_user.id):
+            return await callback.answer("Недоступно", show_alert=True)
         await callback.message.edit_text(callback.message.text + "\n\n✅ <i>Подтверждено владельцем.</i>", reply_markup=None)
         await callback.answer("Принято")
 
     @router.callback_query(F.data.startswith("sec_block:"))
     async def handle_block(callback: CallbackQuery):
+        # кнопка приходит всем администраторам, но нажать её может только они
+        if not is_admin(callback.from_user.id):
+            return await callback.answer("Недоступно", show_alert=True)
         try:
             parts = callback.data.split(":")
             if len(parts) >= 3:

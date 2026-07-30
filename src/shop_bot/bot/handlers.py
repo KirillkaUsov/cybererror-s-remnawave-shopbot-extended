@@ -84,6 +84,7 @@ from shop_bot.config import (
 from shop_bot.data_manager import remnawave_repository as rw_repo
 from shop_bot.modules import remnawave_api
 from shop_bot.modules import device_addon
+from shop_bot.data_manager.admin_notifier import notify_admins
 
 TELEGRAM_BOT_USERNAME = None
 PAYMENT_METHODS = None
@@ -3637,12 +3638,8 @@ async def notify_admin_of_purchase(bot: Bot, metadata: dict):
             if metadata.get('promo_usage_per_user_limit'): stats.append(f"На юзера: {metadata.get('promo_usage_per_user_used') or 0}/{metadata.get('promo_usage_per_user_limit')}")
             if stats: txt += "\n📊 " + " | ".join(stats)
 
-        for aid in admin_ids:
-            try:
-                await bot.send_message(int(aid), txt, parse_mode="HTML")
-            except Exception as e:
-                logger.warning(f"Не удалось уведомить админа {aid} о покупке: {e}")
-    except Exception as e: logger.warning(f"Ошибка уведомления админа: {e}")
+        await notify_admins(bot, txt)
+    except Exception as e: logger.warning(f"Ошибка уведомления администраторов: {e}")
 # ===== Конец функции notify_admin_of_purchase =====
 
 # ===== ФИНАЛЬНАЯ ОБРАБОТКА УСПЕШНОГО ПЛАТЕЖА =====
@@ -3737,24 +3734,22 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
                     if bot: await bot.send_message(uid, f"✅ <b>Баланс пополнен!</b>\nСумма: <code>{float(price):.2f} RUB</code>\nТекущий баланс: <code>{balance:.2f} RUB</code>", reply_markup=keyboards.create_profile_keyboard())
                 except Exception: pass
             
-            admins = [u for u in (get_all_users() or []) if is_admin(u.get('telegram_id') or 0)]
-            
             # Получаем чистый username для уведомления
             raw_username = user_info.get('username') if user_info else None
             username_display_str = f"@{raw_username}" if raw_username else "N/A"
             method_display = {'Balance': 'Баланс', 'Card': 'Карта', 'Crypto': 'Крипто', 'USDT': 'USDT', 'TON': 'TON'}.get(pay_method, pay_method or 'Unknown')
 
-            for a in admins:
-                try: 
-                    if bot: await bot.send_message(a['telegram_id'], 
-                        f"📥 <b>Пополнение баланса</b>\n"
-                        f"👤 Пользователь: <code>{uid}</code>\n"
-                        f"💌 Username: {username_display_str}\n"
-                        f"💳 Метод: {method_display}\n"
-                        f"💰 Сумма: {float(price):.2f} RUB\n"
-                        f"⚙️ Тип: ➕ Баланс ‼️"
-                    )
-                except: pass
+            # Раньше получателей искали перебором таблицы users — админ, не
+            # запускавший бота, в неё не попадал и уведомлений не получал.
+            await notify_admins(
+                bot,
+                f"📥 <b>Пополнение баланса</b>\n"
+                f"👤 Пользователь: <code>{uid}</code>\n"
+                f"💌 Username: {username_display_str}\n"
+                f"💳 Метод: {method_display}\n"
+                f"💰 Сумма: {float(price):.2f} RUB\n"
+                f"⚙️ Тип: ➕ Баланс ‼️"
+            )
             return True
 
         # --- ВЫДАЧА ИЛИ ПРОДЛЕНИЕ КЛЮЧА ---
