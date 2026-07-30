@@ -44,6 +44,7 @@ from shop_bot.data_manager.remnawave_repository import (
 import shop_bot.data_manager.remnawave_repository as rw_repo
 from shop_bot.data_manager.database import get_seller_user, get_device_tiers, get_host
 from shop_bot.modules import remnawave_api
+from shop_bot.modules import device_addon
 from shop_bot.config import get_purchase_success_text
 import re
 from decimal import Decimal
@@ -297,6 +298,24 @@ def _process_template_placeholders(html: str, user_id: int, webapp_settings: dic
 UNLIMITED_DAYS_THRESHOLD = 1825  # 5 лет
 
 
+def _host_sells_devices(host_name: str | None) -> bool:
+    """Продаются ли на локации отдельные наборы устройств.
+
+    Проверка чисто по базе: нужна на каждой карточке подписки, дёргать ради
+    неё панель было бы расточительно.
+    """
+    if not host_name:
+        return False
+    try:
+        host = get_host(host_name)
+        if not host or (host.get('device_mode') or 'plan') != 'tiers':
+            return False
+        return bool(get_device_tiers(host_name))
+    except Exception as e:
+        logger.warning(f"[WEBAPP] - Не удалось проверить наборы устройств для «{host_name}»: {e}")
+        return False
+
+
 def _process_key_data(key: dict, number: int | None = None) -> dict:
     # 1. Calculate expiry
     try:
@@ -449,6 +468,7 @@ def _process_key_data(key: dict, number: int | None = None) -> dict:
         "status_bg": status_bg,
         "comment_key": key.get('comment_key') or "",
         "host_name": key.get('host_name') or "",
+        "device_addon": _host_sells_devices(key.get('host_name')),
     }
 
 
@@ -844,6 +864,10 @@ class SyncTgRequest(BaseModel):
 
 class DeviceTiersRequest(BaseModel):
     host_name: str
+
+class DeviceAddonRequest(BaseModel):
+    user_id: int
+    key_id: int
 
 class CreatePaymentRequest(BaseModel):
     user_id: int
@@ -1308,6 +1332,30 @@ async def api_device_tiers(req: DeviceTiersRequest):
         logger.error(f"[WEBAPP] - Ошибка API device-tiers для {req.host_name}: {e}")
         return {"ok": False, "error": str(e)}
 
+
+@app.post("/api/device-addon")
+async def api_device_addon(req: DeviceAddonRequest):
+    """Что можно докупить к подписке и почём — без продления срока."""
+    try:
+        key = get_key_by_id(req.key_id)
+        if not key or int(key.get('user_id') or 0) != int(req.user_id):
+            return {"ok": False, "error": "Подписка не найдена"}
+
+        offer = await device_addon.build_offer(key)
+        return {
+            "ok": True,
+            "available": offer["available"],
+            "reason": offer["reason"],
+            "note": None if offer["available"] else device_addon.UNAVAILABLE_TEXT.get(offer["reason"], "Сейчас докупить устройства нельзя."),
+            "current": offer["current"],
+            "days_left": offer["days_left"],
+            "options": offer["options"],
+        }
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка API device-addon для ключа {req.key_id}: {e}")
+        return {"ok": False, "error": "Не удалось получить наборы устройств"}
+
+
 @app.post("/api/payment-methods")
 async def api_get_payment_methods(req: PaymentMethodsRequest):
     user_id = req.user_id
@@ -1361,28 +1409,47 @@ async def api_create_payment(req: CreatePaymentRequest):
         plan_id = req.plan_id
         method_id = req.payment_method
         
-        plan = get_plan_by_id(plan_id)
-        if not plan:
-            logger.warning(f"[WEBAPP] - Тариф {plan_id} не найден для пользователя {user_id}")
-            return {"ok": False, "error": "Тариф не найден"}
-
-        logger.info(f"[WEBAPP] - Начало создания платежа: User={user_id}, Plan={plan_id}, Method={method_id}")
+        is_addon = req.action == device_addon.ACTION
 
         user = get_user(user_id)
         if not user:
             logger.warning(f"[WEBAPP] - Пользователь {user_id} не найден при создании платежа")
             return {"ok": False, "error": "Пользователь не найден (ID: " + str(user_id) + ")"}
-        
-        final_price = calculate_webapp_price(float(plan['price']), user_id) 
-        
-        months = int(plan.get('months') or 1)
-        
-        tier_device_count = req.tier_device_count
-        tier_price_per_month = req.tier_price
-        
-        if tier_price_per_month == 0:
-            tier_device_count = None
-        
+
+        plan = None if is_addon else get_plan_by_id(plan_id)
+        if not is_addon and not plan:
+            logger.warning(f"[WEBAPP] - Тариф {plan_id} не найден для пользователя {user_id}")
+            return {"ok": False, "error": "Тариф не найден"}
+
+        logger.info(f"[WEBAPP] - Начало создания платежа: User={user_id}, Plan={plan_id}, Method={method_id}, Action={req.action}")
+
+        if is_addon:
+            # Докупка устройств: тарифа в заказе нет, срок не меняется. Цену
+            # считает сервер по остатку срока — сумму от клиента не берём.
+            key = get_key_by_id(req.key_id) if req.key_id else None
+            if not key or int(key.get('user_id') or 0) != int(user_id):
+                return {"ok": False, "error": "Подписка не найдена"}
+            offer = await device_addon.build_offer(key)
+            option = device_addon.find_option(offer, req.tier_device_count) if offer.get('available') else None
+            if not option:
+                return {"ok": False, "error": device_addon.UNAVAILABLE_TEXT.get(offer.get('reason'), "Этот набор устройств недоступен")}
+            plan_id = None
+            months = 0
+            req.host_name = key.get('host_name') or ''
+            final_price = float(option['price'])
+            tier_device_count = int(option['device_count'])
+            tier_price_per_month = 0.0
+        else:
+            final_price = calculate_webapp_price(float(plan['price']), user_id)
+            months = int(plan.get('months') or 1)
+            tier_device_count = req.tier_device_count
+            tier_price_per_month = req.tier_price
+            if tier_price_per_month == 0:
+                tier_device_count = None
+
+        # В описании счёта у докупки вместо срока стоит число устройств
+        comment_value = tier_device_count if is_addon else months
+
         if req.action == 'extend' and req.key_id:
             host_data = get_host(req.host_name) if req.host_name else None
             if host_data and host_data.get('device_mode') == 'tiers' and int(host_data.get('tier_lock_extend', 0) or 0):
@@ -1435,7 +1502,7 @@ async def api_create_payment(req: CreatePaymentRequest):
             final_price += tier_price_per_month * months
             
         # --- APPLY PROMO DISCOUNT ---
-        if req.promo_code:
+        if req.promo_code and not is_addon:
             promo, error = rw_repo.check_promo_code_available(req.promo_code, user_id)
             if promo and promo.get('promo_type') == 'discount':
                 if promo.get('discount_percent'):
@@ -1468,7 +1535,7 @@ async def api_create_payment(req: CreatePaymentRequest):
         def _pending(pid: str, meta: dict) -> dict:
             if balance_spend > 0:
                 meta["balance_spend"] = balance_spend
-            _pending(pid, meta)
+            create_payload_pending(pid, user_id, float(meta.get("price") or final_price), meta)
             return meta
 
         action_name = req.action
@@ -1487,7 +1554,7 @@ async def api_create_payment(req: CreatePaymentRequest):
                 "tier_device_count": tier_device_count
             }
             _pending(pid, meta)
-            comment = get_transaction_comment({"id": user_id, "username": user.get("username")}, action_name, months, req.host_name)
+            comment = get_transaction_comment({"id": user_id, "username": user.get("username")}, action_name, comment_value, req.host_name)
             payload = {
                 "amount": {"value": f"{final_price:.2f}", "currency": "RUB"},
                 "confirmation": {"type": "redirect", "return_url": f"https://t.me/{get_setting('telegram_bot_username')}"},
@@ -1628,7 +1695,7 @@ async def api_create_payment(req: CreatePaymentRequest):
             }
              _pending(pid, meta)
              label = pid
-             desc = get_transaction_comment({"id": user_id, "username": user.get("username")}, action_name, months, req.host_name)
+             desc = get_transaction_comment({"id": user_id, "username": user.get("username")}, action_name, comment_value, req.host_name)
              link = _build_yoomoney_link(receiver, Decimal(str(final_price)), label, desc)
              
              kb = create_yoomoney_payment_keyboard(link, pid)
@@ -1655,8 +1722,8 @@ async def api_create_payment(req: CreatePaymentRequest):
                 "tier_device_count": tier_device_count
             }
              _pending(pid, meta)
-             title = f"{'Подписка' if action_name == 'new' else 'Продление'} на {months} мес."
-             desc = get_transaction_comment({"id": user_id, "username": user.get("username")}, action_name, months, req.host_name)
+             title = f"Устройства: {tier_device_count}" if is_addon else f"{'Подписка' if action_name == 'new' else 'Продление'} на {months} мес."
+             desc = get_transaction_comment({"id": user_id, "username": user.get("username")}, action_name, comment_value, req.host_name)
              await _send_invoice_stars(user_id, title, desc, pid, stars_amount)
              bot_username = get_setting('telegram_bot_username')
              logger.info(f"[WEBAPP] - Успешно отправлен счет Stars для {user_id} на {stars_amount} звезд")
