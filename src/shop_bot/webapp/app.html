@@ -759,6 +759,16 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   </div>
 </div>
 
+<div class="modal" id="addonModal" data-modal>
+  <div class="sheet">
+    <div class="sheet__handle"></div>
+    <h2>Больше устройств</h2>
+    <div class="sheet__sub" id="addonSub">Срок подписки не изменится — доплата только за оставшиеся дни</div>
+    <div id="addonBody"><div class="card skeleton" style="min-height:90px"></div></div>
+    <button class="btn btn--ghost btn--block" style="margin-top:12px" onclick="closeModal('addonModal')">Закрыть</button>
+  </div>
+</div>
+
 <div class="modal" id="topupModal" data-modal>
   <div class="sheet">
     <div class="sheet__handle"></div>
@@ -839,6 +849,8 @@ const state = {
   action: 'new',
   selectedKeyForRenew: null,
   host: null, plan: null, tier: null, method: null,
+  /* заказ на докупку устройств: живёт отдельно от каталога, тарифа в нём нет */
+  addon: null,
   methods: [], balance: 0, useBalance: false, topupMethod: null,
   promoPreview: null,
   pendingPaymentId: null, pendingPaymentKind: 'order',
@@ -1068,6 +1080,7 @@ function keyCardHtml(k){
         <button class="btn btn--ghost" onclick="renewKey(${Number(k.key_id)})">Продлить</button>
         <button class="btn btn--ghost" onclick="openManage(${Number(k.key_id)})">Управление</button>
       </div>
+      ${k.device_addon ? `<button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="openAddon(${Number(k.key_id)})"><svg class="icon icon--sm"><use href="#ic-monitor"/></svg>Докупить устройства</button>` : ''}
     </div>
   </article>`;
 }
@@ -1207,6 +1220,44 @@ async function resetSubscriptionLink(){
   }catch(e){ toast(e.message, true); }
 }
 
+/* ===== докупка устройств ===== */
+/* Слоты продаются помесячно вместе с тарифом, поэтому докупка к активной
+   подписке считается по остатку срока. Считает её сервер — здесь только
+   показываем присланные наборы и цену. */
+async function openAddon(id){
+  const k = findKey(id);
+  if(!k) return;
+  state.addon = null;
+  openModal('addonModal');
+  $('addonSub').textContent = 'Срок подписки не изменится — доплата только за оставшиеся дни';
+  $('addonBody').innerHTML = '<div class="card skeleton" style="min-height:90px"></div>';
+  try{
+    const d = await api('/api/device-addon', { method:'POST', headers: JSON_H, body: JSON.stringify({ user_id: USER_ID, key_id: k.key_id }) });
+    if(!d.ok) throw new Error(d.error || 'Не удалось получить наборы устройств');
+    renderAddon(k, d);
+  }catch(e){ $('addonBody').innerHTML = `<p class="empty-hint">${esc(e.message)}</p>`; }
+}
+function renderAddon(k, d){
+  if(!d.available){
+    $('addonSub').textContent = k.name || '';
+    $('addonBody').innerHTML = `<p class="empty-hint">${esc(d.note || 'Сейчас докупить устройства нельзя.')}</p>`;
+    return;
+  }
+  const days = Number(d.days_left || 0), cur = Number(d.current || 0);
+  const daysStr = `${days} ${plural(days,'день','дня','дней')}`;
+  $('addonSub').textContent = `Сейчас ${cur} ${plural(cur,'устройство','устройства','устройств')} · подписка активна ещё ${daysStr}`;
+  $('addonBody').innerHTML = '<div class="device-grid">'
+    + (d.options || []).map(o => `<button class="device-opt" onclick="pickAddon(${Number(k.key_id)},${Number(o.device_count)},${Number(o.price)})"><b>${Number(o.device_count)}</b><span>${money(o.price)}</span></button>`).join('')
+    + '</div>'
+    + `<p class="empty-hint" style="text-align:left;padding:12px 2px 0">Цена — доплата за оставшиеся ${daysStr}. При следующем продлении слоты войдут в его стоимость.</p>`;
+}
+function pickAddon(keyId, devices, price){
+  state.addon = { key_id: keyId, devices: Number(devices), price: Number(price) };
+  state.action = 'devices';
+  closeModal('addonModal');
+  openPayment();
+}
+
 /* ===== catalog ===== */
 async function loadCatalog(){
   if(state.catalog.length) return;
@@ -1216,6 +1267,7 @@ async function loadCatalog(){
 }
 async function openCatalog(action){
   state.action = action;
+  state.addon = null;
   state.promoPreview = null;
   showScreen('catalog');
   $('catalogTitle').textContent = action === 'renew' ? 'Продление' : 'Покупка';
@@ -1366,7 +1418,11 @@ async function previewPromo(){
 
 /* ===== payment ===== */
 function round2(v){ return Math.round(Number(v||0) * 100) / 100; }
-function orderPrice(){ return round2(state.promoPreview ? state.promoPreview.newPrice : total()); }
+/* у докупки устройств нет ни тарифа, ни промокода — только сумма от сервера */
+function orderPrice(){
+  if(state.addon) return round2(state.addon.price);
+  return round2(state.promoPreview ? state.promoPreview.newPrice : total());
+}
 /* сколько закроет баланс, если человек включил списание */
 function balanceApplied(){
   if(!state.useBalance) return 0;
@@ -1375,16 +1431,26 @@ function balanceApplied(){
 function payRemainder(){ return round2(Math.max(0, orderPrice() - balanceApplied())); }
 
 async function openPayment(){
-  if(!state.plan) return toast('Выберите срок подписки', true);
+  if(!state.addon && !state.plan) return toast('Выберите срок подписки', true);
   openModal('paymentModal');
-  const h = findHost();
-  const devices = Number(state.tier && state.tier.devices || 0);
-  $('paymentSummary').textContent = [
-    h && h.host_name,
-    state.plan.plan_name || (months() + ' мес.'),
-    devices ? `${devices} ${plural(devices,'устройство','устройства','устройств')}` : null,
-    money(orderPrice()),
-  ].filter(Boolean).join(' · ');
+  if(state.addon){
+    const k = findKey(state.addon.key_id);
+    const n = state.addon.devices;
+    $('paymentSummary').textContent = [
+      k && k.name,
+      `${n} ${plural(n,'устройство','устройства','устройств')}`,
+      money(orderPrice()),
+    ].filter(Boolean).join(' · ');
+  } else {
+    const h = findHost();
+    const devices = Number(state.tier && state.tier.devices || 0);
+    $('paymentSummary').textContent = [
+      h && h.host_name,
+      state.plan.plan_name || (months() + ' мес.'),
+      devices ? `${devices} ${plural(devices,'устройство','устройства','устройств')}` : null,
+      money(orderPrice()),
+    ].filter(Boolean).join(' · ');
+  }
   state.useBalance = false;
   $('balanceUseInput').checked = false;
   toggle('balanceUse', true);
@@ -1452,7 +1518,19 @@ async function createPayment(){
   const btn = $('payButton');
   btn.disabled = true; btn.textContent = 'Создаём счёт…';
   try{
-    const payload = {
+    const addon = state.addon;
+    const payload = addon ? {
+      user_id: USER_ID,
+      payment_method: state.method,
+      plan_id: 0,
+      host_name: null,
+      action: 'devices',
+      key_id: Number(addon.key_id),
+      promo_code: null,
+      tier_device_count: Number(addon.devices),
+      tier_price: 0,
+      use_balance: !!state.useBalance,
+    } : {
       user_id: USER_ID,
       payment_method: state.method,
       plan_id: Number(state.plan.plan_id),
@@ -1467,6 +1545,7 @@ async function createPayment(){
     const d = await api('/api/create-payment', { method:'POST', headers: JSON_H, body: JSON.stringify(payload) });
     if(!d.ok) throw new Error(d.error || 'Не удалось создать платёж');
     closeModal('paymentModal');
+    state.addon = null;
     if(d.payment_url){
       if(d.payment_id) startPaymentWatch(d.payment_id);
       if(tg && tg.openLink) tg.openLink(d.payment_url); else window.open(d.payment_url, '_blank');

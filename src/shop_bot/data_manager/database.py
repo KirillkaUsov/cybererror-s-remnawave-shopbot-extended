@@ -1095,6 +1095,7 @@ def run_migration():
             _ensure_pending_transactions_table(cursor)
             _ensure_default_button_configs(cursor)
             _ensure_reset_subscription_button(cursor)
+            _ensure_addon_devices_button(cursor)
             
 
             try:
@@ -1222,12 +1223,13 @@ def _ensure_default_button_configs(cursor: sqlite3.Cursor) -> None:
         key_info_menu_buttons = [
             ("connect", "📲 Подключиться", None, "{connection_string}", 0, 0, 0, 2),
             ("extend", "➕ Продлить подписку", "extend_key_{key_id}", None, 1, 0, 1, 2),
-            ("key_devices", "📱 Устройства", "key_devices_{key_id}", None, 2, 0, 2, 1),
-            ("qr", "📱 QR-код", "show_qr_{key_id}", None, 2, 1, 3, 1),
-            ("howto", "📖 Инструкция", "howto_vless_{key_id}", None, 3, 0, 4, 1),
-            ("comment_key", "📝 Комментарий", "key_comments_{key_id}", None, 3, 1, 5, 1),
-            ("reset_sub", "🔄 Пересоздать подписку", "reset_sub_confirm_{key_id}", None, 4, 0, 6, 2),
-            ("back", "⬅️ Назад к списку подписок", "manage_keys", None, 5, 0, 7, 2),
+            ("addon_devices", "📱 Докупить устройства", "addon_dev_{key_id}", None, 2, 0, 2, 2),
+            ("key_devices", "📱 Устройства", "key_devices_{key_id}", None, 3, 0, 3, 1),
+            ("qr", "📱 QR-код", "show_qr_{key_id}", None, 3, 1, 4, 1),
+            ("howto", "📖 Инструкция", "howto_vless_{key_id}", None, 4, 0, 5, 1),
+            ("comment_key", "📝 Комментарий", "key_comments_{key_id}", None, 4, 1, 6, 1),
+            ("reset_sub", "🔄 Пересоздать подписку", "reset_sub_confirm_{key_id}", None, 5, 0, 7, 2),
+            ("back", "⬅️ Назад к списку подписок", "manage_keys", None, 6, 0, 8, 2),
         ]
 
         for button_id, text, callback_data, url, row_pos, col_pos, sort_order, width in key_info_menu_buttons:
@@ -1274,6 +1276,75 @@ def _ensure_reset_subscription_button(cursor: sqlite3.Cursor) -> None:
         logging.info("Миграция: в key_info_menu добавлена кнопка 'reset_sub' (Пересоздать подписку)")
     except Exception as e:
         logging.warning(f"Миграция: не удалось добавить кнопку reset_sub в key_info_menu: {e}")
+
+# ==============================================
+
+
+# ===== _ENSURE_ADDON_DEVICES_BUTTON =====
+def _ensure_addon_devices_button(cursor: sqlite3.Cursor) -> None:
+    """
+    Точечная миграция: добавляет кнопку "Докупить устройства" в key_info_menu
+    для инсталляций, где меню уже засеяно и потому не попадает под
+    _ensure_default_button_configs. Безопасна для повторного запуска.
+
+    Место кнопки — сразу под "Продлить подписку": это соседнее действие, и
+    искать его внизу меню никто не станет. Ради этого сдвигаем следующие
+    строки на одну вниз, сохраняя их порядок.
+    """
+    try:
+        cursor.execute(
+            "SELECT 1 FROM button_configs WHERE menu_type = ? AND button_id = ? LIMIT 1",
+            ("key_info_menu", "addon_devices"),
+        )
+        if cursor.fetchone():
+            return
+
+        def _anchor(condition: str, param) -> tuple | None:
+            cursor.execute(
+                "SELECT row_position, sort_order FROM button_configs "
+                f"WHERE menu_type = ? AND ({condition}) AND is_active = 1 ORDER BY sort_order LIMIT 1",
+                ("key_info_menu", param),
+            )
+            return cursor.fetchone()
+
+        # Идентификаторы кнопок в конструкторе произвольные (админ мог
+        # пересобрать меню), поэтому опознаём соседей по callback_data.
+        after = _anchor("button_id = ? OR callback_data LIKE 'extend_key_%'", "extend")
+        before = None if after else _anchor("button_id = ? OR callback_data = 'manage_keys'", "back")
+
+        if after:
+            row_pos, sort_order = (after[0] or 0) + 1, (after[1] or 0) + 1
+        elif before:
+            # Продления в меню нет — встаём хотя бы перед кнопкой «Назад»
+            row_pos, sort_order = before[0] or 0, before[1] or 0
+        else:
+            cursor.execute(
+                "SELECT COALESCE(MAX(row_position), -1), COALESCE(MAX(sort_order), -1) "
+                "FROM button_configs WHERE menu_type = ?",
+                ("key_info_menu",),
+            )
+            row = cursor.fetchone()
+            row_pos = (row[0] if row and row[0] is not None else -1) + 1
+            sort_order = (row[1] if row and row[1] is not None else -1) + 1
+
+        if after or before:
+            cursor.execute(
+                "UPDATE button_configs SET row_position = row_position + 1 WHERE menu_type = ? AND row_position >= ?",
+                ("key_info_menu", row_pos),
+            )
+            cursor.execute(
+                "UPDATE button_configs SET sort_order = sort_order + 1 WHERE menu_type = ? AND sort_order >= ?",
+                ("key_info_menu", sort_order),
+            )
+
+        cursor.execute("""
+            INSERT OR IGNORE INTO button_configs
+            (menu_type, button_id, text, callback_data, url, row_position, column_position, sort_order, button_width, is_active)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, 1)
+        """, ("key_info_menu", "addon_devices", "📱 Докупить устройства", "addon_dev_{key_id}", row_pos, 0, sort_order, 2))
+        logging.info("Миграция: в key_info_menu добавлена кнопка 'addon_devices' (Докупить устройства)")
+    except Exception as e:
+        logging.warning(f"Миграция: не удалось добавить кнопку addon_devices в key_info_menu: {e}")
 
 # ==============================================
 

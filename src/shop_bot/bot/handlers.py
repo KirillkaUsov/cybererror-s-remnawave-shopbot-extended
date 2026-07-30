@@ -83,6 +83,7 @@ from shop_bot.config import (
 )
 from shop_bot.data_manager import remnawave_repository as rw_repo
 from shop_bot.modules import remnawave_api
+from shop_bot.modules import device_addon
 
 TELEGRAM_BOT_USERNAME = None
 PAYMENT_METHODS = None
@@ -148,12 +149,50 @@ def get_transaction_comment(user: types.User, action_type: str, value: any, host
     elif action_type == 'extend': 
         logger.info(f"Транзакция: Продление подписки на {value} мес. для пользователя {user_id}")
         return f"Продление на {value} мес.{info_suffix}"
-    elif action_type == 'topup': 
+    elif action_type == 'topup':
         logger.info(f"Транзакция: Пополнение баланса на {value} RUB для пользователя {user_id}")
         return f"Пополнение баланса на {value} RUB{info_suffix}"
+    elif action_type == device_addon.ACTION:
+        logger.info(f"Транзакция: Докупка устройств ({value}) для пользователя {user_id}")
+        return f"Дополнительные устройства: {value}{info_suffix}"
     logger.info(f"Транзакция: Прочее действие для пользователя {user_id}")
     return f"Транзакция (ID: {user_id})"
 # ===== Конец функции get_transaction_comment =====
+
+
+# ===== ЗАКАЗ БЕЗ ТАРИФА =====
+# Докупка устройств проходит по тем же платёжным шлюзам, что и подписка, но
+# тарифа в ней нет: цену считает device_addon по остатку срока. Чтобы не
+# дублировать восемь платёжных обработчиков, подставляем виртуальный тариф.
+def _order_plan(data: dict) -> dict | None:
+    if data.get('action') == device_addon.ACTION:
+        return {
+            'plan_id': 0,
+            'plan_name': 'Дополнительные устройства',
+            'months': 0,
+            'duration_days': 0,
+            'price': float(data.get('final_price') or 0),
+        }
+    return get_plan_by_id(data.get('plan_id'))
+
+
+def _order_action(data: dict) -> str:
+    action = data.get('action')
+    if action == device_addon.ACTION:
+        return action
+    return 'new' if action == 'new' else 'extend'
+
+
+def _order_value(data: dict, months: int):
+    """Что подставить в описание счёта: срок или количество устройств."""
+    return data.get('tier_device_count') if data.get('action') == device_addon.ACTION else months
+
+
+def _order_title(data: dict, months: int) -> str:
+    if data.get('action') == device_addon.ACTION:
+        return f"Устройства: {data.get('tier_device_count')}"
+    return f"{'Подписка' if data.get('action') == 'new' else 'Продление'} на {months} мес."
+# ===== Конец блока заказа без тарифа =====
 
 
 
@@ -1122,7 +1161,7 @@ def get_user_router() -> Router:
     async def create_stars_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("⏳ Подготовлю счёт в Telegram Stars...")
         data = await state.get_data()
-        plan = get_plan_by_id(data.get('plan_id'))
+        plan = _order_plan(data)
         if not plan:
             await smart_edit_message(callback.message, "❌ Ошибка: Тариф не найден в системе.")
             await state.clear()
@@ -1147,8 +1186,8 @@ def get_user_router() -> Router:
         try:
             payment_id, _ = await create_pending_payment(user_id=user_id, amount=float(price_rub), payment_method="Telegram Stars", action=data.get('action'), metadata_source=data, plan_id=data.get('plan_id'), months=months)
             logger.info(f"Оплата (Stars): пользователь {user_id}, план {data.get('plan_id')}, сумма {price_rub} RUB")
-            description_str = get_transaction_comment(callback.from_user, 'new' if data.get('action') == 'new' else 'extend', months, data.get('host_name'))
-            title = f"{'Подписка' if data.get('action') == 'new' else 'Продление'} на {months} мес."
+            description_str = get_transaction_comment(callback.from_user, _order_action(data), _order_value(data, months), data.get('host_name'))
+            title = _order_title(data, months)
             
             await callback.message.answer_invoice(title=title, description=description_str, prices=[LabeledPrice(label=title, amount=stars_amount)], payload=payment_id, currency="XTR")
             logger.info(f"Stars: Инвойс на подписку для пользователя {user_id} отправлен (сумма в Stars: {stars_amount})")
@@ -1275,7 +1314,7 @@ def get_user_router() -> Router:
         await callback.answer("⏳ Подготовка YooMoney...")
         data = await state.get_data()
         plan_id = data.get('plan_id')
-        plan = get_plan_by_id(plan_id)
+        plan = _order_plan(data)
         if not plan:
             logger.error(f"YooMoney: Неверный тариф ID={plan_id}")
             await callback.message.answer("❌ Тариф не найден. Выберите другой.")
@@ -1305,7 +1344,7 @@ def get_user_router() -> Router:
             
         user_id, months = callback.from_user.id, int(plan['months'])
         payment_id, _ = await create_pending_payment(user_id=user_id, amount=float(price_rub), payment_method="YooMoney", action=data.get('action'), metadata_source=data, plan_id=plan_id, months=months)
-        description_str = get_transaction_comment(callback.from_user, 'new' if data.get('action') == 'new' else 'extend', months, data.get('host_name'))
+        description_str = get_transaction_comment(callback.from_user, _order_action(data), _order_value(data, months), data.get('host_name'))
         pay_url = _build_yoomoney_link(wallet, price_rub, payment_id, description_str)
         payment_image = get_setting("payment_image")
         
@@ -1423,7 +1462,7 @@ def get_user_router() -> Router:
             await state.clear()
             return
 
-        plan = get_plan_by_id(plan_id)
+        plan = _order_plan(data)
         if not plan:
             logger.error(f"Heleket: Тариф ID {plan_id} не найден.")
             await smart_edit_message(callback.message, "❌ Тариф не найден в базе.")
@@ -1467,7 +1506,7 @@ def get_user_router() -> Router:
             await state.clear()
             return
         
-        plan = get_plan_by_id(plan_id)
+        plan = _order_plan(data)
         if not plan:
             logger.error(f"Platega Payform: Тариф {plan_id} не найден.")
             await smart_edit_message(callback.message, "❌ Выбранный тариф недоступен.")
@@ -1487,7 +1526,7 @@ def get_user_router() -> Router:
         try:
             payment_id, metadata = await create_pending_payment(user_id=user_id, amount=float(price_rub), payment_method="Platega Payform", action=data.get('action'), metadata_source=data, plan_id=plan_id, months=months)
             platega = PlategaAPI(merchant_id, api_key)
-            description_str = get_transaction_comment(callback.from_user, 'new' if data.get('action') == 'new' else 'extend', months, data.get('host_name'))
+            description_str = get_transaction_comment(callback.from_user, _order_action(data), _order_value(data, months), data.get('host_name'))
 
             _, payment_url = await platega.create_payment_payform(amount=float(price_rub), description=description_str, payment_id=payment_id, return_url=f"https://t.me/{TELEGRAM_BOT_USERNAME}", failed_url=f"https://t.me/{TELEGRAM_BOT_USERNAME}")
             
@@ -1520,7 +1559,7 @@ def get_user_router() -> Router:
             await state.clear()
             return
         
-        plan = get_plan_by_id(plan_id)
+        plan = _order_plan(data)
         if not plan:
             logger.error(f"Platega: Тариф {plan_id} не найден.")
             await smart_edit_message(callback.message, "❌ Выбранный тариф недоступен.")
@@ -1540,7 +1579,7 @@ def get_user_router() -> Router:
         try:
             payment_id, metadata = await create_pending_payment(user_id=user_id, amount=float(price_rub), payment_method="Platega", action=data.get('action'), metadata_source=data, plan_id=plan_id, months=months)
             platega = PlategaAPI(merchant_id, api_key)
-            description_str = get_transaction_comment(callback.from_user, 'new' if data.get('action') == 'new' else 'extend', months, data.get('host_name'))
+            description_str = get_transaction_comment(callback.from_user, _order_action(data), _order_value(data, months), data.get('host_name'))
 
             _, payment_url = await platega.create_payment(amount=float(price_rub), description=description_str, payment_id=payment_id, return_url=f"https://t.me/{TELEGRAM_BOT_USERNAME}", failed_url=f"https://t.me/{TELEGRAM_BOT_USERNAME}", payment_method=2)
             
@@ -1572,7 +1611,7 @@ def get_user_router() -> Router:
             await state.clear()
             return
         
-        plan = get_plan_by_id(plan_id)
+        plan = _order_plan(data)
         if not plan:
             logger.error(f"Platega Crypto: Тариф {plan_id} не найден.")
             await smart_edit_message(callback.message, "❌ Выбранный тариф недоступен.")
@@ -1592,7 +1631,7 @@ def get_user_router() -> Router:
         try:
             payment_id, metadata = await create_pending_payment(user_id=user_id, amount=float(price_rub), payment_method="Platega Crypto", action=data.get('action'), metadata_source=data, plan_id=plan_id, months=months)
             platega = PlategaAPI(merchant_id, api_key)
-            description_str = get_transaction_comment(callback.from_user, 'new' if data.get('action') == 'new' else 'extend', months, data.get('host_name'))
+            description_str = get_transaction_comment(callback.from_user, _order_action(data), _order_value(data, months), data.get('host_name'))
 
             _, payment_url = await platega.create_payment(amount=float(price_rub), description=description_str, payment_id=payment_id, return_url=f"https://t.me/{TELEGRAM_BOT_USERNAME}", failed_url=f"https://t.me/{TELEGRAM_BOT_USERNAME}", payment_method=13)
             
@@ -2751,6 +2790,82 @@ def get_user_router() -> Router:
         await _show_plans_for_host(callback, host_name, action="extend", key_id=kid, tier_price=float(tp))
     # ===== Конец функции extend_key_handler =====
 
+    # ===== ДОКУПКА УСТРОЙСТВ БЕЗ ПРОДЛЕНИЯ =====
+    # Показывает наборы устройств больше текущего и доплату за остаток срока
+    async def _show_device_addon(message, state: FSMContext, user_id: int, kid: int):
+        key = rw_repo.get_key_by_id(kid)
+        if not key or key['user_id'] != user_id:
+            return await smart_edit_message(message, "❌ Подписка не найдена или доступ к ней ограничен.")
+
+        offer = await device_addon.build_offer(key)
+        img = get_setting("extend_plan_image")
+        if not offer['available']:
+            reason = device_addon.UNAVAILABLE_TEXT.get(offer['reason'], "Сейчас докупить устройства нельзя.")
+            return await smart_edit_message(message, f"📱 <b>Докупка устройств</b>\n\n{reason}", keyboards.create_back_to_key_keyboard(kid), img)
+
+        await state.clear()
+        await state.update_data(action=device_addon.ACTION, key_id=kid, host_name=key.get('host_name'), plan_id=0)
+
+        days = offer['days_left']
+        day_word = keyboards.get_declension(days, ['день', 'дня', 'дней'])
+        text = (
+            f"📱 <b>Докупка устройств</b>\n\n"
+            f"Сейчас одновременных подключений: <b>{offer['current']}</b>\n"
+            f"⏳ Подписка активна ещё {days} {day_word}\n\n"
+            f"Срок не изменится — платите только за оставшиеся дни."
+        )
+        await smart_edit_message(message, text, keyboards.create_device_addon_keyboard(offer, kid), img)
+        logger.info(f"Докупка устройств: пользователю {user_id} показаны наборы для ключа #{kid}")
+
+    @user_router.callback_query(F.data.startswith("addon_dev_"))
+    @anti_spam
+    @registration_required
+    async def addon_devices_handler(callback: types.CallbackQuery, state: FSMContext):
+        await callback.answer()
+        try: kid = int(callback.data.split("_")[2])
+        except (ValueError, IndexError): return await smart_edit_message(callback.message, "⚠️ Ошибка идентификации подписки.")
+        await _show_device_addon(callback.message, state, callback.from_user.id, kid)
+    # ===== Конец функции addon_devices_handler =====
+
+    # ===== ВЫБОР НАБОРА УСТРОЙСТВ ДЛЯ ДОКУПКИ =====
+    # Пересчитывает цену на сервере и ведёт к выбору способа оплаты
+    @user_router.callback_query(F.data.startswith("addon_buy_"))
+    @anti_spam
+    @registration_required
+    async def addon_devices_buy_handler(callback: types.CallbackQuery, state: FSMContext):
+        await callback.answer()
+        try:
+            parts = callback.data.split("_")
+            kid, wanted = int(parts[2]), int(parts[3])
+        except (ValueError, IndexError): return await smart_edit_message(callback.message, "⚠️ Ошибка выбора набора устройств.")
+
+        key = rw_repo.get_key_by_id(kid)
+        if not key or key['user_id'] != callback.from_user.id:
+            return await smart_edit_message(callback.message, "❌ Подписка не найдена или доступ к ней ограничен.")
+
+        # Цену с кнопки не берём: за время показа меню подписка могла
+        # истечь, а лимит — измениться. Считаем заново.
+        offer = await device_addon.build_offer(key)
+        option = device_addon.find_option(offer, wanted) if offer['available'] else None
+        if not option:
+            reason = device_addon.UNAVAILABLE_TEXT.get(offer['reason'], "Этот набор устройств больше недоступен.")
+            return await smart_edit_message(callback.message, f"📱 <b>Докупка устройств</b>\n\n{reason}", keyboards.create_back_to_key_keyboard(kid), get_setting("extend_plan_image"))
+
+        await state.clear()
+        await state.update_data(
+            action=device_addon.ACTION,
+            key_id=kid,
+            host_name=key.get('host_name'),
+            plan_id=0,
+            months=0,
+            tier_device_count=option['device_count'],
+            tier_price=0,
+            final_price=float(option['price']),
+        )
+        await _proceed_to_email_or_pay(callback.message, state)
+        logger.info(f"Докупка устройств: пользователь {callback.from_user.id} выбрал {option['device_count']} уст. за {option['price']} RUB (ключ #{kid})")
+    # ===== Конец функции addon_devices_buy_handler =====
+
     # ===== ПЕРЕХОД К ОПЛАТЕ (ВВОД EMAIL) =====
     # Сохраняет выбор тарифа и запрашивает email пользователя, если это требуется настройками
     @user_router.callback_query(F.data.startswith("buy_"))
@@ -2844,6 +2959,10 @@ def get_user_router() -> Router:
         data = await state.get_data(); await state.clear()
         action, host, kid = data.get('action'), data.get('host_name'), data.get('key_id', 0)
 
+        if action == device_addon.ACTION and kid:
+            # У докупки устройств нет списка тарифов — возвращаем к наборам
+            return await _show_device_addon(callback.message, state, callback.from_user.id, kid)
+
         if action == 'new' and host:
             plans = get_plans_for_host(host)
             host_data = get_host(host)
@@ -2907,14 +3026,20 @@ def get_user_router() -> Router:
     # Вычисляет итоговую стоимость и выводит кнопки доступных платежных шлюзов
     async def show_payment_options(message: types.Message, state: FSMContext, bot: Bot = None, prompt_message_id: int = None):
         data = await state.get_data(); user = get_user(message.chat.id)
-        plan = get_plan_by_id(data.get('plan_id'))
+        plan = _order_plan(data)
         if not plan: return await (message.edit_text if isinstance(message, types.Message) else message.answer)("❌ Ошибка: Тариф не найден.")
         
-        price = calculate_order_price(plan, user, data.get('promo_code'), data.get('promo_discount', 0))
-        months = int(plan.get('months') or 1)
-        duration_days = int(plan.get('duration_days') or 0) or (months * 30)
-        month_factor = Decimal(str(duration_days)) / Decimal('30')
-        price += Decimal(str(data.get('tier_price', 0))) * month_factor
+        is_addon = data.get('action') == device_addon.ACTION
+        if is_addon:
+            # Цену докупки посчитал device_addon по остатку срока — ни тариф,
+            # ни помесячная надбавка за устройства тут уже не участвуют.
+            price = Decimal(str(data.get('final_price') or 0))
+        else:
+            price = calculate_order_price(plan, user, data.get('promo_code'), data.get('promo_discount', 0))
+            months = int(plan.get('months') or 1)
+            duration_days = int(plan.get('duration_days') or 0) or (months * 30)
+            month_factor = Decimal(str(duration_days)) / Decimal('30')
+            price += Decimal(str(data.get('tier_price') or 0)) * month_factor
         await state.update_data(final_price=float(price))
         
         balance = get_balance(message.chat.id)
@@ -2929,9 +3054,16 @@ def get_user_router() -> Router:
             )
             
         text = f"💰 К оплате: {price:.2f} RUB\n{promo_text}\n{CHOOSE_PAYMENT_METHOD_MESSAGE}"
-        
-        back_cb = "back_to_email_prompt" if get_setting("skip_email") != "1" else (f"select_host_new_{data.get('host_name')}" if data.get('action') == 'new' else "manage_keys")
-        kb = keyboards.create_payment_method_keyboard(PAYMENT_METHODS, action=data.get('action'), key_id=data.get('key_id'), show_balance=(balance >= float(price)), main_balance=balance, price=float(price), promo_applied=bool(data.get('promo_code')), back_callback=back_cb)
+
+        if is_addon:
+            back_cb = f"addon_dev_{data.get('key_id')}"
+        elif get_setting("skip_email") != "1":
+            back_cb = "back_to_email_prompt"
+        else:
+            back_cb = f"select_host_new_{data.get('host_name')}" if data.get('action') == 'new' else "manage_keys"
+        # Промокоды скидывают цену тарифа — к доплате за остаток срока их
+        # применять нечему, поэтому кнопку ввода прячем.
+        kb = keyboards.create_payment_method_keyboard(PAYMENT_METHODS, action=data.get('action'), key_id=data.get('key_id'), show_balance=(balance >= float(price)), main_balance=balance, price=float(price), promo_applied=bool(data.get('promo_code')), back_callback=back_cb, allow_promo=not is_addon)
         payment_img = get_setting("payment_method_image")
 
         if prompt_message_id and bot:
@@ -3025,7 +3157,7 @@ def get_user_router() -> Router:
                 except: pass
             return
         
-        plan = get_plan_by_id(data.get('plan_id'))
+        plan = _order_plan(data)
         disc = Decimal(str(promo.get('discount_amount') or 0))
         if promo.get('discount_percent'): disc = (Decimal(str(plan['price'])) * Decimal(str(promo['discount_percent'])) / 100).quantize(Decimal("0.01"))
         
@@ -3042,7 +3174,7 @@ def get_user_router() -> Router:
         shop_id, secret = get_setting("yookassa_shop_id"), get_setting("yookassa_secret_key")
         if not shop_id or not secret: return await callback.message.answer("⚠️ Оплата через ЮKassa временно недоступна.")
             
-        plan = get_plan_by_id(data.get('plan_id'))
+        plan = _order_plan(data)
         if not plan: return await state.clear()
             
         price = Decimal(str(data.get('final_price', plan['price'])))
@@ -3068,7 +3200,7 @@ def get_user_router() -> Router:
     @anti_spam
     async def create_cryptobot_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("⏳ Создание инвойса..."); data = await state.get_data()
-        plan = get_plan_by_id(data.get('plan_id'))
+        plan = _order_plan(data)
         if not plan: return await state.clear()
 
         price = Decimal(str(data.get('final_price', plan['price'])))
@@ -3132,7 +3264,7 @@ def get_user_router() -> Router:
     @anti_spam
     async def create_ton_invoice_handler(callback: types.CallbackQuery, state: FSMContext):
         data = await state.get_data(); uid = callback.from_user.id
-        wallet, plan = get_setting("ton_wallet_address"), get_plan_by_id(data.get('plan_id'))
+        wallet, plan = get_setting("ton_wallet_address"), _order_plan(data)
         if not wallet or not plan: return await smart_edit_message(callback.message, "❌ Оплата через TON временно недоступна.")
 
         await callback.answer("⏳ Подготовка TON Connect..."); user = get_user(uid)
@@ -3160,7 +3292,7 @@ def get_user_router() -> Router:
     @user_router.callback_query(PaymentProcess.waiting_for_payment_method, F.data == "pay_balance")
     @anti_spam
     async def pay_with_main_balance_handler(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
-        await callback.answer(); data = await state.get_data(); plan = get_plan_by_id(data.get('plan_id'))
+        await callback.answer(); data = await state.get_data(); plan = _order_plan(data)
         if not plan: return await state.clear()
 
         price = float(data.get('final_price', plan['price']))
@@ -3466,7 +3598,15 @@ async def notify_admin_of_purchase(bot: Bot, metadata: dict):
 
         method = {'Balance': 'Баланс', 'Card': 'Карта', 'Crypto': 'Крипто', 'USDT': 'USDT', 'TON': 'TON'}.get(metadata.get('payment_method'), metadata.get('payment_method') or 'N/A')
         plan = get_plan_by_id(metadata.get('plan_id')); plan_name = plan.get('plan_name', 'N/A') if plan else 'N/A'
-        
+
+        if action == device_addon.ACTION:
+            # В таком заказе тарифа нет — вместо срока показываем новый лимит
+            plan_name = f"Докупка устройств → {metadata.get('tier_device_count')}"
+            order_type = 'Устройства 📱'
+        else:
+            order_type = 'Новая подписка ➕' if action == 'new' else 'Продление ♻️'
+
+
         from shop_bot.data_manager.database import get_today_income_by_currency
         today = get_today_income_by_currency()
         today_rub = today.get('rub', 0)
@@ -3478,10 +3618,10 @@ async def notify_admin_of_purchase(bot: Bot, metadata: dict):
             f"👤 Пользователь: <code>{user_id}</code>\n"
             f"💌 Username: {username_str}\n"
             f"🌍 Локация: <b>{host}</b>\n"
-            f"📦 Тариф: {plan_name} ({months} мес.)\n"
+            f"📦 Тариф: {plan_name}" + ("\n" if action == device_addon.ACTION else f" ({months} мес.)\n") +
             f"💳 Метод: {method}\n"
             f"💰 Сумма: {float(price):.2f} RUB\n"
-            f"⚙️ Тип: {'Новая подписка ➕' if action == 'new' else 'Продление ♻️'}\n\n"
+            f"⚙️ Тип: {order_type}\n\n"
             f"<blockquote>💵 Касса за сегодня ₽: {today_rub:,.2f} \n"
             f"💵 Касса за вчера ₽: {yesterday_rub:,.2f}\n"
             f"💎 Касса за сегодня $: {today_crypto:,.2f} </blockquote>"
@@ -3621,7 +3761,10 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
         proc_msg = None
         if not str(uid).startswith("999"):
             try:
-                if bot: proc_msg = await bot.send_message(uid, f"⏳ <b>Оплата принята!</b>\nГотовлю подписку на сервере «{host}»...")
+                wait_text = ("⏳ <b>Оплата принята!</b>\nДобавляю устройства к подписке..."
+                             if action == device_addon.ACTION
+                             else f"⏳ <b>Оплата принята!</b>\nГотовлю подписку на сервере «{host}»...")
+                if bot: proc_msg = await bot.send_message(uid, wait_text)
             except Exception: pass
         
         try:
@@ -3651,15 +3794,28 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
                     tr_lim_gb = int(plan.get('traffic_limit_gb', 0))
                     if plan.get('duration_days'): days = int(plan['duration_days'])
 
+            # Докупка устройств: тарифа в заказе нет, срок не трогаем. Вместо
+            # «прибавь дней» отдаём панели текущую дату окончания — меняется
+            # только лимит устройств.
+            keep_expiry_ms = None
+            if action == device_addon.ACTION:
+                keep_expiry_ms = await device_addon.current_expiry_ms(key)
+                if not hw_lim or not keep_expiry_ms:
+                    add_to_balance(uid, float(price))
+                    logger.error(f"Возврат средств: {price} RUB возвращено пользователю {uid} (докупка устройств без лимита или без срока, ключ #{kid})")
+                    if proc_msg and bot: await proc_msg.edit_text("❌ Не удалось определить параметры подписки. Средства возвращены на баланс.")
+                    return False
+
             # Получаем внешний сквад для seller (если пользователь - seller)
             external_squad = get_seller_external_squad(uid)
-            
+
             res = await remnawave_api.create_or_update_key_on_host(
-                host_name=host, 
-                email=c_email, 
-                days_to_add=days, 
-                telegram_id=uid, 
-                hwid_limit=hw_lim, 
+                host_name=host,
+                email=c_email,
+                days_to_add=None if keep_expiry_ms else days,
+                expiry_timestamp_ms=keep_expiry_ms,
+                telegram_id=uid,
+                hwid_limit=hw_lim,
                 traffic_limit_gb=tr_lim_gb,
                 external_squad_uuid=external_squad
             )
@@ -3757,7 +3913,7 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
                 "months": months,
                 "key_id": kid,
                 "customer_email": email,
-                "reason": "subscription_purchase_or_extend"
+                "reason": "device_addon_purchase" if action == device_addon.ACTION else "subscription_purchase_or_extend"
             })
             if plan_id:
                 p_obj = get_plan_by_id(plan_id)
@@ -3782,7 +3938,15 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
             msk_tz = timezone(timedelta(hours=3))
             conn, exp = res.get('connection_string'), datetime.fromtimestamp(res['expiry_timestamp_ms'] / 1000, tz=msk_tz)
             u_keys = get_user_keys(uid); k_num = next((i + 1 for i, k in enumerate(u_keys) if k['key_id'] == kid), len(u_keys))
-            txt = get_purchase_success_text(action=("extend" if action == "extend" else "new"), key_number=k_num, expiry_date=exp, connection_string=(conn or ""), email=c_email)
+            if action == device_addon.ACTION:
+                txt = (
+                    f"📱 <b>Устройства добавлены</b>\n\n"
+                    f"Одновременных подключений теперь: <b>{hw_lim}</b>\n"
+                    f"⏳ Срок подписки не изменился — до {exp.strftime('%d.%m %H:%M')}\n\n"
+                    f"Новые слоты доступны сразу, переподключаться не нужно."
+                )
+            else:
+                txt = get_purchase_success_text(action=("extend" if action == "extend" else "new"), key_number=k_num, expiry_date=exp, connection_string=(conn or ""), email=c_email)
             
             if not str(uid).startswith("999"):
                 try:

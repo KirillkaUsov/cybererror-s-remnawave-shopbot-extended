@@ -1708,6 +1708,10 @@ def create_webhook_app(bot_controller_instance):
                             return 'Ручное изменение баланса'
                         if action_norm in ('referral_bonus', 'referral_start_bonus'):
                             return 'Реферальное начисление'
+                        # Проверяем до способа оплаты: докупка устройств —
+                        # это не «оплата с баланса», даже если платили им
+                        if action_norm == 'devices':
+                            return 'Докупка устройств'
                         if method_norm == 'balance':
                             return 'Оплата с баланса'
                         if action_norm == 'new':

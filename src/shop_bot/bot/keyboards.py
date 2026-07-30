@@ -8,7 +8,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from shop_bot.data_manager.remnawave_repository import get_setting
-from shop_bot.data_manager.database import get_button_configs
+from shop_bot.data_manager.database import get_button_configs, get_key_by_id, get_host, get_device_tiers
 from shop_bot.config import get_msk_time
 
 logger = logging.getLogger(__name__)
@@ -501,7 +501,8 @@ def create_payment_method_keyboard(
     main_balance: float | None = None,
     price: float | None = None,
     promo_applied: bool = False,
-    back_callback: str = "back_to_email_prompt"
+    back_callback: str = "back_to_email_prompt",
+    allow_promo: bool = True
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
@@ -556,7 +557,7 @@ def create_payment_method_keyboard(
     
 
 
-    if not promo_applied:
+    if allow_promo and not promo_applied:
         builder.button(text="🎟 Ввести промокод", callback_data="enter_promo_code")
 
     builder.button(text="⬅️ Назад", callback_data=back_callback)
@@ -1029,7 +1030,7 @@ def create_admin_months_pick_keyboard(action: str = "gift") -> InlineKeyboardMar
     return builder.as_markup()
 
 
-def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_available: bool = False, is_admin: bool = False, balance: float = 0.0, key_id: int = None, connection_string: str = None) -> InlineKeyboardMarkup:
+def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_available: bool = False, is_admin: bool = False, balance: float = 0.0, key_id: int = None, connection_string: str = None, addon_devices: bool = False) -> InlineKeyboardMarkup:
     """Create a keyboard based on database configuration"""
     try:
         button_configs = get_button_configs(menu_type)
@@ -1082,6 +1083,12 @@ def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_availa
                 
 
                 if menu_type == "main_menu" and button_id == "admin" and not is_admin:
+
+                    continue
+
+                # Докупать устройства можно только там, где они продаются
+                # наборами: на остальных локациях лимит зашит в тариф.
+                if menu_type == "key_info_menu" and button_id == "addon_devices" and not addon_devices:
 
                     continue
 
@@ -1162,11 +1169,56 @@ def create_dynamic_support_menu_keyboard() -> InlineKeyboardMarkup:
     """Create support menu keyboard using dynamic configuration"""
     return create_dynamic_keyboard("support_menu")
 
+def device_addon_available(key_id: int) -> bool:
+    """Продаются ли на локации этой подписки отдельные наборы устройств."""
+    try:
+        key = get_key_by_id(key_id)
+        host_name = (key or {}).get('host_name')
+        if not host_name:
+            return False
+        host = get_host(host_name)
+        if not host or (host.get('device_mode') or 'plan') != 'tiers':
+            return False
+        return bool(get_device_tiers(host_name))
+    except Exception as e:
+        logger.warning(f"Не удалось проверить наборы устройств для ключа {key_id}: {e}")
+        return False
+
 def create_dynamic_key_info_keyboard(key_id: int, connection_string: str | None = None) -> InlineKeyboardMarkup:
     """Create key info keyboard using dynamic configuration"""
     # Состав кнопок целиком задаётся конструктором в админ-панели,
     # включая «Пересоздать подписку» (button_id = reset_sub).
-    return create_dynamic_keyboard("key_info_menu", key_id=key_id, connection_string=connection_string)
+    return create_dynamic_keyboard("key_info_menu", key_id=key_id, connection_string=connection_string,
+                                   addon_devices=device_addon_available(key_id))
+
+def _price_label(value) -> str:
+    """9.5 → «9,5 ₽», 671.0 → «671 ₽». Округлять до рубля нельзя: на кнопке
+    оказалась бы не та сумма, которую спишут."""
+    text = f"{float(value):.2f}".rstrip('0').rstrip('.')
+    return f"{text.replace('.', ',')} ₽"
+
+def create_device_addon_keyboard(offer: dict, key_id: int) -> InlineKeyboardMarkup:
+    """Наборы устройств, которые можно докупить к этой подписке.
+
+    Цена на кнопке — доплата за остаток срока, её считает device_addon.
+    """
+    builder = InlineKeyboardBuilder()
+    for option in offer.get('options') or []:
+        count = int(option['device_count'])
+        word = get_declension(count, ['устройство', 'устройства', 'устройств'])
+        builder.button(
+            text=f"📱 {count} {word} · {_price_label(option['price'])}",
+            callback_data=f"addon_buy_{key_id}_{count}",
+        )
+    builder.button(text="⬅️ Назад к подписке", callback_data=f"show_key_{key_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def create_back_to_key_keyboard(key_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬅️ Назад к подписке", callback_data=f"show_key_{key_id}")
+    builder.adjust(1)
+    return builder.as_markup()
 
 def create_back_to_profile_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
