@@ -883,7 +883,29 @@ function fmtRelative(s){
   return fmtDateTime(s);
 }
 function haptic(kind){ try{ if(!tg || !tg.HapticFeedback) return; kind==='error' ? tg.HapticFeedback.notificationOccurred('error') : tg.HapticFeedback.impactOccurred('light'); }catch(e){} }
-async function api(url, opts){ const r = await fetch(url, opts); const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error || 'Ошибка сервера'); return d; }
+/* Личность запроса подтверждает токен сессии: сервер больше не верит
+   user_id из тела. Кука уходит сама, заголовок нужен там, где куку могли
+   потерять — например, во встроенном браузере Telegram. */
+function authToken(){ try{ return localStorage.getItem('auth_token') || ''; }catch(e){ return ''; } }
+function withAuth(opts){
+  const o = Object.assign({}, opts || {});
+  o.headers = Object.assign({}, o.headers || {});
+  const t = authToken();
+  if(t) o.headers['X-Auth-Token'] = t;
+  return o;
+}
+/* сессия кончилась — возвращаем на экран входа, а не показываем «ошибка сервера» */
+function sessionExpired(){
+  try{ localStorage.removeItem('auth_token'); }catch(e){}
+  window.location.href = '/';
+}
+async function api(url, opts){
+  const r = await fetch(url, withAuth(opts));
+  const d = await r.json().catch(()=>({}));
+  if(r.status === 401 || d.auth_required){ sessionExpired(); throw new Error(d.error || 'Сессия истекла'); }
+  if(!r.ok) throw new Error(d.error || 'Ошибка сервера');
+  return d;
+}
 /* Своё подтверждение вместо tg.showConfirm/window.confirm: нативный попап
    Telegram бросает исключение на старых клиентах и поверх уже открытого
    листа, а window.confirm в webview просто проглатывается — из-за этого
@@ -1819,12 +1841,10 @@ async function activateBonusPromo(){
     haptic('error');
   }finally{ btn.disabled = false; }
 }
-/* выход из веб-версии: чистим токен, дальше отдаётся экран входа */
-function logout(){
-  try{
-    localStorage.removeItem('auth_token');
-    document.cookie = 'auth_token=; max-age=0; path=/; SameSite=Lax';
-  }catch(e){}
+/* выход из веб-версии: куку снимает сервер — из JS она недоступна */
+async function logout(){
+  try{ await fetch('/api/auth/logout', withAuth({ method:'POST' })); }catch(e){}
+  try{ localStorage.removeItem('auth_token'); }catch(e){}
   window.location.href = '/';
 }
 function openSupportChat(){
@@ -1998,7 +2018,7 @@ async function handleAttachChange(ev){
   fd.append('file', file);
   toast('Загружаем файл…');
   try{
-    const r = await fetch('/api/support/upload', { method:'POST', body: fd });
+    const r = await fetch('/api/support/upload', withAuth({ method:'POST', body: fd }));
     const d = await r.json().catch(() => ({}));
     if(!d.ok) throw new Error(d.error || 'Не удалось загрузить файл');
     $('messageInput').value = ''; autoGrow($('messageInput'));
@@ -2042,6 +2062,11 @@ function syncTabbarHeight(){
   document.documentElement.style.setProperty('--tabbar-real', (h > 0 ? h : 60) + 'px');
 }
 function init(){
+  /* токен уехал в куку — убираем его из адресной строки, чтобы он не оседал
+     в истории браузера и в заголовке Referer */
+  if(location.search.includes('token=')){
+    try{ history.replaceState(null, '', location.pathname); }catch(e){}
+  }
   buildNav();
 
   const initial = (document.title || 'C').trim()[0] || 'C';
