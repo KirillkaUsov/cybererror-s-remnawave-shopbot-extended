@@ -1030,7 +1030,7 @@ def create_admin_months_pick_keyboard(action: str = "gift") -> InlineKeyboardMar
     return builder.as_markup()
 
 
-def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_available: bool = False, is_admin: bool = False, balance: float = 0.0, key_id: int = None, connection_string: str = None, addon_devices: bool = False, wheel_available: bool = False) -> InlineKeyboardMarkup:
+def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_available: bool = False, is_admin: bool = False, balance: float = 0.0, key_id: int = None, connection_string: str = None, addon_devices: bool = False, wheel_available: bool = False, wheel_tickets: int = 0) -> InlineKeyboardMarkup:
     """Create a keyboard based on database configuration"""
     try:
         button_configs = get_button_configs(menu_type)
@@ -1087,9 +1087,14 @@ def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_availa
                     continue
 
                 # Колесо показываем, только когда оно включено в настройках
-                if menu_type == "main_menu" and button_id == "wheel" and not wheel_available:
-
-                    continue
+                if menu_type == "main_menu" and button_id == "wheel":
+                    if not wheel_available:
+                        continue
+                    # Количество билетов видно прямо в меню: иначе о них
+                    # узнаёшь, только зайдя в колесо
+                    if wheel_tickets > 0:
+                        word = get_declension(wheel_tickets, ['билет', 'билета', 'билетов'])
+                        text = f"{text} ({wheel_tickets} {word})"
 
                 # Докупать устройства можно только там, где они продаются
                 # наборами: на остальных локациях лимит зашит в тариф.
@@ -1158,19 +1163,54 @@ def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_availa
         else:
             return create_back_to_menu_keyboard()
 
-def create_dynamic_main_menu_keyboard(user_keys: list, trial_available: bool, is_admin: bool, balance: float = 0.0) -> InlineKeyboardMarkup:
+def create_dynamic_main_menu_keyboard(user_keys: list, trial_available: bool, is_admin: bool, balance: float = 0.0, user_id: int | None = None) -> InlineKeyboardMarkup:
     """Create main menu keyboard using dynamic configuration"""
+    enabled = _wheel_enabled()
+    tickets = 0
+    if enabled and user_id:
+        try:
+            from shop_bot.data_manager.database import get_wheel_tickets
+            tickets = get_wheel_tickets(user_id)
+        except Exception as e:
+            logger.warning(f"Не удалось получить билеты колеса для {user_id}: {e}")
     return create_dynamic_keyboard("main_menu", user_keys, trial_available, is_admin, balance,
-                                   wheel_available=_wheel_enabled())
+                                   wheel_available=enabled, wheel_tickets=tickets)
 
 def _wheel_enabled() -> bool:
     return (get_setting("wheel_enabled") or "0").strip() == "1"
 
-def create_wheel_keyboard(can_spin: bool) -> InlineKeyboardMarkup:
+def create_wheel_keyboard(st: dict) -> InlineKeyboardMarkup:
+    """Клавиатура колеса: прокрут, покупка билета, напоминания."""
     builder = InlineKeyboardBuilder()
-    if can_spin:
-        builder.button(text="🎰 Крутить колесо", callback_data="wheel_spin")
-    builder.button(text="⬅️ Назад в меню", callback_data="back_to_main_menu")
+    rows = []
+
+    if st.get('pending'):
+        builder.button(text="🎁 Выбрать подписку для приза", callback_data="wheel_choose")
+        rows.append(1)
+    elif st.get('can_spin'):
+        label = "🎰 Крутить бесплатно" if st.get('source') == 'free' else "🎟 Крутить за билет"
+        builder.button(text=label, callback_data="wheel_spin")
+        rows.append(1)
+
+    price = float(st.get('ticket_price') or 0)
+    if price > 0:
+        builder.button(text=f"🎟 Купить билет — {_price_label(price)}", callback_data="wheel_buy")
+        rows.append(1)
+
+    builder.button(text=("🔔 Напоминания: вкл" if st.get('notify') else "🔕 Напоминания: выкл"),
+                   callback_data="wheel_notify_toggle")
+    builder.button(text=_setting_button_text("btn_back_to_menu", "⬅️ Назад в меню"),
+                   callback_data="back_to_main_menu", **_setting_button_extra("btn_back_to_menu"))
+    builder.adjust(*(rows + [1, 1]))
+    return builder.as_markup()
+
+def create_wheel_keys_keyboard(keys: list) -> InlineKeyboardMarkup:
+    """Выбор подписки, к которой добавить выигранные дни."""
+    builder = InlineKeyboardBuilder()
+    for key in keys:
+        builder.button(text=f"{key.get('host_name') or 'Подписка'} · до {key.get('expiry_text') or '—'}",
+                       callback_data=f"wheel_key_{key.get('key_id')}")
+    builder.button(text="⬅️ Назад", callback_data="wheel_open")
     builder.adjust(1)
     return builder.as_markup()
 

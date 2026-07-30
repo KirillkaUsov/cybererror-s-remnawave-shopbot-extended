@@ -716,8 +716,12 @@ def _ensure_users_columns(cursor: sqlite3.Cursor) -> None:
         # create_user_by_email выдаёт положительные синтетические id вида
         # 999XXXXXXX, поэтому проверка не срабатывала никогда.
         "tg_linked": "INTEGER",
-        # момент последнего прокрута колеса удачи
+        # колесо удачи: момент последнего бесплатного прокрута, запас
+        # билетов и персональное согласие на напоминания
         "last_wheel_spin": "TIMESTAMP",
+        "wheel_tickets": "INTEGER DEFAULT 0",
+        "wheel_notify": "INTEGER DEFAULT 1",
+        "wheel_notified_at": "TIMESTAMP",
     }
     for column, definition in mapping.items():
         _ensure_table_column(cursor, "users", column, definition)
@@ -835,6 +839,25 @@ def _ensure_wheel_tables(cursor: sqlite3.Cursor) -> None:
         )
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_wheel_spins_user ON wheel_spins(user_id, created_at)")
+    # Приз с выбором подписки выдаётся не сразу: пока человек выбирает, запись
+    # висит в состоянии pending — так выигрыш не теряется, если он отвлёкся.
+    _ensure_table_column(cursor, "wheel_spins", "status", "TEXT DEFAULT 'done'")
+    _ensure_table_column(cursor, "wheel_spins", "detail", "TEXT")
+    _ensure_table_column(cursor, "wheel_spins", "source", "TEXT DEFAULT 'free'")
+
+    # Движение билетов ведём отдельно: по одному лишь остатку не разобрать,
+    # откуда он взялся и на что ушёл.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS wheel_ticket_log (
+            entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            delta INTEGER NOT NULL,
+            reason TEXT,
+            note TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_wheel_ticket_log_user ON wheel_ticket_log(user_id, created_at)")
 
     cursor.execute("SELECT COUNT(*) FROM wheel_prizes")
     if (cursor.fetchone() or [0])[0]:
@@ -954,6 +977,115 @@ def get_wheel_stats() -> dict:
         "Не удалось посчитать статистику колеса",
     )
     return dict(row) if row else {"spins": 0, "players": 0, "days_given": 0, "rub_given": 0}
+
+
+def get_wheel_tickets(user_id: int) -> int:
+    row = _fetch_row("SELECT wheel_tickets FROM users WHERE telegram_id = ?", (user_id,))
+    try:
+        return max(0, int((row or {}).get("wheel_tickets") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def add_wheel_tickets(user_id: int, amount: int, reason: str, note: str | None = None) -> bool:
+    """Начисляет билеты и пишет причину в журнал."""
+    amount = int(amount)
+    if amount == 0:
+        return True
+    cursor = _exec(
+        "UPDATE users SET wheel_tickets = MAX(0, COALESCE(wheel_tickets, 0) + ?) WHERE telegram_id = ?",
+        (amount, user_id),
+        f"Не удалось изменить билеты пользователя {user_id}",
+    )
+    if not (cursor and cursor.rowcount):
+        return False
+    _exec("INSERT INTO wheel_ticket_log (user_id, delta, reason, note) VALUES (?,?,?,?)",
+          (user_id, amount, reason, note), "Не удалось записать движение билетов")
+    return True
+
+
+def spend_wheel_ticket(user_id: int, reason: str = "spin") -> bool:
+    """Списывает один билет, если он есть.
+
+    Проверка и списание одним UPDATE: иначе два быстрых нажатия успевали
+    прочитать один и тот же остаток и прокрутить колесо дважды.
+    """
+    cursor = _exec(
+        "UPDATE users SET wheel_tickets = wheel_tickets - 1 WHERE telegram_id = ? AND COALESCE(wheel_tickets, 0) > 0",
+        (user_id,),
+        f"Не удалось списать билет у {user_id}",
+    )
+    if not (cursor and cursor.rowcount):
+        return False
+    _exec("INSERT INTO wheel_ticket_log (user_id, delta, reason) VALUES (?,?,?)",
+          (user_id, -1, reason), "Не удалось записать списание билета")
+    return True
+
+
+def get_wheel_ticket_log(limit: int = 30) -> list[dict]:
+    return _fetch_list(
+        "SELECT l.*, u.username FROM wheel_ticket_log l LEFT JOIN users u ON u.telegram_id = l.user_id "
+        "ORDER BY l.created_at DESC, l.entry_id DESC LIMIT ?",
+        (limit,), "Не удалось получить журнал билетов")
+
+
+def get_wheel_notify(user_id: int) -> bool:
+    row = _fetch_row("SELECT wheel_notify FROM users WHERE telegram_id = ?", (user_id,))
+    if not row or row.get("wheel_notify") is None:
+        return True
+    return bool(int(row["wheel_notify"]))
+
+
+def set_wheel_notify(user_id: int, enabled: bool) -> bool:
+    cursor = _exec("UPDATE users SET wheel_notify = ? WHERE telegram_id = ?",
+                   (1 if enabled else 0, user_id), f"Не удалось изменить напоминания колеса для {user_id}")
+    return bool(cursor and cursor.rowcount)
+
+
+def get_pending_wheel_prize(user_id: int) -> dict | None:
+    """Невыданный приз: человек выиграл дни, но ещё не выбрал подписку."""
+    return _fetch_row(
+        "SELECT * FROM wheel_spins WHERE user_id = ? AND status = 'pending' ORDER BY spin_id DESC LIMIT 1",
+        (user_id,), "Не удалось получить незавершённый приз")
+
+
+def complete_wheel_spin(spin_id: int, key_id: int | None, detail: str | None) -> bool:
+    cursor = _exec(
+        "UPDATE wheel_spins SET status = 'done', key_id = ?, detail = ? WHERE spin_id = ? AND status = 'pending'",
+        (key_id, detail, spin_id), f"Не удалось завершить выдачу приза {spin_id}")
+    return bool(cursor and cursor.rowcount)
+
+
+def log_wheel_spin_full(user_id: int, prize: dict, key_id: int | None, status: str,
+                        detail: str | None, source: str) -> int | None:
+    cursor = _exec(
+        "INSERT INTO wheel_spins (user_id, prize_id, label, prize_type, amount, key_id, status, detail, source) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (user_id, prize.get("prize_id"), prize.get("label"), prize.get("prize_type"),
+         float(prize.get("amount") or 0), key_id, status, detail, source),
+        "Не удалось записать прокрут колеса")
+    return cursor.lastrowid if cursor else None
+
+
+def get_wheel_notify_candidates(ready_before: str, quiet_since: str) -> list[dict]:
+    """Кому пора напомнить про бесплатный прокрут.
+
+    Берём только тех, кто уже крутил (иначе напоминание получат все 600
+    зарегистрированных разом), у кого кулдаун истёк и кому давно не писали.
+    """
+    return _fetch_list(
+        "SELECT telegram_id, username, last_wheel_spin FROM users "
+        "WHERE COALESCE(wheel_notify, 1) = 1 AND COALESCE(is_banned, 0) = 0 "
+        "AND last_wheel_spin IS NOT NULL AND last_wheel_spin <= ? "
+        "AND (wheel_notified_at IS NULL OR wheel_notified_at <= ?) "
+        "AND telegram_id > 0",
+        (ready_before, quiet_since), "Не удалось получить список для напоминаний")
+
+
+def mark_wheel_notified(user_id: int, when_iso: str) -> bool:
+    cursor = _exec("UPDATE users SET wheel_notified_at = ? WHERE telegram_id = ?",
+                   (when_iso, user_id), f"Не удалось отметить напоминание для {user_id}")
+    return bool(cursor and cursor.rowcount)
 
 # ===== Конец блока колеса удачи =====
 

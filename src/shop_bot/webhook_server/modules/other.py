@@ -447,6 +447,7 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
             'prizes': db.get_wheel_prizes(active_only=False),
             'spins': db.get_wheel_spins(limit=30),
             'stats': db.get_wheel_stats(),
+            'tickets': db.get_wheel_ticket_log(limit=30),
         }
         return render_template('other.html', webapp=webapp, ssh_targets=ssh_targets, wheel=wheel, **common_data)
     # ===== Конец роута other_page =====
@@ -527,14 +528,86 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
                 return jsonify({'ok': False, 'error': 'Пауза не может быть меньше часа'}), 400
             if enabled == '1' and not rw_repo.database.get_wheel_prizes(active_only=True):
                 return jsonify({'ok': False, 'error': 'Сначала добавьте хотя бы один активный сектор'}), 400
+
+            price = float(request.form.get('ticket_price') or 0)
+            per_purchase = int(request.form.get('tickets_per_purchase') or 0)
+            per_referral = int(request.form.get('tickets_per_referral') or 0)
+            promo_days = int(request.form.get('promo_days') or 30)
+            if min(price, per_purchase, per_referral) < 0 or promo_days < 1:
+                return jsonify({'ok': False, 'error': 'Значения не могут быть отрицательными'}), 400
+
             rw_repo.update_setting('wheel_enabled', enabled)
             rw_repo.update_setting('wheel_cooldown_hours', str(hours))
+            rw_repo.update_setting('wheel_ticket_price', f'{price:.2f}')
+            rw_repo.update_setting('wheel_tickets_per_purchase', str(per_purchase))
+            rw_repo.update_setting('wheel_tickets_per_referral', str(per_referral))
+            rw_repo.update_setting('wheel_promo_days', str(promo_days))
+            rw_repo.update_setting('wheel_notify_enabled',
+                                   '1' if request.form.get('notify_enabled') == 'true' else '0')
             return jsonify({'ok': True, 'message': 'Настройки колеса сохранены'})
         except ValueError:
             return jsonify({'ok': False, 'error': 'Пауза должна быть числом'}), 400
         except Exception as e:
             logger.error(f"Колесо: ошибка сохранения настроек: {e}")
             return jsonify({'ok': False, 'error': str(e)}), 500
+    @flask_app.route('/other/wheel/tickets/grant', methods=['POST'])
+    @login_required
+    def wheel_tickets_grant():
+        """Ручная выдача билетов: по ID или @username, можно и списать."""
+        try:
+            target = (request.form.get('user') or '').strip().lstrip('@')
+            amount = int(request.form.get('amount') or 0)
+            if not target:
+                return jsonify({'ok': False, 'error': 'Укажите ID или @username'}), 400
+            if amount == 0:
+                return jsonify({'ok': False, 'error': 'Количество не может быть нулём'}), 400
+
+            db = rw_repo.database
+            user = None
+            if target.isdigit():
+                user = db.get_user(int(target))
+            if not user:
+                user = db._fetch_row("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (target,))
+            if not user:
+                return jsonify({'ok': False, 'error': 'Пользователь не найден'}), 404
+
+            uid = int(user['telegram_id'])
+            if amount < 0 and db.get_wheel_tickets(uid) + amount < 0:
+                return jsonify({'ok': False, 'error': 'У пользователя меньше билетов'}), 400
+            if not db.add_wheel_tickets(uid, amount, 'admin', 'выдано из панели'):
+                return jsonify({'ok': False, 'error': 'Не удалось изменить билеты'}), 500
+
+            left = db.get_wheel_tickets(uid)
+            logger.info(f"Колесо: админ изменил билеты пользователя {uid} на {amount:+d}, стало {left}")
+            _notify_user_about_tickets(uid, amount, left)
+            return jsonify({'ok': True, 'tickets': left,
+                            'message': f'Билеты изменены на {amount:+d}, стало {left}'})
+        except ValueError:
+            return jsonify({'ok': False, 'error': 'Количество должно быть числом'}), 400
+        except Exception as e:
+            logger.error(f"Колесо: ошибка выдачи билетов: {e}")
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+    def _notify_user_about_tickets(user_id: int, amount: int, left: int) -> None:
+        """Человек должен узнать о билетах сразу, а не обнаружить их случайно."""
+        if amount <= 0:
+            return
+        bot, _ = get_bot_instance_safe()
+        if not bot:
+            return
+        loop = current_app.config.get('EVENT_LOOP')
+        text = (f"🎟 <b>Вам начислены билеты</b>\n\n"
+                f"Получено: <b>{amount}</b>\nВсего билетов: <b>{left}</b>\n\n"
+                f"Загляните в «Колесо удачи» — их можно потратить прямо сейчас.")
+        coro = bot.send_message(chat_id=user_id, text=text, parse_mode='HTML')
+        try:
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(coro, loop)
+            else:
+                asyncio.run(coro)
+        except Exception as e:
+            logger.warning(f"Колесо: не удалось сообщить {user_id} о билетах: {e}")
+
     # ===== Конец роутов колеса удачи =====
 
     # ===== СОХРАНЕНИЕ НАСТРОЕК WEBAPP =====
