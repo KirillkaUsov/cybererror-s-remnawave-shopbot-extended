@@ -1184,10 +1184,11 @@ def create_wheel_keyboard(st: dict) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     rows = []
 
-    if st.get('pending'):
-        builder.button(text="🎁 Выбрать подписку для приза", callback_data="wheel_choose")
+    # Неполученные призы больше не блокируют прокрут — обе кнопки соседствуют
+    if st.get('pending') and st.get('keys'):
+        builder.button(text="🎁 Забрать приз", callback_data="wheel_choose")
         rows.append(1)
-    elif st.get('can_spin'):
+    if st.get('can_spin'):
         label = "🎰 Крутить бесплатно" if st.get('source') == 'free' else "🎟 Крутить за билет"
         builder.button(text=label, callback_data="wheel_spin")
         rows.append(1)
@@ -1204,12 +1205,17 @@ def create_wheel_keyboard(st: dict) -> InlineKeyboardMarkup:
     builder.adjust(*(rows + [1, 1]))
     return builder.as_markup()
 
-def create_wheel_keys_keyboard(keys: list) -> InlineKeyboardMarkup:
-    """Выбор подписки, к которой добавить выигранные дни."""
+def create_wheel_keys_keyboard(keys: list, spin_id: int | None = None) -> InlineKeyboardMarkup:
+    """Выбор подписки, к которой добавить выигранные дни.
+
+    spin_id обязателен, когда невыданных призов несколько: без него нельзя
+    понять, какой именно приз забирают.
+    """
     builder = InlineKeyboardBuilder()
+    suffix = f"_{int(spin_id)}" if spin_id else ""
     for key in keys:
         builder.button(text=f"{key.get('host_name') or 'Подписка'} · до {key.get('expiry_text') or '—'}",
-                       callback_data=f"wheel_key_{key.get('key_id')}")
+                       callback_data=f"wheel_key_{key.get('key_id')}{suffix}")
     builder.button(text="⬅️ Назад", callback_data="wheel_open")
     builder.adjust(1)
     return builder.as_markup()

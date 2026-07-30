@@ -29,6 +29,9 @@ TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 DEFAULT_COOLDOWN_HOURS = 24
 DEFAULT_PROMO_DAYS = 30
+# Сколько живёт невыданный приз. Без срока они копятся годами, и магазин
+# остаётся должен по каждому выигранному дню.
+DEFAULT_PRIZE_TTL_DAYS = 14
 
 # Типы призов. Купон создаётся одноразовым и именным: код виден только
 # победителю, а в описании остаётся, кому и за что он выдан.
@@ -44,9 +47,9 @@ DECLINE_TEXT = {
     "disabled": "Колесо удачи сейчас выключено.",
     "no_prizes": "Призы ещё не настроены — загляните позже.",
     "cooldown": "Бесплатный прокрут ещё не восстановился, а билетов нет.",
-    "no_subscription": "Дни начисляются к действующей подписке — сначала оформите её.",
+    "no_subscription": "Дни ждут подписку — оформите её и заберите приз из истории.",
     "failed": "Не удалось начислить приз. Попытка не сгорела, попробуйте ещё раз.",
-    "pending": "Сначала выберите подписку для прошлого выигрыша.",
+    "expired": "Срок этого приза истёк.",
     "no_tickets": "Билетов нет.",
     "tickets_off": "Билеты сейчас не продаются.",
     "not_enough": "На балансе не хватает средств.",
@@ -91,6 +94,10 @@ def tickets_per_referral() -> int:
 
 def promo_valid_days() -> int:
     return _setting_int("wheel_promo_days", DEFAULT_PROMO_DAYS, minimum=1)
+
+
+def prize_ttl_days() -> int:
+    return _setting_int("wheel_prize_ttl_days", DEFAULT_PRIZE_TTL_DAYS, minimum=1)
 
 
 def reminders_enabled() -> bool:
@@ -156,7 +163,52 @@ def user_keys(user_id: int) -> list[dict]:
             "expiry_text": expiry.strftime("%d.%m.%Y") if expiry else "—",
         })
     keys.sort(key=lambda k: k["expiry"] or datetime.max)
+    # datetime в JSON не сериализуется, а список уходит прямо в мини-апп
+    for key in keys:
+        key.pop("expiry", None)
     return keys
+
+
+def pending_prizes(user_id: int) -> list[dict]:
+    """Невыданные призы с оставшимся сроком."""
+    now = _now()
+    database.expire_wheel_prizes(now.strftime(TIME_FORMAT))
+    rows = database.get_pending_wheel_prizes(user_id, now.strftime(TIME_FORMAT)) or []
+    out = []
+    for row in rows:
+        expires = _parse(row.get("expires_at"))
+        out.append({
+            "spin_id": row.get("spin_id"),
+            "label": row.get("label"),
+            "prize_type": row.get("prize_type"),
+            "amount": float(row.get("amount") or 0),
+            "expires_at": row.get("expires_at"),
+            "expires_in": int((expires - now).total_seconds()) if expires else None,
+            "expires_text": expires.strftime("%d.%m.%Y") if expires else "",
+        })
+    return out
+
+
+def history(user_id: int, limit: int = 20) -> list[dict]:
+    """История призов: что выпало, что забрано, что сгорело."""
+    now = _now()
+    database.expire_wheel_prizes(now.strftime(TIME_FORMAT))
+    rows = database.get_user_wheel_history(user_id, limit) or []
+    out = []
+    for row in rows:
+        created = _parse(row.get("created_at"))
+        out.append({
+            "spin_id": row.get("spin_id"),
+            "label": row.get("label"),
+            "prize_type": row.get("prize_type"),
+            "amount": float(row.get("amount") or 0),
+            "status": row.get("status") or "done",
+            "detail": row.get("detail") or "",
+            "date_text": created.strftime("%d.%m.%Y") if created else "",
+            "expires_text": (_parse(row.get("expires_at")) or created or now).strftime("%d.%m.%Y")
+                            if row.get("expires_at") else "",
+        })
+    return out
 
 
 def state(user_id: int) -> dict:
@@ -164,7 +216,7 @@ def state(user_id: int) -> dict:
     prizes = get_prizes()
     tickets = database.get_wheel_tickets(user_id)
     wait = free_spin_wait(user_id)
-    pending = database.get_pending_wheel_prize(user_id)
+    waiting = pending_prizes(user_id)
 
     result = {
         "enabled": is_enabled(),
@@ -178,7 +230,9 @@ def state(user_id: int) -> dict:
         "tickets_per_purchase": tickets_per_purchase(),
         "tickets_per_referral": tickets_per_referral(),
         "notify": database.get_wheel_notify(user_id),
-        "pending": None,
+        "prize_ttl_days": prize_ttl_days(),
+        "pending": waiting,
+        "keys": user_keys(user_id) if waiting else [],
         "prizes": [
             {"label": p.get("label"), "prize_type": p.get("prize_type"),
              "amount": float(p.get("amount") or 0), "weight": p["weight"]}
@@ -186,24 +240,15 @@ def state(user_id: int) -> dict:
         ],
     }
 
-    if pending:
-        result["pending"] = {
-            "spin_id": pending.get("spin_id"),
-            "label": pending.get("label"),
-            "amount": float(pending.get("amount") or 0),
-            "keys": user_keys(user_id),
-        }
-
     if not result["enabled"]:
         result["reason"] = "disabled"
         return result
     if not prizes:
         result["reason"] = "no_prizes"
         return result
-    if pending:
-        result["reason"] = "pending"
-        return result
 
+    # Невыданные призы прокрут больше не блокируют: они лежат в истории со
+    # своим сроком, и человек забирает их, когда появится подписка.
     if wait <= 0:
         result["can_spin"] = True
         result["source"] = "free"
@@ -310,10 +355,9 @@ async def _award(user_id: int, prize: dict, keys: list[dict]) -> tuple[str, dict
         return ("done", None, text) if ok else ("failed", None, "")
 
     if prize_type == PRIZE_DAYS:
-        if not keys:
-            return "no_subscription", None, ""
-        if len(keys) > 1:
-            # Куда класть дни — решает владелец подписок, а не мы за него
+        # Ни одной подписки — приз не пропадает, а ложится в историю до
+        # покупки. Несколько — выбирает владелец, а не мы за него.
+        if len(keys) != 1:
             return "choose", None, ""
         ok, text = await _add_days(user_id, keys[0], int(amount))
         return ("done", keys[0], text) if ok else ("failed", keys[0], "")
@@ -353,7 +397,7 @@ async def spin(user_id: int) -> dict:
     keys = user_keys(user_id)
     outcome, key, detail = await _award(user_id, prize, keys)
 
-    if outcome in ("failed", "no_subscription"):
+    if outcome == "failed":
         # Приз не выдан — возвращаем попытку, человек не виноват
         if source == "free":
             database.release_wheel_spin(user_id, previous)
@@ -363,8 +407,10 @@ async def spin(user_id: int) -> dict:
                 "tickets": database.get_wheel_tickets(user_id)}
 
     status = "pending" if outcome == "choose" else "done"
+    expires_at = ((now + timedelta(days=prize_ttl_days())).strftime(TIME_FORMAT)
+                  if status == "pending" else None)
     spin_id = database.log_wheel_spin_full(user_id, prize, key.get("key_id") if key else None,
-                                           status, detail or None, source)
+                                           status, detail or None, source, expires_at)
 
     won = (prize.get("prize_type") or PRIZE_NOTHING) != PRIZE_NOTHING and float(prize.get("amount") or 0) > 0
     return {
@@ -375,7 +421,11 @@ async def spin(user_id: int) -> dict:
         "amount": float(prize.get("amount") or 0),
         "detail": detail,
         "needs_choice": outcome == "choose",
+        "no_subscription": outcome == "choose" and not keys,
         "spin_id": spin_id,
+        "expires_text": ((now + timedelta(days=prize_ttl_days())).strftime("%d.%m.%Y")
+                         if status == "pending" else ""),
+        "prize_ttl_days": prize_ttl_days(),
         "keys": keys if outcome == "choose" else [],
         "source": source,
         "tickets": database.get_wheel_tickets(user_id),
@@ -383,22 +433,37 @@ async def spin(user_id: int) -> dict:
     }
 
 
-async def claim_days(user_id: int, key_id: int) -> dict:
-    """Досыпает выигранные дни в выбранную подписку."""
-    pending = database.get_pending_wheel_prize(user_id)
-    if not pending:
+async def claim_days(user_id: int, key_id: int, spin_id: int | None = None) -> dict:
+    """Досыпает выигранные дни в выбранную подписку.
+
+    spin_id обязателен, когда невыданных призов несколько; без него берём
+    самый свежий — так работает кнопка сразу после прокрута.
+    """
+    waiting = pending_prizes(user_id)
+    if not waiting:
         return {"ok": False, "error": "Невыданных призов нет."}
+
+    if spin_id is None:
+        prize = waiting[0]
+    else:
+        prize = next((p for p in waiting if int(p["spin_id"]) == int(spin_id)), None)
+        if not prize:
+            # приз мог сгореть, пока человек выбирал
+            row = database.get_wheel_spin(spin_id)
+            if row and int(row.get("user_id") or 0) == int(user_id):
+                return {"ok": False, "error": DECLINE_TEXT["expired"]}
+            return {"ok": False, "error": "Приз не найден."}
 
     key = next((k for k in user_keys(user_id) if int(k["key_id"]) == int(key_id)), None)
     if not key:
         return {"ok": False, "error": "Подписка не найдена."}
 
-    ok, detail = await _add_days(user_id, key, int(float(pending.get("amount") or 0)))
+    ok, detail = await _add_days(user_id, key, int(float(prize.get("amount") or 0)))
     if not ok:
         return {"ok": False, "error": DECLINE_TEXT["failed"]}
 
-    database.complete_wheel_spin(pending["spin_id"], key["key_id"], detail)
-    return {"ok": True, "label": pending.get("label"), "detail": detail}
+    database.complete_wheel_spin(prize["spin_id"], key["key_id"], detail)
+    return {"ok": True, "label": prize.get("label"), "detail": detail}
 
 
 def buy_ticket(user_id: int, count: int = 1) -> dict:

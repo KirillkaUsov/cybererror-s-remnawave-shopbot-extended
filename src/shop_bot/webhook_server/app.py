@@ -113,7 +113,7 @@ ALL_SETTINGS_KEYS = [
     # колесо удачи: сектора лежат в отдельной таблице, здесь — общие настройки
     "wheel_enabled", "wheel_cooldown_hours", "wheel_image",
     "wheel_ticket_price", "wheel_tickets_per_purchase", "wheel_tickets_per_referral",
-    "wheel_promo_days", "wheel_notify_enabled",
+    "wheel_promo_days", "wheel_notify_enabled", "wheel_prize_ttl_days",
 
     "main_menu_text", "howto_intro_text",
     "howto_android_text", "howto_ios_text", "howto_windows_text", "howto_linux_text",

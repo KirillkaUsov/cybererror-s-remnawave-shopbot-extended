@@ -533,7 +533,8 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
             per_purchase = int(request.form.get('tickets_per_purchase') or 0)
             per_referral = int(request.form.get('tickets_per_referral') or 0)
             promo_days = int(request.form.get('promo_days') or 30)
-            if min(price, per_purchase, per_referral) < 0 or promo_days < 1:
+            prize_ttl = int(request.form.get('prize_ttl_days') or 14)
+            if min(price, per_purchase, per_referral) < 0 or promo_days < 1 or prize_ttl < 1:
                 return jsonify({'ok': False, 'error': 'Значения не могут быть отрицательными'}), 400
 
             rw_repo.update_setting('wheel_enabled', enabled)
@@ -542,6 +543,7 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
             rw_repo.update_setting('wheel_tickets_per_purchase', str(per_purchase))
             rw_repo.update_setting('wheel_tickets_per_referral', str(per_referral))
             rw_repo.update_setting('wheel_promo_days', str(promo_days))
+            rw_repo.update_setting('wheel_prize_ttl_days', str(prize_ttl))
             rw_repo.update_setting('wheel_notify_enabled',
                                    '1' if request.form.get('notify_enabled') == 'true' else '0')
             return jsonify({'ok': True, 'message': 'Настройки колеса сохранены'})

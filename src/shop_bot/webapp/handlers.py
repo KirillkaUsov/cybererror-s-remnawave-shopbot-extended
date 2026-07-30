@@ -1511,16 +1511,31 @@ async def api_wheel_spin(auth: dict = Depends(webapp_user)):
 
 class WheelClaimRequest(BaseModel):
     key_id: int
+    spin_id: int | None = None
 
 
 @app.post("/api/wheel/claim")
 async def api_wheel_claim(req: WheelClaimRequest, auth: dict = Depends(webapp_user)):
     """Выбор подписки для выигранных дней."""
     try:
-        return await fortune_wheel.claim_days(session_user_id(auth), req.key_id)
+        return await fortune_wheel.claim_days(session_user_id(auth), req.key_id, req.spin_id)
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка выдачи дней из колеса: {e}", exc_info=True)
         return {"ok": False, "error": "Не удалось начислить дни"}
+
+
+@app.get("/api/wheel/prizes")
+async def api_wheel_prizes(auth: dict = Depends(webapp_user)):
+    """История призов и подписки, куда их можно зачислить."""
+    try:
+        uid = session_user_id(auth)
+        return {"ok": True,
+                "history": fortune_wheel.history(uid),
+                "pending": fortune_wheel.pending_prizes(uid),
+                "keys": fortune_wheel.user_keys(uid)}
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка истории призов: {e}")
+        return {"ok": False, "error": "Не удалось получить призы"}
 
 
 @app.post("/api/wheel/ticket")
