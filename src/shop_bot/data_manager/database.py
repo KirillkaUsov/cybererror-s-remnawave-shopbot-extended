@@ -844,6 +844,9 @@ def _ensure_wheel_tables(cursor: sqlite3.Cursor) -> None:
     _ensure_table_column(cursor, "wheel_spins", "status", "TEXT DEFAULT 'done'")
     _ensure_table_column(cursor, "wheel_spins", "detail", "TEXT")
     _ensure_table_column(cursor, "wheel_spins", "source", "TEXT DEFAULT 'free'")
+    # Невыданный приз живёт ограниченное время: иначе они копятся годами,
+    # а магазин остаётся должен по каждому.
+    _ensure_table_column(cursor, "wheel_spins", "expires_at", "TIMESTAMP")
 
     # Движение билетов ведём отдельно: по одному лишь остатку не разобрать,
     # откуда он взялся и на что ушёл.
@@ -1042,11 +1045,31 @@ def set_wheel_notify(user_id: int, enabled: bool) -> bool:
     return bool(cursor and cursor.rowcount)
 
 
-def get_pending_wheel_prize(user_id: int) -> dict | None:
-    """Невыданный приз: человек выиграл дни, но ещё не выбрал подписку."""
-    return _fetch_row(
-        "SELECT * FROM wheel_spins WHERE user_id = ? AND status = 'pending' ORDER BY spin_id DESC LIMIT 1",
-        (user_id,), "Не удалось получить незавершённый приз")
+def get_pending_wheel_prizes(user_id: int, now_iso: str) -> list[dict]:
+    """Невыданные призы, у которых ещё не вышел срок."""
+    return _fetch_list(
+        "SELECT * FROM wheel_spins WHERE user_id = ? AND status = 'pending' "
+        "AND (expires_at IS NULL OR expires_at > ?) ORDER BY spin_id DESC",
+        (user_id, now_iso), "Не удалось получить невыданные призы")
+
+
+def get_wheel_spin(spin_id: int) -> dict | None:
+    return _fetch_row("SELECT * FROM wheel_spins WHERE spin_id = ?", (spin_id,))
+
+
+def get_user_wheel_history(user_id: int, limit: int = 20) -> list[dict]:
+    return _fetch_list(
+        "SELECT * FROM wheel_spins WHERE user_id = ? ORDER BY spin_id DESC LIMIT ?",
+        (user_id, limit), "Не удалось получить историю призов")
+
+
+def expire_wheel_prizes(now_iso: str) -> int:
+    """Гасит просроченные призы. Возвращает, сколько сгорело."""
+    cursor = _exec(
+        "UPDATE wheel_spins SET status = 'expired' WHERE status = 'pending' "
+        "AND expires_at IS NOT NULL AND expires_at <= ?",
+        (now_iso,), "Не удалось погасить просроченные призы")
+    return cursor.rowcount if cursor else 0
 
 
 def complete_wheel_spin(spin_id: int, key_id: int | None, detail: str | None) -> bool:
@@ -1057,12 +1080,12 @@ def complete_wheel_spin(spin_id: int, key_id: int | None, detail: str | None) ->
 
 
 def log_wheel_spin_full(user_id: int, prize: dict, key_id: int | None, status: str,
-                        detail: str | None, source: str) -> int | None:
+                        detail: str | None, source: str, expires_at: str | None = None) -> int | None:
     cursor = _exec(
-        "INSERT INTO wheel_spins (user_id, prize_id, label, prize_type, amount, key_id, status, detail, source) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO wheel_spins (user_id, prize_id, label, prize_type, amount, key_id, status, detail, source, expires_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (user_id, prize.get("prize_id"), prize.get("label"), prize.get("prize_type"),
-         float(prize.get("amount") or 0), key_id, status, detail, source),
+         float(prize.get("amount") or 0), key_id, status, detail, source, expires_at),
         "Не удалось записать прокрут колеса")
     return cursor.lastrowid if cursor else None
 

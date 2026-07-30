@@ -283,6 +283,14 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .wheel-odds__row i{font-style:normal;width:18px;text-align:center;flex:0 0 auto}
 .wheel-odds__row b{margin-left:auto;color:var(--text);font-weight:600;font-family:var(--mono);font-size:11.5px}
 .wheel-earn{margin-top:12px;font-size:12.5px;color:var(--dim);line-height:1.7}
+.prize-row{display:flex;align-items:center;gap:11px;padding:10px 0}
+.prize-row + .prize-row{border-top:1px solid var(--line)}
+.prize-row__main{min-width:0;flex:1}
+.prize-row__main b{display:block;font-size:13.5px;font-weight:600}
+.prize-row__main span{display:block;font-size:12px;color:var(--dim);margin-top:2px}
+.prize-row--expired .prize-row__main b,.prize-row--muted .prize-row__main b{color:var(--faint)}
+.prize-row--muted .reel__icon{opacity:.45}
+.pill--muted{border-color:var(--line);background:rgba(236,238,242,.04);color:var(--faint)}
 .wheel-keys{display:grid;gap:8px;margin-top:4px}
 .wheel-key{display:flex;align-items:center;gap:10px;padding:12px 13px;border-radius:var(--r-md);
   border:1px solid var(--line);background:rgba(236,238,242,.025);text-align:left;width:100%}
@@ -958,7 +966,7 @@ const state = {
   host: null, plan: null, tier: null, method: null,
   /* заказ на докупку устройств: живёт отдельно от каталога, тарифа в нём нет */
   addon: null,
-  wheel: null, wheelPrizes: null,
+  wheel: null, wheelPrizes: null, prizeKeys: [],
   methods: [], balance: 0, useBalance: false, topupMethod: null,
   promoPreview: null,
   pendingPaymentId: null, pendingPaymentKind: 'order',
@@ -1388,6 +1396,50 @@ function pickAddon(keyId, devices, price){
   openPayment();
 }
 
+/* ===== призы из колеса ===== */
+/* Невыданный приз живёт ограниченное время, поэтому в списке всегда видно
+   не только что выпало, но и до какого числа это можно забрать. */
+async function loadPrizes(){
+  try{
+    const d = await api('/api/wheel/prizes');
+    const items = (d.ok && d.history) || [];
+    toggle('prizesCard', !items.length);
+    if(!items.length) return;
+    state.prizeKeys = d.keys || [];
+    $('prizesList').innerHTML = items.map(prizeRowHtml).join('');
+  }catch(e){ toggle('prizesCard', true); }
+}
+const PRIZE_STATUS = {
+  done:    {cls:'ok',    text:'получен'},
+  pending: {cls:'warn',  text:'ждёт'},
+  expired: {cls:'muted', text:'сгорел'},
+};
+function prizeRowHtml(p){
+  const face = prizeFace(p);
+  const st = PRIZE_STATUS[p.status] || PRIZE_STATUS.done;
+  const canTake = p.status === 'pending' && (state.prizeKeys || []).length;
+  /* у призов, выданных до появления срока, expires_text пуст — не пишем
+     «забрать до» в пустоту */
+  const until = p.expires_text ? ` до ${esc(p.expires_text)}` : '';
+  const note = p.status === 'pending'
+    ? (canTake ? `забрать${until || ' в любое время'}` : `ждёт подписку${until}`)
+    : (p.status === 'expired' ? `срок вышел${until}` : esc(p.date_text));
+  return `<div class="prize-row prize-row--${st.cls}">
+    <span class="reel__icon">${face.icon}</span>
+    <span class="prize-row__main"><b>${esc(p.label)}</b><span>${note}</span></span>
+    ${canTake
+      ? `<button class="btn btn--primary btn--sm" onclick="openPrizeClaim(${Number(p.spin_id)})">Забрать</button>`
+      : `<span class="pill pill--${st.cls === 'ok' ? 'ok' : (st.cls === 'warn' ? 'warn' : 'muted')}">${st.text}</span>`}
+  </div>`;
+}
+/* забрать приз из кабинета: тот же выбор подписки, что и сразу после прокрута */
+function openPrizeClaim(spinId){
+  const prize = (state.wheel && (state.wheel.pending || []).find(x => Number(x.spin_id) === Number(spinId)));
+  openModal('wheelModal');
+  renderWheelChoice(prize || { label: 'Выигранные дни', spin_id: spinId, expires_text: '' },
+                    state.prizeKeys || []);
+}
+
 /* ===== колесо удачи ===== */
 /* Диск рисуется по секторам, которые прислал сервер, а результат приходит
    оттуда же — крутим анимацию, уже зная, куда встать. Иначе выигрыш можно
@@ -1449,6 +1501,7 @@ function reelSpinTo(prizes, winner){
 
   const cards = [];
   for(let i = 0; i < REEL_RUNWAY; i++) cards.push(reelFiller(prizes));
+  const winnerIndex = cards.length;
   cards.push(winner);
   /* хвост после выигрыша: без него под окном видна пустота */
   for(let i = 0; i < REEL_VISIBLE; i++) cards.push(reelFiller(prizes));
@@ -1461,8 +1514,11 @@ function reelSpinTo(prizes, winner){
   reel.classList.add('is-spinning');
   strip.style.setProperty('--reel-time', REEL_TIME_MS + 'ms');
   strip.classList.add('is-moving');
-  /* окно — вторая строка сверху, поэтому вычитаем одну карточку */
-  strip.style.transform = `translateY(-${(cards.length - REEL_VISIBLE - 1) * REEL_CARD_H}px)`;
+  /* Считаем от позиции самой карточки, а не от длины ленты: окно — вторая
+     строка сверху, поэтому нужную карточку доводим до неё, вычтя одну.
+     Раньше здесь стояла длина ленты, и барабан вставал на карточку после
+     выигрыша — показывал один приз, а начислялся другой. */
+  strip.style.transform = `translateY(-${(winnerIndex - 1) * REEL_CARD_H}px)`;
 
   return new Promise(resolve => setTimeout(() => {
     reel.classList.remove('is-spinning');
@@ -1484,6 +1540,9 @@ async function openWheel(){
 function wheelChips(d){
   const chips = [];
   if(d.tickets) chips.push(`<span class="wheel-chip">🎟 Билетов <b>${d.tickets}</b></span>`);
+  /* неполученные призы больше не блокируют прокрут, но и потеряться не
+     должны — показываем их как отдельную метку со сроком */
+  if((d.pending || []).length) chips.push(`<span class="wheel-chip wheel-chip--ready">🎁 Невыданных <b>${d.pending.length}</b></span>`);
   chips.push(d.wait_seconds > 0
     ? `<span class="wheel-chip">⏳ Бесплатно через <b>${esc(d.wait_text || '')}</b></span>`
     : '<span class="wheel-chip wheel-chip--ready">✅ Бесплатный прокрут готов</span>');
@@ -1497,10 +1556,6 @@ function wheelEarnHtml(d){
   return ways.length ? `<div class="wheel-earn"><b>Как получить билеты:</b><br>${ways.map(esc).join('<br>')}</div>` : '';
 }
 function renderWheel(d, resultHtml){
-  /* невыданный приз важнее самого колеса: пока человек не выберет
-     подписку, крутить нельзя, и объяснить это надо первым делом */
-  if(d.pending){ renderWheelChoice(d.pending); return; }
-
   const prizes = wheelPrizes(d.prizes || []);
   state.wheelPrizes = prizes;
   $('wheelSub').textContent = d.enabled
@@ -1525,20 +1580,23 @@ function renderWheel(d, resultHtml){
   $('wheelNotifyInput').checked = !!d.notify;
 }
 /* выбор подписки для выигранных дней */
-function renderWheelChoice(pending){
+function renderWheelChoice(prize, keys){
   $('wheelSub').textContent = 'Выберите подписку — к ней добавятся выигранные дни';
-  $('wheelBody').innerHTML = `<div class="wheel-result wheel-result--win"><b>🎁 ${esc(pending.label)}</b>Осталось выбрать, куда их зачислить.</div>
-    <div class="wheel-keys">${(pending.keys || []).map(k => `
-      <button class="wheel-key" onclick="claimWheelDays(${Number(k.key_id)})">
+  const until = prize.expires_text ? `Забрать можно до ${esc(prize.expires_text)}.` : '';
+  $('wheelBody').innerHTML = `<div class="wheel-result wheel-result--win"><b>🎁 ${esc(prize.label)}</b>${until}</div>
+    <div class="wheel-keys">${(keys || []).map(k => `
+      <button class="wheel-key" onclick="claimWheelDays(${Number(k.key_id)},${Number(prize.spin_id) || 0})">
         <span class="wheel-card__icon">🔑</span>
         <span class="wheel-key__main"><b>${esc(k.host_name || 'Подписка')}</b><span>действует до ${esc(k.expiry_text || '—')}</span></span>
         <svg class="icon icon--sm" style="color:var(--faint)"><use href="#ic-chevron-right"/></svg>
       </button>`).join('')}</div>`;
   ['wheelSpinBtn','wheelBuyBtn','wheelNotifyRow'].forEach(id => toggle(id, true));
 }
-async function claimWheelDays(keyId){
+async function claimWheelDays(keyId, spinId){
   try{
-    const d = await api('/api/wheel/claim', { method:'POST', headers: JSON_H, body: JSON.stringify({ key_id: keyId }) });
+    const body = { key_id: keyId };
+    if(spinId) body.spin_id = spinId;
+    const d = await api('/api/wheel/claim', { method:'POST', headers: JSON_H, body: JSON.stringify(body) });
     if(!d.ok) throw new Error(d.error || 'Не удалось начислить дни');
     haptic();
     await refreshAll();
@@ -1547,6 +1605,8 @@ async function claimWheelDays(keyId){
     renderWheel(st, `<b>🎉 ${esc(d.label)}</b>${d.detail || ''}`);
     $('wheelResult').classList.add('wheel-result--win');
     refreshWheelButton(st);
+    state.profile = null;
+    if(currentScreen === 'profile') loadProfile();
   }catch(e){ toast(e.message, true); }
 }
 async function spinWheel(){
@@ -1567,7 +1627,17 @@ async function spinWheel(){
 
     if(d.needs_choice){
       haptic();
-      renderWheelChoice({ label: d.label, keys: d.keys || [] });
+      if(d.no_subscription){
+        /* приз не пропадает: ждёт подписку в истории кабинета */
+        const box = $('wheelResult');
+        box.classList.add('wheel-result--win');
+        box.innerHTML = `<b>🎉 ${esc(d.label)}</b>Подписки пока нет — приз сохранён до ${esc(d.expires_text)}. Заберите его в кабинете, когда оформите.`;
+        state.profile = null;
+        refreshWheelButton();
+        btn.disabled = false;
+        return;
+      }
+      renderWheelChoice({ label: d.label, spin_id: d.spin_id, expires_text: d.expires_text }, d.keys || []);
       return;
     }
     const box = $('wheelResult');
@@ -1626,7 +1696,7 @@ async function refreshWheelButton(known){
       $('wheelBtnBadge').textContent = tickets > 99 ? '99+' : tickets;
       $('wheelNavCount').textContent = tickets > 99 ? '99+' : tickets;
     }
-    toggle('wheelBtnDot', !(!tickets && (d.can_spin || d.pending)));
+    toggle('wheelBtnDot', !(!tickets && (d.can_spin || (d.pending || []).length)));
   }catch(e){ toggle('wheelBtn', true); toggle('wheelNavLink', true); }
 }
 
@@ -2025,12 +2095,13 @@ function setAccountChip(p){
   $('sidenavAva').textContent = (name.replace('@','').trim()[0] || '·').toUpperCase();
 }
 async function loadProfile(){
-  if(state.profile){ renderProfile(); return; }
+  if(state.profile){ renderProfile(); loadPrizes(); return; }
   try{
     const d = await api('/api/profile-stats?user_id=' + USER_ID);
     if(!d.ok) throw new Error(d.error || 'Профиль недоступен');
     state.profile = d;
     renderProfile();
+    loadPrizes();
   }catch(e){
     $('profileContent').innerHTML = errorCard('Профиль недоступен', e.message);
   }
@@ -2060,6 +2131,10 @@ function renderProfile(){
           ${statCard('Заработано', `${esc(p.referral_earned||0)} <small>₽</small>`, 'С рефералов')}
           ${statCard('Оплачено', Number(p.total_months||0), 'Месяцев подписки')}
           ${statCard('Подписок', Number(p.keys_count ?? state.keys.length), 'Активных')}
+        </div>
+        <div class="card panel-card is-hidden" id="prizesCard">
+          <span class="panel-card__label">Мои призы</span>
+          <div id="prizesList"></div>
         </div>
         <div class="card panel-card">
           <span class="panel-card__label">Промокод</span>

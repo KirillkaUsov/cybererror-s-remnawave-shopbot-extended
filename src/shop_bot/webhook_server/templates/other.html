@@ -1649,6 +1649,12 @@
                                 value="{{ settings.get('wheel_tickets_per_referral') or 0 }}"
                                 class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
                         </div>
+                        <div>
+                            <label class="block text-white/40 text-[10px] font-bold uppercase tracking-widest mb-2">Забрать приз можно, дней</label>
+                            <input type="number" min="1" max="365" id="wheel_prize_ttl_days"
+                                value="{{ settings.get('wheel_prize_ttl_days') or 14 }}"
+                                class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
+                        </div>
                         <button type="button" id="wheel-save-btn"
                             class="self-end bg-primary hover:bg-primary/80 text-black font-bold text-sm rounded-xl px-6 py-3 transition-all flex items-center justify-center gap-2">
                             <span class="material-symbols-outlined text-lg">save</span> Сохранить
@@ -5736,6 +5742,7 @@
                     tickets_per_purchase: val('wheel_tickets_per_purchase'),
                     tickets_per_referral: val('wheel_tickets_per_referral'),
                     promo_days: val('wheel_promo_days') || 30,
+                    prize_ttl_days: val('wheel_prize_ttl_days') || 14,
                 }), 'Настройки колеса сохранены');
                 saveBtn.disabled = false;
             });
