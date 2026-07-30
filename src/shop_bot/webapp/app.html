@@ -819,7 +819,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
             </div>
             <div class="card support-empty is-hidden" id="supportEmpty">
               <svg class="icon"><use href="#ic-chat"/></svg>
-              <span>Выберите обращение слева или создайте новое</span>
+              <span>Выберите обращение в списке слева или создайте новое</span>
             </div>
             <div id="supportThreadView" class="chat is-hidden">
               <div class="page-head">
@@ -836,7 +836,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
                 <textarea id="messageInput" placeholder="Сообщение…" rows="1" oninput="autoGrow(this)"></textarea>
                 <button class="btn btn--primary btn--icon" onclick="sendSupportMessage()" title="Отправить"><svg class="icon"><use href="#ic-send"/></svg></button>
               </div>
-              <div class="thread-closed is-hidden" id="threadClosed">Обращение закрыто. Если вопрос остался — создайте новое.</div>
+              <div class="thread-closed is-hidden" id="threadClosed">Обращение закрыто. Остался вопрос — откройте новое.</div>
             </div>
           </div>
         </section>
@@ -850,14 +850,14 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
           <div class="page-head"><h1>Подключение</h1><button class="icon-btn" title="Закрыть" onclick="showScreen('home')"><svg class="icon"><use href="#ic-x"/></svg></button></div>
           <div class="steps stagger">
             <div class="card step"><span class="step__no">1</span><div class="step__body"><b>Установите приложение</b><span>Happ, v2RayTun, Streisand или другой клиент с поддержкой VLESS.</span></div></div>
-            <div class="card step"><span class="step__no">2</span><div class="step__body"><b>Скопируйте ссылку</b><span>Откройте подписку на вкладке «Подписка» и нажмите «Скопировать ссылку».</span></div></div>
+            <div class="card step"><span class="step__no">2</span><div class="step__body"><b>Скопируйте ссылку</b><span>На вкладке «Подписка» нажмите «Копировать» под нужной подпиской.</span></div></div>
             <div class="card step"><span class="step__no">3</span><div class="step__body"><b>Добавьте подписку</b><span>Импортируйте ссылку из буфера обмена в приложение.</span></div></div>
             <div class="card step"><span class="step__no">4</span><div class="step__body"><b>Подключитесь</b><span>Выберите сервер и включите VPN.</span></div></div>
           </div>
           <button class="btn btn--ghost btn--block" style="margin-top:12px" onclick="showScreen('support')">Написать в поддержку</button>
           <p class="legal-line">
-            <a href="/legal/terms" target="_blank" rel="noopener">Условия использования</a> ·
-            <a href="/legal/privacy" target="_blank" rel="noopener">Обработка персональных данных</a>
+            <a href="/legal/terms" target="_blank" rel="noopener">Пользовательское соглашение</a> ·
+            <a href="/legal/privacy" target="_blank" rel="noopener">Политика обработки данных</a>
           </p>
         </section>
 
@@ -874,13 +874,13 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
     <h2>Оплата</h2>
     <div class="sheet__sub" id="paymentSummary"></div>
     <label class="card switch-row is-hidden" id="balanceUse">
-      <span class="switch-row__main"><b>Списать с баланса</b><span id="balanceUseNote"></span></span>
+      <span class="switch-row__main"><b>Частично оплатить с баланса</b><span id="balanceUseNote"></span></span>
       <input type="checkbox" id="balanceUseInput" onchange="toggleBalanceUse(this.checked)">
       <span class="switch"></span>
     </label>
     <div class="section-label is-hidden" id="paymentMethodsLabel">Способ оплаты</div>
     <div id="paymentMethods"></div>
-    <div class="pay-total is-hidden" id="paymentTotal"><span>К оплате сейчас</span><b id="paymentTotalValue">0 ₽</b></div>
+    <div class="pay-total is-hidden" id="paymentTotal"><span>Спишется сейчас</span><b id="paymentTotalValue">0 ₽</b></div>
     <button class="btn btn--primary btn--block" id="payButton" style="margin-top:8px" onclick="createPayment()">Оплатить</button>
     <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('paymentModal')">Отмена</button>
   </div>
@@ -895,7 +895,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
         <svg class="icon"><use href="#ic-info"/></svg>
       </button>
     </div>
-    <div class="sheet__sub" id="wheelSub">Бесплатный прокрут</div>
+    <div class="sheet__sub" id="wheelSub">Загружаем барабан…</div>
     <div id="wheelBody"><div class="card skeleton" style="min-height:200px"></div></div>
     <div class="btn-row" id="wheelActions" style="margin-top:12px">
       <button class="btn btn--primary is-hidden" id="wheelSpinBtn" onclick="spinWheel()">Крутить</button>
@@ -909,10 +909,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   <div class="sheet">
     <div class="sheet__handle"></div>
     <h2>Шансы и билеты</h2>
-    <div class="sheet__sub">Что стоит на барабане и как получить больше попыток</div>
+    <div class="sheet__sub">Какие призы на барабане, с какой вероятностью и откуда берутся билеты</div>
     <div id="wheelInfoBody"></div>
     <label class="card switch-row" id="wheelNotifyRow" style="margin-top:12px">
-      <span class="switch-row__main"><b>Напоминать о прокруте</b><span>Сообщение в боте, когда снова можно крутить</span></span>
+      <span class="switch-row__main"><b>Напоминать о бесплатном ходе</b><span>Бот напишет, когда он снова будет доступен</span></span>
       <input type="checkbox" id="wheelNotifyInput" onchange="toggleWheelNotify(this.checked)">
       <span class="switch"></span>
     </label>
@@ -923,8 +923,8 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 <div class="modal" id="addonModal" data-modal>
   <div class="sheet">
     <div class="sheet__handle"></div>
-    <h2>Больше устройств</h2>
-    <div class="sheet__sub" id="addonSub">Срок подписки не изменится — доплата только за оставшиеся дни</div>
+    <h2>Докупить устройства</h2>
+    <div class="sheet__sub" id="addonSub">Дата окончания не сдвинется — платите только за оставшиеся дни</div>
     <div id="addonBody"><div class="card skeleton" style="min-height:90px"></div></div>
     <button class="btn btn--ghost btn--block" style="margin-top:12px" onclick="closeModal('addonModal')">Закрыть</button>
   </div>
@@ -934,7 +934,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   <div class="sheet">
     <div class="sheet__handle"></div>
     <h2>Пополнение баланса</h2>
-    <div class="sheet__sub">Деньги останутся на счёте — потратить их можно на любую подписку</div>
+    <div class="sheet__sub">Деньги лягут на счёт — потратить их можно на любую подписку или продление</div>
     <div class="chip-row" id="topupPresets" style="margin-bottom:10px"></div>
     <input class="field" id="topupAmount" inputmode="decimal" autocomplete="off" placeholder="Сумма, ₽">
     <div class="promo-result" id="topupResult"></div>
@@ -949,7 +949,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   <div class="sheet">
     <div class="sheet__handle"></div>
     <h2>Новое обращение</h2>
-    <div class="sheet__sub">Опишите вопрос — мы ответим прямо здесь</div>
+    <div class="sheet__sub">Коротко опишите, что случилось — ответим в этой же переписке</div>
     <div class="chip-row" id="subjectChips" style="margin-bottom:12px"></div>
     <input class="field" id="subjectInput" placeholder="Тема обращения" maxlength="64" style="margin-bottom:12px">
     <button class="btn btn--primary btn--block" id="createTicketBtn" onclick="submitNewTicket()">Создать обращение</button>
@@ -961,10 +961,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   <div class="sheet">
     <div class="sheet__handle"></div>
     <h2 id="manageTitle">Управление</h2>
-    <div class="sheet__sub">Заметка, устройства и ссылка подписки</div>
+    <div class="sheet__sub">Заметка для себя, подключённые устройства и ссылка</div>
 
     <div class="field-label" style="margin-top:0">Личная заметка</div>
-    <input class="field" id="manageNote" placeholder="Например: рабочий телефон">
+    <input class="field" id="manageNote" placeholder="Например: ноутбук жены">
     <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="saveManageNote()">Сохранить заметку</button>
 
     <div class="divider"></div>
@@ -973,7 +973,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 
     <div class="divider"></div>
     <div class="field-label" style="margin-top:0">Ссылка подписки</div>
-    <p class="empty-hint" style="padding:0 0 12px;text-align:left">Если ссылка попала не в те руки — пересоздайте её. Старая перестанет работать.</p>
+    <p class="empty-hint" style="padding:0 0 12px;text-align:left">Ссылка попала не в те руки — выпустите новую. Старая сразу перестанет работать.</p>
     <button class="btn btn--danger btn--block" onclick="resetSubscriptionLink()">Пересоздать ссылку</button>
 
     <button class="btn btn--ghost btn--block" style="margin-top:12px" onclick="closeModal('manageModal')">Закрыть</button>
@@ -1228,7 +1228,7 @@ function renderHome(){
     root.innerHTML = `<div class="card empty">
       <svg class="empty__icon"><use href="#ic-shield"/></svg>
       <h2>Подписок пока нет</h2>
-      <p>Выберите локацию, число устройств и срок — оформление займёт меньше минуты.</p>
+      <p>Выберите локацию, число устройств и срок — ссылка придёт сразу после оплаты.</p>
       <button class="btn btn--primary btn--block" onclick="openCatalog('new')">Оформить подписку</button>
     </div>`;
     return;
@@ -1254,7 +1254,7 @@ function keyCardHtml(k){
     </div>
     ${k.is_unlimited ? '' : `<div class="sub-card__bar"><div class="sub-card__bar-fill" style="width:${progress}%"></div></div>`}
     ${k.comment_key ? `<div class="sub-card__note">📝&nbsp;${esc(k.comment_key)}</div>` : ''}
-    <div class="sub-card__link"><svg class="icon icon--xs" style="color:var(--faint)"><use href="#ic-link"/></svg><code>${esc(k.sub_url || 'Ссылка появится после синхронизации')}</code></div>
+    <div class="sub-card__link"><svg class="icon icon--xs" style="color:var(--faint)"><use href="#ic-link"/></svg><code>${esc(k.sub_url || 'Ссылка ещё готовится — обновите экран через минуту')}</code></div>
     <div class="sub-card__actions">
       <div class="btn-row link-actions">
         <button class="btn btn--primary" id="copyBtn-${Number(k.key_id)}" onclick="copySub(${Number(k.key_id)})"><svg class="icon icon--sm"><use href="#ic-copy"/></svg>Копировать</button>
@@ -1310,7 +1310,7 @@ function renderTrialBanner(){
   $('trialBannerTitle').textContent = needsTg ? 'Пробный период по Telegram' : 'Бесплатный пробный период';
   $('trialBannerText').textContent = needsTg
     ? (days ? `Привяжите Telegram — и получите ${days} ${plural(days,'день','дня','дней')} бесплатно` : 'Привяжите Telegram, чтобы получить пробный период')
-    : `${days} ${plural(days,'день','дня','дней')} бесплатно, без выбора сервера`;
+    : `${days} ${plural(days,'день','дня','дней')} бесплатно — сервер подберём сами`;
   toggle('trialActivateBtn', needsTg);
   toggle('trialLinkBtn', !needsTg);
 }
@@ -1413,7 +1413,7 @@ async function openAddon(id){
   if(!k) return;
   state.addon = null;
   openModal('addonModal');
-  $('addonSub').textContent = 'Срок подписки не изменится — доплата только за оставшиеся дни';
+  $('addonSub').textContent = 'Дата окончания не сдвинется — платите только за оставшиеся дни';
   $('addonBody').innerHTML = '<div class="card skeleton" style="min-height:90px"></div>';
   try{
     const d = await api('/api/device-addon', { method:'POST', headers: JSON_H, body: JSON.stringify({ user_id: USER_ID, key_id: k.key_id }) });
@@ -1433,7 +1433,7 @@ function renderAddon(k, d){
   $('addonBody').innerHTML = '<div class="device-grid">'
     + (d.options || []).map(o => `<button class="device-opt" onclick="pickAddon(${Number(k.key_id)},${Number(o.device_count)},${Number(o.price)})"><b>${Number(o.device_count)}</b><span>${money(o.price)}</span></button>`).join('')
     + '</div>'
-    + `<p class="empty-hint" style="text-align:left;padding:12px 2px 0">Цена — доплата за оставшиеся ${daysStr}. При следующем продлении слоты войдут в его стоимость.</p>`;
+    + `<p class="empty-hint" style="text-align:left;padding:12px 2px 0">Указана доплата за оставшиеся ${daysStr}. Дальше эти устройства войдут в цену продления.</p>`;
 }
 function pickAddon(keyId, devices, price){
   state.addon = { key_id: keyId, devices: Number(devices), price: Number(price) };
@@ -1508,11 +1508,11 @@ const REEL_RUNWAY = 34;          /* сколько карточек пролет
 const REEL_TIME_MS = 4200;
 
 const PRIZE_FACE = {
-  days:          {icon:'📅', note:'дни к подписке'},
-  balance:       {icon:'💰', note:'на баланс'},
-  promo_percent: {icon:'🏷', note:'промокод на скидку'},
-  promo_fixed:   {icon:'🏷', note:'промокод на скидку'},
-  nothing:       {icon:'🎲', note:'в этот раз мимо'},
+  days:          {icon:'📅', note:'добавятся к подписке'},
+  balance:       {icon:'💰', note:'зачислятся на счёт'},
+  promo_percent: {icon:'🏷', note:'код на скидку'},
+  promo_fixed:   {icon:'🏷', note:'код на скидку'},
+  nothing:       {icon:'🎲', note:'пустой сектор'},
 };
 function prizeFace(p){ return PRIZE_FACE[p && p.prize_type] || PRIZE_FACE.nothing; }
 
@@ -1600,10 +1600,10 @@ function wheelChips(d){
   if(d.tickets) chips.push(`<span class="wheel-chip">🎟 Билетов <b>${d.tickets}</b></span>`);
   /* неполученные призы больше не блокируют прокрут, но и потеряться не
      должны — показываем их как отдельную метку со сроком */
-  if((d.pending || []).length) chips.push(`<span class="wheel-chip wheel-chip--ready">🎁 Невыданных <b>${d.pending.length}</b></span>`);
+  if((d.pending || []).length) chips.push(`<span class="wheel-chip wheel-chip--ready">🎁 Ждут вас <b>${d.pending.length}</b></span>`);
   chips.push(d.wait_seconds > 0
-    ? `<span class="wheel-chip">⏳ Бесплатно через <b>${esc(d.wait_text || '')}</b></span>`
-    : '<span class="wheel-chip wheel-chip--ready">✅ Бесплатный прокрут готов</span>');
+    ? `<span class="wheel-chip">⏳ Бесплатный ход через <b>${esc(d.wait_text || '')}</b></span>`
+    : '<span class="wheel-chip wheel-chip--ready">✅ Бесплатный ход готов</span>');
   return `<div class="wheel-head">${chips.join('')}</div>`;
 }
 function wheelEarnHtml(d){
@@ -1619,13 +1619,13 @@ function renderWheel(d, resultHtml){
   const prizes = wheelPrizes(d.prizes || []);
   state.wheelPrizes = prizes;
   $('wheelSub').textContent = d.enabled
-    ? `Бесплатно раз в ${d.cooldown_hours} ч, а ещё по билету в любой момент`
+    ? `Раз в ${d.cooldown_hours} ч бесплатно, а с билетом — когда угодно`
     : (d.note || 'Колесо выключено');
   /* Шансы и способы добыть билет уехали в отдельный лист: вместе с ними
      колесо не помещалось на экран и его приходилось листать. */
   $('wheelBody').innerHTML = wheelChips(d)
     + reelHtml(prizes)
-    + `<div class="wheel-result" id="wheelResult">${resultHtml || 'Крутите — и посмотрим, что выпадет.'}</div>`;
+    + `<div class="wheel-result" id="wheelResult">${resultHtml || 'Нажмите «Крутить» — что выпало, увидите здесь.'}</div>`;
 
   const spin = $('wheelSpinBtn');
   toggle('wheelSpinBtn', !d.can_spin);
@@ -1641,7 +1641,7 @@ function openWheelInfo(){
   const d = state.wheel || {};
   const prizes = state.wheelPrizes || wheelPrizes(d.prizes || []);
   $('wheelInfoBody').innerHTML =
-    `<div class="section-label" style="margin-top:14px">Что стоит на барабане</div>`
+    `<div class="section-label" style="margin-top:14px">Призы и шансы</div>`
     + prizes.map(x => `<div class="wheel-odds__row"><i>${prizeFace(x).icon}</i>${esc(x.label)}<b>${x.chance.toFixed(1)}%</b></div>`).join('')
     + wheelEarnHtml(d);
   $('wheelNotifyInput').checked = !!d.notify;
@@ -1649,7 +1649,7 @@ function openWheelInfo(){
 }
 /* выбор подписки для выигранных дней */
 function renderWheelChoice(prize, keys){
-  $('wheelSub').textContent = 'Выберите подписку — к ней добавятся выигранные дни';
+  $('wheelSub').textContent = 'К какой подписке добавить выигранные дни';
   const until = prize.expires_text ? `Забрать можно до ${esc(prize.expires_text)}.` : '';
   $('wheelBody').innerHTML = `<div class="wheel-result wheel-result--win"><b>🎁 ${esc(prize.label)}</b>${until}</div>
     <div class="wheel-keys">${(keys || []).map(k => `
@@ -1699,7 +1699,7 @@ async function spinWheel(){
         /* приз не пропадает: ждёт подписку в истории кабинета */
         const box = $('wheelResult');
         box.classList.add('wheel-result--win');
-        box.innerHTML = `<b>🎉 ${esc(d.label)}</b>Подписки пока нет — приз сохранён до ${esc(d.expires_text)}. Заберите его в кабинете, когда оформите.`;
+        box.innerHTML = `<b>🎉 ${esc(d.label)}</b>Подписки пока нет, поэтому приз лежит в кабинете до ${esc(d.expires_text)} — оформите подписку и заберите его.`;
         state.profile = null;
         refreshWheelButton();
         btn.disabled = false;
@@ -1712,7 +1712,7 @@ async function spinWheel(){
     box.classList.toggle('wheel-result--win', !!d.won);
     box.innerHTML = d.won
       ? `<b>🎉 ${esc(d.label)}</b>${d.detail || ''}`
-      : `<b>${esc(d.label)}</b>В этот раз мимо — попробуйте по билету или через ${d.cooldown_hours} ч.`;
+      : `<b>${esc(d.label)}</b>Не повезло. Следующий бесплатный ход через ${d.cooldown_hours} ч, с билетом — прямо сейчас.`;
     await refreshAll();
     const st = await api('/api/wheel/state');
     state.wheel = st;
@@ -1915,7 +1915,7 @@ async function previewPromo(){
       out.className = 'promo-result promo-result--ok';
     } else {
       state.promoPreview = null;
-      out.textContent = 'Этот промокод применяется в кабинете, а не при оплате';
+      out.textContent = 'Этот код активируется в кабинете — здесь он не сработает';
       out.className = 'promo-result promo-result--warn';
     }
   }catch(e){
@@ -1975,8 +1975,9 @@ async function openPayment(){
   }catch(e){ $('paymentMethods').innerHTML = `<p class="sheet__sub">${esc(e.message)}</p>`; }
 }
 function methodNote(m){
-  if(m.id === 'pay_balance') return `Доступно ${money(state.balance)}`;
-  return 'Переход на страницу оплаты';
+  if(m.id === 'pay_balance') return `На счёте ${money(state.balance)}`;
+  if(m.id === 'pay_stars') return 'Счёт придёт в бота';
+  return 'Оплата на странице банка или сервиса';
 }
 function renderPaymentMethods(){
   const price = orderPrice();
@@ -1989,7 +1990,7 @@ function renderPaymentMethods(){
   if(!canSplit && state.useBalance){ state.useBalance = false; $('balanceUseInput').checked = false; }
   toggle('balanceUse', !canSplit);
   if(canSplit){
-    $('balanceUseNote').textContent = `На счёте ${money(balance)} — остальное картой или криптой`;
+    $('balanceUseNote').textContent = `На счёте ${money(balance)} — остаток спишется выбранным способом`;
   }
 
   const list = fullFromBalance ? (state.methods || []) : external;
@@ -2085,7 +2086,7 @@ async function openTopup(){
     state.topupMethod = (list[0] && list[0].id) || null;
     $('topupMethods').innerHTML = list.map(m => `<button class="pay-method ${m.id===state.topupMethod?'is-active':''}" data-topup="${esc(m.id)}" onclick="selectTopupMethod(${arg(m.id)})">
       <span class="pay-method__icon">${paymentIcon(m.id)}</span>
-      <span class="pay-method__body"><b>${esc(m.name)}</b><span>Переход на страницу оплаты</span></span>
+      <span class="pay-method__body"><b>${esc(m.name)}</b><span>${esc(methodNote(m))}</span></span>
     </button>`).join('') || '<p class="sheet__sub">Нет доступных способов пополнения.</p>';
   }catch(e){ $('topupMethods').innerHTML = `<p class="sheet__sub">${esc(e.message)}</p>`; }
 }
@@ -2192,7 +2193,7 @@ function renderProfile(){
             </span>
             <button class="btn btn--primary btn--sm" onclick="openTopup()"><svg class="icon icon--sm"><use href="#ic-plus"/></svg>Пополнить</button>
           </div>
-          <p class="balance-card__note">Балансом можно оплатить подписку целиком или закрыть часть суммы — остаток уйдёт на выбранный способ оплаты.</p>
+          <p class="balance-card__note">Баланс закроет всю покупку или её часть — остаток оплатите картой или криптой.</p>
         </div>
         <div class="stat-grid">
           ${statCard('Рефералы', Number(p.referrals||0), 'Приглашено')}
@@ -2235,7 +2236,7 @@ function renderProfile(){
           </button>
         </div>
         <div class="card panel-card">
-          <span class="panel-card__label">Быстрые действия</span>
+          <span class="panel-card__label">Помощь и выход</span>
           <div class="btn-row">
             <button class="btn btn--ghost" onclick="showScreen('support')">Поддержка</button>
             <button class="btn btn--ghost" onclick="showScreen('help')">Инструкция</button>
@@ -2247,7 +2248,7 @@ function renderProfile(){
         <div class="card panel-card">
           <span class="panel-card__label">Документы</span>
           <a class="btn btn--ghost btn--block" href="/legal/terms" target="_blank" rel="noopener">Пользовательское соглашение</a>
-          <a class="btn btn--ghost btn--block" href="/legal/privacy" target="_blank" rel="noopener">Политика обработки персональных данных</a>
+          <a class="btn btn--ghost btn--block" href="/legal/privacy" target="_blank" rel="noopener">Политика обработки данных</a>
           <a class="btn btn--ghost btn--block" href="/legal/consent" target="_blank" rel="noopener">Согласие на обработку данных</a>
         </div>
       </div>
@@ -2321,7 +2322,7 @@ async function activateBonusPromo(){
     if(!d.ok) throw new Error(d.error || 'Промокод не найден');
     if(d.promo_type === 'discount'){
       out.className = 'promo-result promo-result--warn';
-      out.textContent = 'Это скидочный код — введите его при оформлении покупки';
+      out.textContent = 'Это код на скидку — введите его на шаге оплаты';
     } else {
       toast(d.message || 'Промокод активирован');
       state.profile = null;
@@ -2391,7 +2392,7 @@ function renderSupportList(animate){
   const items = state.support.tickets;
   root.classList.toggle('stagger', !!animate);
   if(!items.length){
-    root.innerHTML = `<div class="card empty"><svg class="empty__icon"><use href="#ic-chat"/></svg><h2>Обращений пока нет</h2><p>Если что-то не работает или остался вопрос — напишите нам, ответим в этом же окне.</p></div>`;
+    root.innerHTML = `<div class="card empty"><svg class="empty__icon"><use href="#ic-chat"/></svg><h2>Обращений пока нет</h2><p>Не работает подключение, вопрос по оплате или что-то ещё — напишите, разберёмся.</p></div>`;
     return;
   }
   const currentId = state.support.current && Number(state.support.current.ticket_id);
@@ -2465,7 +2466,7 @@ function renderThread(scrollBottom){
   pill.textContent = open ? 'Открыт' : 'Закрыт';
   const box = $('threadMessages');
   if(!t.messages || !t.messages.length){
-    box.innerHTML = '<div class="card empty"><p>Сообщений пока нет. Опишите вопрос ниже — мы ответим здесь же.</p></div>';
+    box.innerHTML = '<div class="card empty"><p>Сообщений пока нет — напишите первое ниже.</p></div>';
   } else {
     box.innerHTML = t.messages.map(m => {
       const mine = m.sender === 'user';

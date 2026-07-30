@@ -237,29 +237,29 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
     </div>
 
     <div class="hero__head">
-      <span class="label">Личный кабинет</span>
-      <h2>Подписки под рукой</h2>
-      <p>Оформление и продление, лимит устройств, ссылка подписки и поддержка — всё в одном окне, без переписки с ботом.</p>
+      <span class="label">Что здесь есть</span>
+      <h2>Всё, что обычно спрашивают у бота</h2>
+      <p>Купить и продлить подписку, посмотреть срок и трафик, отключить лишнее устройство, задать вопрос — не пересылая команды в чат.</p>
     </div>
 
     <div class="hero__list">
       <div class="hero__item">
         <span class="hero__item-icon"><svg class="icon"><use href="#li-shield"/></svg></span>
-        <span class="hero__item-text"><b>Подписки и продление</b><span>Оформление и оплата в пару кликов</span></span>
+        <span class="hero__item-text"><b>Подписки</b><span>Покупка, продление и оплата с баланса</span></span>
       </div>
       <div class="hero__item">
         <span class="hero__item-icon"><svg class="icon"><use href="#li-monitor"/></svg></span>
-        <span class="hero__item-text"><b>Устройства и ссылки</b><span>Отключайте лишние, пересоздавайте ссылку</span></span>
+        <span class="hero__item-text"><b>Устройства</b><span>Видно, что подключено, и лишнее можно отключить</span></span>
       </div>
       <div class="hero__item">
         <span class="hero__item-icon"><svg class="icon"><use href="#li-chat"/></svg></span>
-        <span class="hero__item-text"><b>Поддержка</b><span>Переписка прямо в кабинете</span></span>
+        <span class="hero__item-text"><b>Поддержка</b><span>Переписка с ответами в этом же окне</span></span>
       </div>
     </div>
 
     <div class="hero__foot">
       <svg class="icon"><use href="#li-lock"/></svg>
-      <span class="label">Вход по одноразовому токену</span>
+      <span class="label">Вход запомнится на этом устройстве</span>
     </div>
   </aside>
 
@@ -272,7 +272,7 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
       </div>
       <div>
         <h2>Загрузка</h2>
-        <p>Инициализация безопасного входа…</p>
+        <p>Проверяем, вошли ли вы раньше</p>
       </div>
     </div>
 
@@ -283,7 +283,7 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
           <span class="brand-mark"><svg class="icon"><use href="#li-shield"/></svg><img class="hidden" alt=""></span>
           <div class="eyebrow">{{ panel_brand_title }}</div>
           <h1>Вход в кабинет</h1>
-          <p class="lede">Войдите через Telegram, по Email или по ссылке подписки, чтобы управлять подписками.</p>
+          <p class="lede">Три способа войти: Telegram, Email или ссылка подписки. Подойдёт любой.</p>
         </div>
 
         <div id="authMethods" class="stack">
@@ -295,7 +295,7 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
         <div id="emailPanel" class="panel hidden">
           <div>
             <h3>Войти по Email</h3>
-            <p class="hint">Введите данные аккаунта или создайте новый.</p>
+            <p class="hint">Email и пароль от кабинета. Аккаунта ещё нет — заведите его здесь же.</p>
           </div>
           <input type="email" id="emailInput" placeholder="Email" class="field" autocomplete="username">
           <input type="password" id="passwordInput" placeholder="Пароль" class="field" autocomplete="current-password">
@@ -313,12 +313,12 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
         <div id="subPanel" class="panel hidden">
           <div>
             <h3>Вход по ссылке подписки</h3>
-            <p class="hint">Вставьте ссылку, которую выдал бот при оформлении подписки.</p>
+            <p class="hint">Вставьте ссылку подписки — ту, что вы добавляли в VPN-приложение.</p>
           </div>
           <input type="text" id="subUrlInput" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://..." class="field">
           <div id="subError" class="error-box hidden"></div>
           <button id="subLoginBtn" class="btn btn--primary">Войти</button>
-          <p class="hint" style="text-align:center">Ссылку можно скопировать в боте: откройте подписку и нажмите кнопку копирования.</p>
+          <p class="hint" style="text-align:center">Если ссылки под рукой нет — откройте подписку в боте и скопируйте её оттуда.</p>
           <div class="foot-row center">
             <button id="backFromSubBtn" class="link-btn">Отмена</button>
           </div>
@@ -327,7 +327,7 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
         <div id="resetPanel" class="panel hidden">
           <div>
             <h3>Восстановление пароля</h3>
-            <p class="hint">Код подтверждения придёт в привязанный Telegram.</p>
+            <p class="hint">Код придёт в Telegram, привязанный к этому аккаунту.</p>
           </div>
 
           <div id="resetStep1" class="panel">
