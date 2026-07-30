@@ -87,7 +87,7 @@ _bot_controller = None
 _support_bot_controller = SupportBotController()
 
 ALL_SETTINGS_KEYS = [
-    "panel_login", "panel_password", "about_text", "terms_url", "privacy_url",
+    "panel_login", "panel_password", "about_text", "terms_url", "privacy_url", "consent_url",
     "support_user", "support_text", "channel_url", "telegram_bot_token",
     "telegram_bot_username", "admin_telegram_id", "admin_telegram_ids", "yookassa_shop_id",
     "support_media_enabled", "support_media_max_mb", "support_media_allowed",
@@ -103,6 +103,12 @@ ALL_SETTINGS_KEYS = [
     "support_bot_token", "support_bot_username",
 
     "panel_brand_title",
+
+    # реквизиты для правовых документов на /legal/*: в коде их держать нельзя,
+    # а без наименования оператора политика не отвечает ст. 18.1 152-ФЗ
+    "legal_operator_name", "legal_operator_inn", "legal_operator_address",
+    "legal_contact_email", "legal_data_location", "legal_cross_border",
+    "legal_site_domain", "legal_updated_at",
 
     "main_menu_text", "howto_intro_text",
     "howto_android_text", "howto_ios_text", "howto_windows_text", "howto_linux_text",

@@ -465,6 +465,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
      и при переключении вкладок содержимое прыгает по горизонтали */
   #view-profile{max-width:1120px;margin-inline:0 auto}
   #view-help{max-width:920px;margin-inline:0 auto}
+/* ссылки на документы: мелко, но доступно с любого экрана кабинета */
+.legal-line{margin:16px 0 0;text-align:center;font-size:12px;color:var(--faint);line-height:1.7}
+.legal-line a{color:var(--dim);text-decoration:none;border-bottom:1px solid var(--line)}
+.legal-line a:active{color:var(--accent)}
   .page-head{margin-bottom:20px;min-height:44px;padding-bottom:16px;border-bottom:1px solid var(--line)}
   .page-head h1{font-size:26px}
   .page-head__desktop-only{display:flex}
@@ -724,6 +728,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
             <div class="card step"><span class="step__no">4</span><div class="step__body"><b>Подключитесь</b><span>Выберите сервер и включите VPN.</span></div></div>
           </div>
           <button class="btn btn--ghost btn--block" style="margin-top:12px" onclick="showScreen('support')">Написать в поддержку</button>
+          <p class="legal-line">
+            <a href="/legal/terms" target="_blank" rel="noopener">Условия использования</a> ·
+            <a href="/legal/privacy" target="_blank" rel="noopener">Обработка персональных данных</a>
+          </p>
         </section>
 
       </div>
@@ -1640,6 +1648,13 @@ function renderProfile(){
           </div>
           ${IN_TELEGRAM ? '' : `<button class="btn btn--danger btn--block" style="margin-top:9px" onclick="logout()">
             <svg class="icon icon--sm"><use href="#ic-logout"/></svg>Выйти из аккаунта</button>`}
+        </div>
+
+        <div class="card panel-card">
+          <span class="panel-card__label">Документы</span>
+          <a class="btn btn--ghost btn--block" href="/legal/terms" target="_blank" rel="noopener">Пользовательское соглашение</a>
+          <a class="btn btn--ghost btn--block" href="/legal/privacy" target="_blank" rel="noopener">Политика обработки персональных данных</a>
+          <a class="btn btn--ghost btn--block" href="/legal/consent" target="_blank" rel="noopener">Согласие на обработку данных</a>
         </div>
       </div>
     </div>`;

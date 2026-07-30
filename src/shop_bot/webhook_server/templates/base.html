@@ -1131,12 +1131,11 @@
                                     Terminal
                                 </span>
                             </div>
-                            <div class="text-primary/70 mb-1"># Запустить установщик (загружает свежую версию)</div>
-                            <div class="text-white/90 break-all select-all pr-8">curl -sSL
-                                https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/main/install.sh | bash
+                            <div class="text-primary/70 mb-1"># Обновить до свежей версии</div>
+                            <div class="text-white/90 break-all select-all pr-8">git pull && docker compose up -d --build
                             </div>
                             <button
-                                onclick="navigator.clipboard.writeText('curl -sSL https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/main/install.sh | bash'); showToast('success', 'Команда скопирована')"
+                                onclick="navigator.clipboard.writeText('git pull && docker compose up -d --build'); showToast('success', 'Команда скопирована')"
                                 class="absolute right-3 bottom-3 text-white/20 hover:text-primary transition-colors p-1.5 rounded-lg hover:bg-white/5">
                                 <span class="material-symbols-outlined text-sm">content_copy</span>
                             </button>

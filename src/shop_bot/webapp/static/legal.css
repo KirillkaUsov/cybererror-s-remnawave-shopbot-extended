@@ -1,0 +1,101 @@
+/* Оформление правовых документов. Отдельный файл, а не инлайн в каждом
+   документе: страниц три, и расходиться в стилях им незачем. Палитра та же,
+   что у кабинета и панели. */
+:root{
+  --font:'Golos Text',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Ubuntu,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --bg:#101013; --bg-elev:#141519; --surface:#191a1f;
+  --line:rgba(236,238,242,.08); --line-2:rgba(236,238,242,.15);
+  --text:#e9e9ee; --dim:#9c9daa; --faint:#7b7d8a;
+  --accent:#d7abff; --accent-hi:#e4c4ff; --accent-ink:#1d1029;
+  --accent-soft:rgba(215,171,255,.12); --accent-line:rgba(215,171,255,.34);
+  --warn:#d9c46e; --warn-soft:rgba(217,196,110,.1); --warn-line:rgba(217,196,110,.34);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:var(--font);font-size:16px;line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:760px;margin:0 auto;padding:28px 20px 96px}
+
+header{padding-bottom:22px;margin-bottom:30px;border-bottom:1px solid var(--line)}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 10px
+}
+h1{font-size:clamp(24px,5.4vw,33px);font-weight:700;letter-spacing:-.022em;line-height:1.2;margin:0}
+.meta{margin:14px 0 0;font-size:13.5px;color:var(--faint)}
+.meta b{color:var(--dim);font-weight:500}
+
+nav.docs{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+nav.docs a{
+  font-size:13px;font-weight:500;padding:7px 13px;border-radius:9px;
+  color:var(--dim);background:rgba(236,238,242,.05);border:1px solid var(--line);
+  text-decoration:none;transition:color .15s ease,border-color .15s ease,background .15s ease
+}
+nav.docs a:hover{color:var(--text);border-color:var(--line-2)}
+nav.docs a[aria-current]{color:var(--accent-ink);background:var(--accent);border-color:transparent}
+
+h2{
+  font-size:19px;font-weight:700;letter-spacing:-.012em;line-height:1.32;
+  margin:38px 0 12px;scroll-margin-top:20px
+}
+h2 .num{color:var(--accent);font-family:var(--mono);font-size:14px;font-weight:500;margin-right:9px}
+h3{font-size:16px;font-weight:600;margin:24px 0 8px}
+p{margin:0 0 13px}
+ul,ol{margin:0 0 14px;padding-left:23px}
+li{margin-bottom:7px}
+li::marker{color:var(--faint)}
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid var(--accent-line)}
+a:hover{color:var(--accent-hi)}
+strong{font-weight:600}
+code{font-family:var(--mono);font-size:.88em;background:rgba(0,0,0,.32);padding:2px 6px;border-radius:5px;color:var(--accent-hi)}
+
+/* таблицы состава данных — на телефоне скроллятся внутри себя, страница по
+   горизонтали не едет */
+.table-scroll{overflow-x:auto;margin:0 0 16px;border:1px solid var(--line);border-radius:12px}
+table{width:100%;min-width:520px;border-collapse:collapse;font-size:14px}
+th,td{padding:11px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{
+  font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--faint);background:var(--bg-elev)
+}
+tr:last-child td{border-bottom:0}
+td:first-child{color:var(--dim);white-space:nowrap}
+
+blockquote{
+  margin:0 0 16px;padding:14px 16px;border-radius:12px;
+  background:var(--surface);border:1px solid var(--line);border-left:2px solid var(--accent-line);
+  font-size:14.5px;color:var(--dim)
+}
+blockquote p:last-child{margin-bottom:0}
+
+/* незаполненные реквизиты оператора: политика без имени оператора юридически
+   пустая, поэтому пропуск должен быть виден, а не выглядеть как текст */
+.todo{
+  display:inline-block;font-family:var(--mono);font-size:13px;font-weight:500;
+  padding:1px 8px;border-radius:6px;color:var(--warn);
+  background:var(--warn-soft);border:1px dashed var(--warn-line)
+}
+.notice{
+  margin:0 0 24px;padding:14px 16px;border-radius:12px;font-size:14.5px;
+  background:var(--warn-soft);border:1px solid var(--warn-line);color:var(--text)
+}
+.notice b{color:var(--warn)}
+
+footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);font-size:13.5px;color:var(--faint)}
+footer p{margin:0 0 7px}
+
+@media(min-width:800px){
+  body{font-size:16.5px}
+  .wrap{padding:44px 24px 120px}
+}
+@media print{
+  body{background:#fff;color:#000}
+  nav.docs,.notice{display:none}
+  a{color:#000;border-bottom:0}
+  .wrap{max-width:none;padding:0}
+}

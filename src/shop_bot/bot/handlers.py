@@ -791,6 +791,7 @@ def get_user_router() -> Router:
             return
 
         terms_url, privacy_url, channel_url = get_setting("terms_url"), get_setting("privacy_url"), get_setting("channel_url")
+        consent_url = get_setting("consent_url")
 
         if not channel_url and (not terms_url or not privacy_url):
             set_terms_agreed(user_id)
@@ -809,10 +810,15 @@ def get_user_router() -> Router:
         if is_subscription_forced and channel_url: welcome_parts.append("Для доступа к функциям, пожалуйста, подпишитесь на наш канал.")
         
         if terms_url and privacy_url:
+            # по ч.1 ст.9 152-ФЗ согласие должно быть информированным, поэтому
+            # ссылку на само согласие показываем рядом с двумя другими
+            consent_part = (f" и <a href='{consent_url}'>даёте согласие на обработку "
+                            "персональных данных</a>") if consent_url else ""
             welcome_parts.append(
-                "Также необходимо принять "
-                f"<a href='{terms_url}'>Условия использования</a> и "
-                f"<a href='{privacy_url}'>Политику конфиденциальности</a>."
+                "Нажимая кнопку ниже, вы принимаете "
+                f"<a href='{terms_url}'>Условия использования</a>, "
+                f"<a href='{privacy_url}'>Политику конфиденциальности</a>"
+                f"{consent_part}."
             )
         
         welcome_parts.append("\nПосле этого нажмите кнопку ниже.")
@@ -1869,7 +1875,7 @@ def get_user_router() -> Router:
         about_text = get_setting("about_text") or "ℹ️ Информация о проекте еще не заполнена в настройках."
         terms_url, privacy_url, channel_url = get_setting("terms_url"), get_setting("privacy_url"), get_setting("channel_url")
         about_image = get_setting("about_image")
-        await smart_edit_message(callback.message, about_text, keyboards.create_about_keyboard(channel_url, terms_url, privacy_url), about_image)
+        await smart_edit_message(callback.message, about_text, keyboards.create_about_keyboard(channel_url, terms_url, privacy_url, get_setting("consent_url")), about_image)
     # ===== Конец функции about_handler =====
 
     # ===== ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ SPEEDTEST =====

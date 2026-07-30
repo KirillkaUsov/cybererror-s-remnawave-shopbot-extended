@@ -2644,7 +2644,8 @@
                     {'n': 'support_user', 'l': 'URL поддержки', 'p': 'https://t.me/support'},
                     {'n': 'channel_url', 'l': 'Телеграм канал', 'p': 'https://t.me/channel'},
                     {'n': 'terms_url', 'l': 'Условия (Terms)', 'p': ''},
-                    {'n': 'privacy_url', 'l': 'Приватность', 'p': ''}
+                    {'n': 'privacy_url', 'l': 'Приватность', 'p': ''},
+                    {'n': 'consent_url', 'l': 'Согласие на обработку ПДн', 'p': ''}
                     ] %}
                     <div class="space-y-1">
                         <label class="block text-white/40 text-[9px] uppercase font-bold tracking-wider ml-1">{{ field.l
@@ -2654,6 +2655,47 @@
                             class="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-xs focus:ring-1 focus:ring-primary/40 outline-none transition-all" />
                     </div>
                     {% endfor %}
+                </div>
+            </div>
+
+            <!-- Правовые реквизиты -->
+            <div class="bg-white/5 border border-white/10 rounded-2xl p-5 shadow-xl backdrop-blur-md">
+                <div class="flex items-center gap-2 mb-2">
+                    <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                        <span class="material-symbols-outlined text-lg">gavel</span>
+                    </div>
+                    <h4 class="text-white font-bold text-sm">Реквизиты для правовых документов</h4>
+                </div>
+                <p class="text-white/40 text-[11px] leading-relaxed mb-4">
+                    Подставляются в документы на <code class="text-primary/80">/legal/terms</code>,
+                    <code class="text-primary/80">/legal/privacy</code> и
+                    <code class="text-primary/80">/legal/consent</code>. Пока поля пустые, документы
+                    помечены как черновик: политика без наименования оператора не отвечает
+                    ст. 18.1 152-ФЗ.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {% for field in [
+                    {'n': 'legal_operator_name', 'l': 'Оператор (наименование или ФИО)', 'p': 'ИП Иванов Иван Иванович'},
+                    {'n': 'legal_operator_inn', 'l': 'ИНН', 'p': '000000000000'},
+                    {'n': 'legal_operator_address', 'l': 'Адрес', 'p': 'город, улица, дом'},
+                    {'n': 'legal_contact_email', 'l': 'Почта для обращений по ПДн', 'p': 'privacy@example.ru'},
+                    {'n': 'legal_data_location', 'l': 'Где размещены базы данных', 'p': 'на серверах в Российской Федерации'},
+                    {'n': 'legal_site_domain', 'l': 'Домен сайта', 'p': 'example.ru'},
+                    {'n': 'legal_updated_at', 'l': 'Дата редакции документов', 'p': '30.07.2026'}
+                    ] %}
+                    <div class="space-y-1">
+                        <label class="block text-white/40 text-[9px] uppercase font-bold tracking-wider ml-1">{{ field.l }}</label>
+                        <input type="text" name="{{ field.n }}" value="{{ settings[field.n] or '' }}"
+                            placeholder="{{ field.p }}"
+                            class="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-xs focus:ring-1 focus:ring-primary/40 outline-none transition-all" />
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="space-y-1 mt-4">
+                    <label class="block text-white/40 text-[9px] uppercase font-bold tracking-wider ml-1">Трансграничная передача (ст. 12 152-ФЗ)</label>
+                    <textarea name="legal_cross_border" rows="2"
+                        placeholder="Например: персональные данные за пределы Российской Федерации не передаются."
+                        class="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-xs focus:ring-1 focus:ring-primary/40 outline-none transition-all">{{ settings['legal_cross_border'] or '' }}</textarea>
                 </div>
             </div>
 
