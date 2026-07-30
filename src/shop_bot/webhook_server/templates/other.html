@@ -23,6 +23,7 @@
             {'id': 'broadcast', 'label': 'Рассылка', 'icon': 'send'},
             {'id': 'promo', 'label': 'Промо коды', 'icon': 'confirmation_number'},
             {'id': 'logs', 'label': 'Логи Бота', 'icon': 'article'},
+            {'id': 'wheel', 'label': 'Колесо удачи', 'icon': 'casino'},
             {'id': 'webapp', 'label': 'WebApp', 'icon': 'language'} if webapp_exists else none,
             {'id': 'remnawave', 'label': 'Remnawave', 'icon': 'graphic_eq'}
             ]
@@ -1566,6 +1567,159 @@
     </div>
 </section>
 {% endif %}
+
+<section id="tab-wheel" class="tab-content hidden">
+    <div class="space-y-6">
+        <div class="relative overflow-hidden bg-white/5 border border-white/10 rounded-2xl p-4 shadow-xl backdrop-blur-md group">
+            <div class="absolute -right-16 -top-16 w-64 h-64 bg-primary/10 rounded-full blur-3xl group-hover:bg-primary/20 transition-all duration-700"></div>
+            <div class="relative flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center text-primary shadow-lg shadow-primary/10 border border-primary/20">
+                    <span class="material-symbols-outlined text-3xl">casino</span>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold text-white tracking-tight">Колесо удачи</h3>
+                    <p class="text-white/40 text-[11px] font-medium uppercase tracking-wider">Бесплатный прокрут и призы за возвращение в бота</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 space-y-6">
+                <div class="bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl space-y-5">
+                    <div class="flex items-center justify-between gap-4 flex-wrap">
+                        <div class="flex items-center gap-4">
+                            <div class="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center text-white/30 border border-white/5">
+                                <span class="material-symbols-outlined text-2xl">power_settings_new</span>
+                            </div>
+                            <div>
+                                <h4 class="text-white/90 font-bold text-sm tracking-tight">Колесо включено</h4>
+                                <p class="text-white/30 text-[10px] mt-0.5 uppercase tracking-tighter">Кнопка появится в главном меню бота и в мини-аппе</p>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="wheel_enabled" class="peer sr-only" {{ 'checked' if settings.get('wheel_enabled') == '1' else '' }}>
+                            <div class="w-12 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[\'\'] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary shadow-inner"></div>
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                        <div>
+                            <label class="block text-white/40 text-[10px] font-bold uppercase tracking-widest mb-2">Пауза между прокрутами, часов</label>
+                            <input type="number" min="1" max="720" id="wheel_cooldown_hours"
+                                value="{{ settings.get('wheel_cooldown_hours') or 24 }}"
+                                class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
+                        </div>
+                        <button type="button" id="wheel-save-btn"
+                            class="bg-primary hover:bg-primary/80 text-black font-bold text-sm rounded-xl px-6 py-3 transition-all flex items-center justify-center gap-2">
+                            <span class="material-symbols-outlined text-lg">save</span> Сохранить
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
+                    <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                        <h4 class="text-white/90 font-bold text-sm tracking-tight">Сектора колеса</h4>
+                        <span class="text-white/30 text-[11px]">Шанс сектора = его вес ÷ сумму весов</span>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[640px] text-sm">
+                            <thead>
+                                <tr class="text-white/30 text-[10px] uppercase tracking-widest text-left">
+                                    <th class="pb-3 pr-3">Название</th>
+                                    <th class="pb-3 pr-3">Тип</th>
+                                    <th class="pb-3 pr-3">Размер</th>
+                                    <th class="pb-3 pr-3">Вес</th>
+                                    <th class="pb-3 pr-3">Шанс</th>
+                                    <th class="pb-3"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="wheel-prizes-body">
+                                {% set total_weight = wheel.prizes | selectattr('is_active') | sum(attribute='weight') or 1 %}
+                                {% for prize in wheel.prizes %}
+                                <tr class="border-t border-white/5" data-prize="{{ prize.prize_id }}">
+                                    <td class="py-2 pr-3"><input value="{{ prize.label }}" data-field="label"
+                                        class="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none"></td>
+                                    <td class="py-2 pr-3">
+                                        <select data-field="prize_type" class="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none">
+                                            <option value="days" {{ 'selected' if prize.prize_type == 'days' else '' }}>Дни</option>
+                                            <option value="balance" {{ 'selected' if prize.prize_type == 'balance' else '' }}>Баланс</option>
+                                            <option value="nothing" {{ 'selected' if prize.prize_type == 'nothing' else '' }}>Пусто</option>
+                                        </select>
+                                    </td>
+                                    <td class="py-2 pr-3"><input type="number" step="1" min="0" value="{{ prize.amount | int }}" data-field="amount"
+                                        class="w-24 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none"></td>
+                                    <td class="py-2 pr-3"><input type="number" step="1" min="1" value="{{ prize.weight }}" data-field="weight"
+                                        class="w-20 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none"></td>
+                                    <td class="py-2 pr-3 text-white/50 text-xs" data-chance>{{ '%.1f' | format(prize.weight * 100 / total_weight) if prize.is_active else '—' }}%</td>
+                                    <td class="py-2 text-right whitespace-nowrap">
+                                        <label class="inline-flex items-center gap-2 mr-3 text-white/40 text-[11px]">
+                                            <input type="checkbox" data-field="is_active" {{ 'checked' if prize.is_active else '' }}
+                                                class="accent-primary w-4 h-4"> вкл
+                                        </label>
+                                        <button type="button" onclick="wheelSavePrize({{ prize.prize_id }})"
+                                            class="text-primary hover:text-white transition-colors" title="Сохранить">
+                                            <span class="material-symbols-outlined text-lg align-middle">save</span></button>
+                                        <button type="button" onclick="wheelDeletePrize({{ prize.prize_id }})"
+                                            class="text-white/30 hover:text-red-400 transition-colors ml-2" title="Удалить">
+                                            <span class="material-symbols-outlined text-lg align-middle">delete</span></button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="border-t border-white/5 mt-4 pt-4 grid grid-cols-1 sm:grid-cols-5 gap-3">
+                        <input id="wheel-new-label" placeholder="Название сектора"
+                            class="sm:col-span-2 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
+                        <select id="wheel-new-type" class="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
+                            <option value="days">Дни</option>
+                            <option value="balance">Баланс</option>
+                            <option value="nothing">Пусто</option>
+                        </select>
+                        <input id="wheel-new-amount" type="number" min="0" placeholder="Размер"
+                            class="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
+                        <input id="wheel-new-weight" type="number" min="1" value="10" placeholder="Вес"
+                            class="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
+                        <button type="button" onclick="wheelAddPrize()"
+                            class="sm:col-span-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-sm rounded-xl px-6 py-3 transition-all flex items-center justify-center gap-2">
+                            <span class="material-symbols-outlined text-lg">add</span> Добавить сектор
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-6">
+                <div class="bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
+                    <h4 class="text-white/90 font-bold text-sm tracking-tight mb-4">Итоги</h4>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex items-center justify-between"><span class="text-white/40">Прокрутов</span><b class="text-white">{{ wheel.stats.spins }}</b></div>
+                        <div class="flex items-center justify-between"><span class="text-white/40">Игроков</span><b class="text-white">{{ wheel.stats.players }}</b></div>
+                        <div class="flex items-center justify-between"><span class="text-white/40">Выдано дней</span><b class="text-white">{{ wheel.stats.days_given | int }}</b></div>
+                        <div class="flex items-center justify-between"><span class="text-white/40">Выдано на баланс</span><b class="text-white">{{ wheel.stats.rub_given | int }} ₽</b></div>
+                    </div>
+                </div>
+
+                <div class="bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
+                    <h4 class="text-white/90 font-bold text-sm tracking-tight mb-4">Последние прокруты</h4>
+                    {% if wheel.spins %}
+                    <div class="space-y-2 max-h-96 overflow-y-auto pr-1">
+                        {% for spin in wheel.spins %}
+                        <div class="flex items-center justify-between gap-3 text-xs border-b border-white/5 pb-2">
+                            <span class="text-white/50 truncate">{{ '@' ~ spin.username if spin.username else spin.user_id }}</span>
+                            <span class="text-white/80 whitespace-nowrap">{{ spin.label }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-white/30 text-xs">Колесо ещё не крутили.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
 
 <section id="tab-remnawave" class="tab-content hidden">
     <div class="space-y-6">
@@ -5416,5 +5570,96 @@
         </div>
     </div>
 </div>
+
+<script>
+/* Колесо удачи: сектора правятся прямо в таблице, шанс пересчитывается на
+   лету — иначе владелец магазина не видит, что даёт вес, пока не сохранит. */
+(function () {
+    function rows() { return Array.from(document.querySelectorAll('#wheel-prizes-body tr[data-prize]')); }
+    function field(row, name) { return row.querySelector('[data-field="' + name + '"]'); }
+
+    function refreshChances() {
+        const active = rows().filter(r => field(r, 'is_active').checked);
+        const total = active.reduce((sum, r) => sum + (Number(field(r, 'weight').value) || 0), 0);
+        rows().forEach(r => {
+            const cell = r.querySelector('[data-chance]');
+            if (!cell) return;
+            if (!field(r, 'is_active').checked || !total) { cell.textContent = '\u2014'; return; }
+            cell.textContent = ((Number(field(r, 'weight').value) || 0) * 100 / total).toFixed(1) + '%';
+        });
+    }
+
+    function body(extra) {
+        const fd = new FormData();
+        fd.append('csrf_token', window.getCsrfToken());
+        Object.entries(extra).forEach(([k, v]) => fd.append(k, v));
+        return fd;
+    }
+
+    async function post(url, fd, okMsg) {
+        try {
+            const resp = await fetch(url, { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (data.ok) { window.showToast('success', data.message || okMsg); return true; }
+            window.showToast('danger', data.error || 'Не удалось сохранить');
+        } catch (e) { window.showToast('danger', 'Нет связи с сервером'); }
+        return false;
+    }
+
+    window.wheelSavePrize = async function (prizeId) {
+        const row = document.querySelector('#wheel-prizes-body tr[data-prize="' + prizeId + '"]');
+        if (!row) return;
+        const ok = await post('/other/wheel/prize/' + prizeId + '/edit', body({
+            label: field(row, 'label').value.trim(),
+            prize_type: field(row, 'prize_type').value,
+            amount: field(row, 'amount').value || 0,
+            weight: field(row, 'weight').value || 1,
+            is_active: field(row, 'is_active').checked,
+        }), 'Сектор обновлён');
+        if (ok) refreshChances();
+    };
+
+    window.wheelDeletePrize = async function (prizeId) {
+        if (!confirm('Удалить сектор?')) return;
+        const ok = await post('/other/wheel/prize/' + prizeId + '/delete', body({}), 'Сектор удалён');
+        if (ok) {
+            const row = document.querySelector('#wheel-prizes-body tr[data-prize="' + prizeId + '"]');
+            if (row) row.remove();
+            refreshChances();
+        }
+    };
+
+    window.wheelAddPrize = async function () {
+        const label = document.getElementById('wheel-new-label');
+        if (!label.value.trim()) { window.showToast('warning', 'Укажите название сектора'); return label.focus(); }
+        const ok = await post('/other/wheel/prize/add', body({
+            label: label.value.trim(),
+            prize_type: document.getElementById('wheel-new-type').value,
+            amount: document.getElementById('wheel-new-amount').value || 0,
+            weight: document.getElementById('wheel-new-weight').value || 1,
+        }), 'Сектор добавлен');
+        /* перезагружаем страницу: новую строку должен отрисовать тот же
+           шаблон, что и остальные — дублировать разметку в JS нельзя */
+        if (ok) setTimeout(() => window.location.reload(), 500);
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const saveBtn = document.getElementById('wheel-save-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async function () {
+                saveBtn.disabled = true;
+                await post('/other/wheel/save', body({
+                    enabled: document.getElementById('wheel_enabled').checked,
+                    cooldown_hours: document.getElementById('wheel_cooldown_hours').value || 24,
+                }), 'Настройки колеса сохранены');
+                saveBtn.disabled = false;
+            });
+        }
+        document.querySelectorAll('#wheel-prizes-body [data-field="weight"], #wheel-prizes-body [data-field="is_active"]')
+            .forEach(el => el.addEventListener('input', refreshChances));
+        refreshChances();
+    });
+})();
+</script>
 
 {% endblock %}

@@ -211,6 +211,28 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
    и строка не должна от этого прыгать */
 .link-actions .btn{white-space:nowrap}
 
+/* ---------- колесо удачи ---------- */
+.wheel-card{display:flex;align-items:center;gap:13px}
+.wheel-card__icon{width:42px;height:42px;border-radius:var(--r-md);display:grid;place-items:center;font-size:21px;background:var(--accent-soft);border:1px solid var(--accent-line);flex:0 0 auto}
+.wheel-card__body{min-width:0;flex:1}
+.wheel-card__body b{display:block;font-size:14px;font-weight:600}
+.wheel-card__body span{display:block;font-size:12.5px;color:var(--dim);margin-top:2px}
+/* Диск рисуем conic-градиентом: секторов может быть сколько угодно, и
+   картинку под каждый набор не нарисуешь. */
+.wheel-stage{display:grid;place-items:center;padding:6px 0 2px}
+.wheel-disc-wrap{position:relative;width:min(240px,70vw);aspect-ratio:1}
+.wheel-disc{width:100%;height:100%;border-radius:50%;border:2px solid var(--line-2);
+  transition:transform 3.4s cubic-bezier(.15,.85,.2,1);transform:rotate(0deg)}
+.wheel-pin{position:absolute;top:-6px;left:50%;transform:translateX(-50%);
+  width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-top:16px solid var(--accent);
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}
+.wheel-hub{position:absolute;inset:38%;border-radius:50%;background:var(--surface-2);border:1px solid var(--line-2);display:grid;place-items:center;font-size:19px}
+.wheel-legend{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:14px;font-size:12px;color:var(--dim)}
+.wheel-legend span{display:flex;align-items:center;gap:6px}
+.wheel-legend i{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+.wheel-result{text-align:center;font-size:14px;margin:14px 0 0;min-height:22px}
+.wheel-result b{color:var(--text)}
+
 /* ---------- catalog ---------- */
 .buy-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
 .buy-col,.buy-promo{min-width:0}
@@ -589,6 +611,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 <symbol id="ic-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></symbol>
 <symbol id="ic-x" viewBox="0 0 24 24"><path d="M5 5l14 14"/><path d="M19 5L5 19"/></symbol>
 <symbol id="ic-chevron-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+<symbol id="ic-chevron-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
 <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3Z"/></symbol>
 <symbol id="ic-send" viewBox="0 0 24 24"><path d="M4 12L20 4 13 20l-2-7-7-1Z"/></symbol>
 <symbol id="ic-paperclip" viewBox="0 0 24 24"><path d="M8 12l6-6a3 3 0 1 1 4 4l-8 8a5 5 0 1 1-7-7l7-7"/></symbol>
@@ -762,6 +785,17 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   </div>
 </div>
 
+<div class="modal" id="wheelModal" data-modal>
+  <div class="sheet">
+    <div class="sheet__handle"></div>
+    <h2>Колесо удачи</h2>
+    <div class="sheet__sub" id="wheelSub">Бесплатный прокрут</div>
+    <div id="wheelBody"><div class="card skeleton" style="min-height:140px"></div></div>
+    <button class="btn btn--primary btn--block" id="wheelSpinBtn" style="margin-top:12px" onclick="spinWheel()">Крутить</button>
+    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('wheelModal')">Закрыть</button>
+  </div>
+</div>
+
 <div class="modal" id="addonModal" data-modal>
   <div class="sheet">
     <div class="sheet__handle"></div>
@@ -854,6 +888,7 @@ const state = {
   host: null, plan: null, tier: null, method: null,
   /* заказ на докупку устройств: живёт отдельно от каталога, тарифа в нём нет */
   addon: null,
+  wheel: null, wheelSectors: null,
   methods: [], balance: 0, useBalance: false, topupMethod: null,
   promoPreview: null,
   pendingPaymentId: null, pendingPaymentKind: 'order',
@@ -1283,6 +1318,101 @@ function pickAddon(keyId, devices, price){
   openPayment();
 }
 
+/* ===== колесо удачи ===== */
+/* Диск рисуется по секторам, которые прислал сервер, а результат приходит
+   оттуда же — крутим анимацию уже зная, куда встать. Иначе выигрыш можно
+   было бы подделать на клиенте. */
+const WHEEL_COLORS = ['#d7abff','#8b52b8','#e4c4ff','#6b3d90','#c48ff2','#4d2b68','#ebd8ff','#a96fd9'];
+let wheelTurns = 0;
+
+function wheelSectors(prizes){
+  const total = prizes.reduce((s,p) => s + Number(p.weight||0), 0) || 1;
+  let from = 0;
+  return prizes.map((p, i) => {
+    const size = Number(p.weight||0) * 360 / total;
+    const sector = { label: p.label, color: WHEEL_COLORS[i % WHEEL_COLORS.length], from, to: from + size,
+                     mid: from + size / 2, chance: Number(p.weight||0) * 100 / total };
+    from += size;
+    return sector;
+  });
+}
+function wheelGradient(sectors){
+  return 'conic-gradient(' + sectors.map(s => `${s.color} ${s.from.toFixed(2)}deg ${s.to.toFixed(2)}deg`).join(',') + ')';
+}
+async function openWheel(){
+  openModal('wheelModal');
+  $('wheelBody').innerHTML = '<div class="card skeleton" style="min-height:140px"></div>';
+  $('wheelSpinBtn').disabled = true;
+  try{
+    const d = await api('/api/wheel/state');
+    if(!d.ok) throw new Error(d.error || 'Колесо недоступно');
+    state.wheel = d;
+    renderWheel(d);
+  }catch(e){ $('wheelBody').innerHTML = `<p class="empty-hint">${esc(e.message)}</p>`; }
+}
+function renderWheel(d, resultHtml){
+  const sectors = wheelSectors(d.prizes || []);
+  state.wheelSectors = sectors;
+  $('wheelSub').textContent = d.can_spin
+    ? `Бесплатно раз в ${d.cooldown_hours} ч`
+    : (d.wait_text ? `Следующий прокрут через ${d.wait_text}` : (d.note || ''));
+  $('wheelBody').innerHTML = `
+    <div class="wheel-stage">
+      <div class="wheel-disc-wrap">
+        <div class="wheel-pin"></div>
+        <div class="wheel-disc" id="wheelDisc" style="background:${wheelGradient(sectors)}"></div>
+        <div class="wheel-hub">🎰</div>
+      </div>
+    </div>
+    <div class="wheel-legend">${sectors.map(s => `<span><i style="background:${s.color}"></i>${esc(s.label)} · ${s.chance.toFixed(0)}%</span>`).join('')}</div>
+    <p class="wheel-result" id="wheelResult">${resultHtml || ''}</p>`;
+  const btn = $('wheelSpinBtn');
+  btn.disabled = !d.can_spin;
+  btn.textContent = d.can_spin ? 'Крутить' : (d.wait_text ? `Ждём ${d.wait_text}` : 'Недоступно');
+}
+async function spinWheel(){
+  const btn = $('wheelSpinBtn');
+  btn.disabled = true; btn.textContent = 'Крутим…';
+  try{
+    const d = await api('/api/wheel/spin', { method:'POST', headers: JSON_H });
+    if(!d.ok){
+      $('wheelResult').innerHTML = `<b>${esc(d.error || 'Сейчас крутить нельзя')}</b>`;
+      btn.textContent = d.wait_text ? `Ждём ${d.wait_text}` : 'Недоступно';
+      return;
+    }
+    const sectors = state.wheelSectors || [];
+    const target = sectors.find(s => s.label === d.label) || sectors[0];
+    const disc = $('wheelDisc');
+    /* стрелка сверху: доводим середину нужного сектора до 0° и добавляем
+       несколько полных оборотов, чтобы это выглядело как настоящий прокрут */
+    wheelTurns += 5;
+    if(disc && target) disc.style.transform = `rotate(${wheelTurns * 360 - target.mid}deg)`;
+    haptic();
+    await new Promise(r => setTimeout(r, 3500));
+    $('wheelResult').innerHTML = d.won
+      ? `🎉 <b>${esc(d.label)}</b><br>${d.detail || ''}`
+      : `<b>${esc(d.label)}</b><br>В этот раз мимо — возвращайтесь через ${d.cooldown_hours} ч.`;
+    btn.textContent = `Ждём ${d.cooldown_hours} ч`;
+    await refreshAll();
+    loadWheelEntry();
+  }catch(e){
+    $('wheelResult').innerHTML = `<b>${esc(e.message)}</b>`;
+    btn.disabled = false; btn.textContent = 'Крутить';
+  }
+}
+/* строку в кабинете показываем, только когда колесо включено */
+async function loadWheelEntry(){
+  try{
+    const d = await api('/api/wheel/state');
+    const show = d.ok && d.enabled && (d.prizes || []).length;
+    toggle('wheelEntry', !show);
+    if(!show) return;
+    $('wheelEntryNote').textContent = d.can_spin
+      ? 'Бесплатный прокрут доступен'
+      : (d.wait_text ? `Следующий прокрут через ${d.wait_text}` : (d.note || ''));
+  }catch(e){ toggle('wheelEntry', true); }
+}
+
 /* ===== catalog ===== */
 async function loadCatalog(){
   if(state.catalog.length) return;
@@ -1678,12 +1808,13 @@ function setAccountChip(p){
   $('sidenavAva').textContent = (name.replace('@','').trim()[0] || '·').toUpperCase();
 }
 async function loadProfile(){
-  if(state.profile) return renderProfile();
+  if(state.profile){ renderProfile(); loadWheelEntry(); return; }
   try{
     const d = await api('/api/profile-stats?user_id=' + USER_ID);
     if(!d.ok) throw new Error(d.error || 'Профиль недоступен');
     state.profile = d;
     renderProfile();
+    loadWheelEntry();
   }catch(e){
     $('profileContent').innerHTML = errorCard('Профиль недоступен', e.message);
   }
@@ -1713,6 +1844,13 @@ function renderProfile(){
           ${statCard('Заработано', `${esc(p.referral_earned||0)} <small>₽</small>`, 'С рефералов')}
           ${statCard('Оплачено', Number(p.total_months||0), 'Месяцев подписки')}
           ${statCard('Подписок', Number(p.keys_count ?? state.keys.length), 'Активных')}
+        </div>
+        <div class="card panel-card wheel-entry is-hidden" id="wheelEntry" onclick="openWheel()" role="button" tabindex="0">
+          <div class="wheel-card">
+            <span class="wheel-card__icon">🎰</span>
+            <span class="wheel-card__body"><b>Колесо удачи</b><span id="wheelEntryNote">Бесплатный прокрут</span></span>
+            <svg class="icon icon--sm" style="color:var(--faint)"><use href="#ic-chevron-right"/></svg>
+          </div>
         </div>
         <div class="card panel-card">
           <span class="panel-card__label">Промокод</span>

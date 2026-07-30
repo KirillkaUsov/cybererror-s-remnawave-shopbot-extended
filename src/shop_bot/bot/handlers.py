@@ -84,6 +84,7 @@ from shop_bot.config import (
 from shop_bot.data_manager import remnawave_repository as rw_repo
 from shop_bot.modules import remnawave_api
 from shop_bot.modules import device_addon
+from shop_bot.modules import fortune_wheel
 from shop_bot.data_manager.admin_notifier import notify_admins
 
 TELEGRAM_BOT_USERNAME = None
@@ -1857,6 +1858,88 @@ def get_user_router() -> Router:
             await smart_edit_message(callback.message, "❌ Не удалось инициализировать TON Connect.")
             await state.clear()
     # ===== Конец функции topup_pay_tonconnect =====
+
+    # ===== КОЛЕСО УДАЧИ =====
+    # Бесплатный прокрут раз в сутки: сектора и вероятности задаются в панели
+    async def _render_wheel(message, user_id: int, note: str | None = None):
+        st = fortune_wheel.state(user_id)
+        img = get_setting("wheel_image")
+
+        if not st['enabled'] or st['reason'] in ('disabled', 'no_prizes'):
+            text = f"🎰 <b>Колесо удачи</b>\n\n{fortune_wheel.DECLINE_TEXT.get(st['reason'] or 'disabled')}"
+            return await smart_edit_message(message, text, keyboards.create_wheel_keyboard(False), img)
+
+        # Шансы показываем честно: колесо, где неизвестно что и с какой
+        # вероятностью выпадает, доверия не вызывает
+        total = sum(p['weight'] for p in st['prizes']) or 1
+        sectors = "\n".join(
+            f"  • {html.quote(str(p['label']))} — {p['weight'] * 100 / total:.0f}%"
+            for p in st['prizes']
+        )
+
+        if st['can_spin']:
+            head = ("🎰 <b>Колесо удачи</b>\n\n"
+                    f"Раз в {st['cooldown_hours']} ч можно крутить бесплатно.\n\n")
+            tail = "\n\nЖмите кнопку — и посмотрим, что выпадет."
+        else:
+            head = ("🎰 <b>Колесо удачи</b>\n\n"
+                    f"⏳ Следующий прокрут через <b>{fortune_wheel.format_wait(st['wait_seconds'])}</b>\n\n")
+            tail = ""
+
+        text = head + "<b>Что стоит на колесе:</b>\n" + sectors + tail
+        if note:
+            text = note + "\n\n" + text
+        await smart_edit_message(message, text, keyboards.create_wheel_keyboard(st['can_spin']), img)
+
+    @user_router.callback_query(F.data == "wheel_open")
+    @anti_spam
+    @registration_required
+    async def wheel_open_handler(callback: types.CallbackQuery):
+        await callback.answer()
+        await _render_wheel(callback.message, callback.from_user.id)
+    # ===== Конец функции wheel_open_handler =====
+
+    # ===== ПРОКРУТ КОЛЕСА =====
+    @user_router.callback_query(F.data == "wheel_spin")
+    @anti_spam
+    @registration_required
+    async def wheel_spin_handler(callback: types.CallbackQuery):
+        uid = callback.from_user.id
+        await callback.answer("Крутим! 🎡")
+
+        # Кнопку убираем сразу: пока идёт анимация, второй тап уже ничего
+        # не изменит — попытка занята в базе, — но и мигать ей незачем
+        frames = [
+            "🎰 <b>Колесо удачи</b>\n\n🟥 🟨 🟩 🟦 🟪\nРазгоняется...",
+            "🎰 <b>Колесо удачи</b>\n\n🟨 🟩 🟦 🟪 🟥\nБыстрее...",
+            "🎰 <b>Колесо удачи</b>\n\n🟩 🟦 🟪 🟥 🟨\nПролетаем крупный приз...",
+            "🎰 <b>Колесо удачи</b>\n\n🟦 🟪 🟥 🟨 🟩\nТормозим...",
+        ]
+        spin_task = asyncio.create_task(fortune_wheel.spin(uid))
+        for frame in frames:
+            try:
+                if callback.message.photo:
+                    await callback.message.edit_caption(caption=frame, reply_markup=None)
+                else:
+                    await callback.message.edit_text(frame, reply_markup=None)
+            except TelegramBadRequest:
+                pass
+            await asyncio.sleep(0.55)
+
+        result = await spin_task
+
+        if not result.get('ok'):
+            logger.info(f"Колесо: отказ пользователю {uid} — {result.get('reason')}")
+            return await _render_wheel(callback.message, uid, note=f"⚠️ {result.get('error')}")
+
+        if result['won']:
+            note = (f"🎉 <b>Выпало: {html.quote(str(result['label']))}</b>\n{result['detail']}").strip()
+            logger.info(f"Колесо: пользователь {uid} выиграл {result['label']}")
+        else:
+            note = (f"😔 <b>Выпало: {html.quote(str(result['label']))}</b>\n"
+                    f"В этот раз мимо — попробуйте через {result['cooldown_hours']} ч.")
+        await _render_wheel(callback.message, uid, note=note)
+    # ===== Конец функции wheel_spin_handler =====
 
     # ===== ОТОБРАЖЕНИЕ РЕФЕРАЛЬНОЙ ПРОГРАММЫ =====
     # Выводит информацию о партнерской программе: ссылку, количество приглашенных и баланс

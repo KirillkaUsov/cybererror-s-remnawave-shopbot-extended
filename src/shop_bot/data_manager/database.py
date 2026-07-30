@@ -716,6 +716,8 @@ def _ensure_users_columns(cursor: sqlite3.Cursor) -> None:
         # create_user_by_email выдаёт положительные синтетические id вида
         # 999XXXXXXX, поэтому проверка не срабатывала никогда.
         "tg_linked": "INTEGER",
+        # момент последнего прокрута колеса удачи
+        "last_wheel_spin": "TIMESTAMP",
     }
     for column, definition in mapping.items():
         _ensure_table_column(cursor, "users", column, definition)
@@ -798,6 +800,162 @@ def _ensure_device_tiers_table(cursor: sqlite3.Cursor) -> None:
         )
     ''')
 
+
+
+# ===== КОЛЕСО УДАЧИ =====
+def _ensure_wheel_tables(cursor: sqlite3.Cursor) -> None:
+    """Призы колеса и журнал прокрутов.
+
+    Призы держим в базе, а не в коде: состав секторов и их вероятности —
+    это настройка магазина, её меняют из панели, не пересобирая бота.
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS wheel_prizes (
+            prize_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label TEXT NOT NULL,
+            prize_type TEXT NOT NULL DEFAULT 'days',
+            amount REAL NOT NULL DEFAULT 0,
+            weight INTEGER NOT NULL DEFAULT 1,
+            is_active INTEGER DEFAULT 1,
+            sort_order INTEGER DEFAULT 0
+        )
+    """)
+    # Журнал нужен, чтобы разбирать спорные случаи: что именно выпало
+    # человеку и куда ушли дни.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS wheel_spins (
+            spin_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            prize_id INTEGER,
+            label TEXT,
+            prize_type TEXT,
+            amount REAL DEFAULT 0,
+            key_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_wheel_spins_user ON wheel_spins(user_id, created_at)")
+
+    cursor.execute("SELECT COUNT(*) FROM wheel_prizes")
+    if (cursor.fetchone() or [0])[0]:
+        return
+    # Веса подобраны так, чтобы в сумме дать 100 — тогда вес читается как
+    # проценты и владельцу магазина не приходится ничего пересчитывать.
+    defaults = [
+        ("Мимо", "nothing", 0, 39, 0),
+        ("1 день", "days", 1, 25, 1),
+        ("2 дня", "days", 2, 14, 2),
+        ("3 дня", "days", 3, 9, 3),
+        ("50 ₽ на баланс", "balance", 50, 6, 4),
+        ("7 дней", "days", 7, 4, 5),
+        ("14 дней", "days", 14, 2, 6),
+        ("30 дней", "days", 30, 1, 7),
+    ]
+    cursor.executemany(
+        "INSERT INTO wheel_prizes (label, prize_type, amount, weight, sort_order) VALUES (?,?,?,?,?)",
+        defaults,
+    )
+    logging.info("Колесо удачи: засеяны призы по умолчанию (%d секторов)", len(defaults))
+
+
+def get_wheel_prizes(active_only: bool = True) -> list[dict]:
+    sql = "SELECT * FROM wheel_prizes"
+    if active_only:
+        sql += " WHERE is_active = 1"
+    sql += " ORDER BY sort_order, prize_id"
+    return _fetch_list(sql, (), "Не удалось получить призы колеса")
+
+
+def get_wheel_prize(prize_id: int) -> dict | None:
+    return _fetch_row("SELECT * FROM wheel_prizes WHERE prize_id = ?", (prize_id,))
+
+
+def add_wheel_prize(label: str, prize_type: str, amount: float, weight: int) -> int | None:
+    cursor = _exec(
+        "INSERT INTO wheel_prizes (label, prize_type, amount, weight, sort_order) "
+        "VALUES (?,?,?,?, COALESCE((SELECT MAX(sort_order) + 1 FROM wheel_prizes), 0))",
+        (label, prize_type, float(amount), int(weight)),
+        "Не удалось добавить приз колеса",
+    )
+    return cursor.lastrowid if cursor else None
+
+
+def update_wheel_prize(prize_id: int, label: str, prize_type: str, amount: float,
+                       weight: int, is_active: int = 1) -> bool:
+    cursor = _exec(
+        "UPDATE wheel_prizes SET label=?, prize_type=?, amount=?, weight=?, is_active=? WHERE prize_id=?",
+        (label, prize_type, float(amount), int(weight), int(is_active), prize_id),
+        "Не удалось изменить приз колеса",
+    )
+    return bool(cursor and cursor.rowcount)
+
+
+def delete_wheel_prize(prize_id: int) -> bool:
+    cursor = _exec("DELETE FROM wheel_prizes WHERE prize_id=?", (prize_id,), "Не удалось удалить приз колеса")
+    return bool(cursor and cursor.rowcount)
+
+
+def get_last_wheel_spin(user_id: int) -> str | None:
+    row = _fetch_row("SELECT last_wheel_spin FROM users WHERE telegram_id = ?", (user_id,))
+    return row["last_wheel_spin"] if row else None
+
+
+def claim_wheel_spin(user_id: int, now_iso: str, allowed_before_iso: str) -> bool:
+    """Занимает прокрут, если кулдаун уже прошёл.
+
+    Проверка и запись — одним UPDATE: иначе два быстрых нажатия успевали
+    прочитать старое время каждый и прокрутить колесо дважды.
+    """
+    cursor = _exec(
+        "UPDATE users SET last_wheel_spin = ? WHERE telegram_id = ? "
+        "AND (last_wheel_spin IS NULL OR last_wheel_spin <= ?)",
+        (now_iso, user_id, allowed_before_iso),
+        f"Не удалось занять прокрут колеса для {user_id}",
+    )
+    return bool(cursor and cursor.rowcount)
+
+
+def release_wheel_spin(user_id: int, previous_iso: str | None) -> bool:
+    """Возвращает прежнее время: приз выдать не удалось — попытка не сгорает."""
+    cursor = _exec(
+        "UPDATE users SET last_wheel_spin = ? WHERE telegram_id = ?",
+        (previous_iso, user_id),
+        f"Не удалось вернуть попытку колеса для {user_id}",
+    )
+    return bool(cursor and cursor.rowcount)
+
+
+def log_wheel_spin(user_id: int, prize: dict, key_id: int | None = None) -> int | None:
+    cursor = _exec(
+        "INSERT INTO wheel_spins (user_id, prize_id, label, prize_type, amount, key_id) VALUES (?,?,?,?,?,?)",
+        (user_id, prize.get("prize_id"), prize.get("label"), prize.get("prize_type"),
+         float(prize.get("amount") or 0), key_id),
+        "Не удалось записать прокрут колеса",
+    )
+    return cursor.lastrowid if cursor else None
+
+
+def get_wheel_spins(limit: int = 50) -> list[dict]:
+    return _fetch_list(
+        "SELECT s.*, u.username FROM wheel_spins s LEFT JOIN users u ON u.telegram_id = s.user_id "
+        "ORDER BY s.created_at DESC LIMIT ?",
+        (limit,),
+        "Не удалось получить журнал колеса",
+    )
+
+
+def get_wheel_stats() -> dict:
+    row = _fetch_row(
+        "SELECT COUNT(*) AS spins, COUNT(DISTINCT user_id) AS players, "
+        "COALESCE(SUM(CASE WHEN prize_type='days' THEN amount ELSE 0 END), 0) AS days_given, "
+        "COALESCE(SUM(CASE WHEN prize_type='balance' THEN amount ELSE 0 END), 0) AS rub_given "
+        "FROM wheel_spins",
+        (),
+        "Не удалось посчитать статистику колеса",
+    )
+    return dict(row) if row else {"spins": 0, "players": 0, "days_given": 0, "rub_given": 0}
+
+# ===== Конец блока колеса удачи =====
 
 # ===== _ENSURE_PLANS_COLUMNS =====
 def _ensure_plans_columns(cursor: sqlite3.Cursor) -> None:
@@ -1038,6 +1196,7 @@ def run_migration():
             _ensure_users_columns(cursor)
             _ensure_hosts_columns(cursor)
             _ensure_device_tiers_table(cursor)
+            _ensure_wheel_tables(cursor)
             _ensure_plans_columns(cursor)
             _ensure_support_tickets_columns(cursor)
             _ensure_vpn_keys_schema(cursor)
@@ -1096,6 +1255,7 @@ def run_migration():
             _ensure_default_button_configs(cursor)
             _ensure_reset_subscription_button(cursor)
             _ensure_addon_devices_button(cursor)
+            _ensure_wheel_button(cursor)
             
 
             try:
@@ -1149,11 +1309,12 @@ def _ensure_default_button_configs(cursor: sqlite3.Cursor) -> None:
             ("buy_key", "🛒 Купить подписку", "buy_new_key", 2, 0, 3, 1),
             ("topup", "💳 Пополнить баланс", "top_up_start", 2, 1, 4, 1),
             ("referral", "🤝 Реферальная программа", "show_referral_program", 3, 0, 5, 2),
-            ("support", "🆘 Поддержка", "show_help", 4, 0, 6, 1),
-            ("about", "ℹ️ О проекте", "show_about", 4, 1, 7, 1),
-            ("speed", "⚡ Скорость", "user_speedtest_last", 5, 0, 8, 1),
-            ("howto", "❓ Как использовать", "howto_vless", 5, 1, 9, 1),
-            ("admin", "⚙️ Админка", "admin_menu", 6, 0, 10, 2),
+            ("wheel", "🎰 Колесо удачи", "wheel_open", 4, 0, 6, 2),
+            ("support", "🆘 Поддержка", "show_help", 5, 0, 7, 1),
+            ("about", "ℹ️ О проекте", "show_about", 5, 1, 8, 1),
+            ("speed", "⚡ Скорость", "user_speedtest_last", 6, 0, 9, 1),
+            ("howto", "❓ Как использовать", "howto_vless", 6, 1, 10, 1),
+            ("admin", "⚙️ Админка", "admin_menu", 7, 0, 11, 2),
         ]
         
         for button_id, text, callback_data, row_pos, col_pos, sort_order, button_width in main_menu_buttons:
@@ -1345,6 +1506,62 @@ def _ensure_addon_devices_button(cursor: sqlite3.Cursor) -> None:
         logging.info("Миграция: в key_info_menu добавлена кнопка 'addon_devices' (Докупить устройства)")
     except Exception as e:
         logging.warning(f"Миграция: не удалось добавить кнопку addon_devices в key_info_menu: {e}")
+
+# ==============================================
+
+
+# ===== _ENSURE_WHEEL_BUTTON =====
+def _ensure_wheel_button(cursor: sqlite3.Cursor) -> None:
+    """Кнопка колеса в главном меню для уже засеянных инсталляций.
+
+    Ставим её перед входом в админку — там же, где остальные развлекательные
+    пункты, а не последним пунктом после «Назад». Саму кнопку клавиатура
+    показывает только когда колесо включено в настройках.
+    """
+    try:
+        cursor.execute(
+            "SELECT 1 FROM button_configs WHERE menu_type = ? AND button_id = ? LIMIT 1",
+            ("main_menu", "wheel"),
+        )
+        if cursor.fetchone():
+            return
+
+        cursor.execute(
+            "SELECT row_position, sort_order FROM button_configs "
+            "WHERE menu_type = ? AND (button_id = ? OR callback_data = 'admin_menu') "
+            "AND is_active = 1 ORDER BY sort_order LIMIT 1",
+            ("main_menu", "admin"),
+        )
+        anchor = cursor.fetchone()
+
+        if anchor:
+            row_pos, sort_order = anchor[0] or 0, anchor[1] or 0
+            cursor.execute(
+                "UPDATE button_configs SET row_position = row_position + 1 WHERE menu_type = ? AND row_position >= ?",
+                ("main_menu", row_pos),
+            )
+            cursor.execute(
+                "UPDATE button_configs SET sort_order = sort_order + 1 WHERE menu_type = ? AND sort_order >= ?",
+                ("main_menu", sort_order),
+            )
+        else:
+            cursor.execute(
+                "SELECT COALESCE(MAX(row_position), -1), COALESCE(MAX(sort_order), -1) "
+                "FROM button_configs WHERE menu_type = ?",
+                ("main_menu",),
+            )
+            row = cursor.fetchone()
+            row_pos = (row[0] if row and row[0] is not None else -1) + 1
+            sort_order = (row[1] if row and row[1] is not None else -1) + 1
+
+        cursor.execute("""
+            INSERT OR IGNORE INTO button_configs
+            (menu_type, button_id, text, callback_data, url, row_position, column_position, sort_order, button_width, is_active)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, 1)
+        """, ("main_menu", "wheel", "🎰 Колесо удачи", "wheel_open", row_pos, 0, sort_order, 2))
+        logging.info("Миграция: в main_menu добавлена кнопка 'wheel' (Колесо удачи)")
+    except Exception as e:
+        logging.warning(f"Миграция: не удалось добавить кнопку колеса: {e}")
 
 # ==============================================
 

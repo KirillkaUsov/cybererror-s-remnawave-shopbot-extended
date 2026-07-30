@@ -442,8 +442,100 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
         common_data = get_common_template_data()
         webapp = rw_repo.get_webapp_settings()
         ssh_targets = rw_repo.get_all_ssh_targets()
-        return render_template('other.html', webapp=webapp, ssh_targets=ssh_targets, **common_data)
+        db = rw_repo.database
+        wheel = {
+            'prizes': db.get_wheel_prizes(active_only=False),
+            'spins': db.get_wheel_spins(limit=30),
+            'stats': db.get_wheel_stats(),
+        }
+        return render_template('other.html', webapp=webapp, ssh_targets=ssh_targets, wheel=wheel, **common_data)
     # ===== Конец роута other_page =====
+
+    # ===== КОЛЕСО УДАЧИ: СЕКТОРА И НАСТРОЙКИ =====
+    # Состав колеса и вероятности задаются здесь; розыгрыш их только читает
+    @flask_app.route('/other/wheel/prize/add', methods=['POST'])
+    @login_required
+    def wheel_prize_add():
+        try:
+            label = (request.form.get('label') or '').strip()
+            prize_type = (request.form.get('prize_type') or 'days').strip()
+            if not label:
+                return jsonify({'ok': False, 'error': 'Название сектора обязательно'}), 400
+            if prize_type not in ('days', 'balance', 'nothing'):
+                return jsonify({'ok': False, 'error': 'Неизвестный тип приза'}), 400
+            amount = float(request.form.get('amount') or 0)
+            weight = int(request.form.get('weight') or 1)
+            if weight < 1:
+                return jsonify({'ok': False, 'error': 'Вес должен быть не меньше 1'}), 400
+            if prize_type != 'nothing' and amount <= 0:
+                return jsonify({'ok': False, 'error': 'Укажите размер приза'}), 400
+            prize_id = rw_repo.database.add_wheel_prize(label, prize_type, amount, weight)
+            if not prize_id:
+                return jsonify({'ok': False, 'error': 'Не удалось добавить сектор'}), 500
+            return jsonify({'ok': True, 'prize_id': prize_id, 'message': 'Сектор добавлен'})
+        except ValueError:
+            return jsonify({'ok': False, 'error': 'Размер и вес должны быть числами'}), 400
+        except Exception as e:
+            logger.error(f"Колесо: ошибка добавления сектора: {e}")
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+    @flask_app.route('/other/wheel/prize/<int:prize_id>/edit', methods=['POST'])
+    @login_required
+    def wheel_prize_edit(prize_id):
+        try:
+            label = (request.form.get('label') or '').strip()
+            prize_type = (request.form.get('prize_type') or 'days').strip()
+            if not label:
+                return jsonify({'ok': False, 'error': 'Название сектора обязательно'}), 400
+            if prize_type not in ('days', 'balance', 'nothing'):
+                return jsonify({'ok': False, 'error': 'Неизвестный тип приза'}), 400
+            amount = float(request.form.get('amount') or 0)
+            weight = int(request.form.get('weight') or 1)
+            is_active = 1 if request.form.get('is_active') == 'true' else 0
+            if weight < 1:
+                return jsonify({'ok': False, 'error': 'Вес должен быть не меньше 1'}), 400
+            ok = rw_repo.database.update_wheel_prize(prize_id, label, prize_type, amount, weight, is_active)
+            return jsonify({'ok': ok, 'message': 'Сектор обновлён' if ok else 'Сектор не найден'})
+        except ValueError:
+            return jsonify({'ok': False, 'error': 'Размер и вес должны быть числами'}), 400
+        except Exception as e:
+            logger.error(f"Колесо: ошибка изменения сектора {prize_id}: {e}")
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+    @flask_app.route('/other/wheel/prize/<int:prize_id>/delete', methods=['POST'])
+    @login_required
+    def wheel_prize_delete(prize_id):
+        try:
+            # Пустое колесо крутить нечем — последний активный сектор не отдаём
+            rest = [p for p in (rw_repo.database.get_wheel_prizes(active_only=True) or [])
+                    if int(p.get('prize_id')) != prize_id]
+            if not rest:
+                return jsonify({'ok': False, 'error': 'Нельзя удалить последний активный сектор'}), 400
+            ok = rw_repo.database.delete_wheel_prize(prize_id)
+            return jsonify({'ok': ok, 'message': 'Сектор удалён' if ok else 'Сектор не найден'})
+        except Exception as e:
+            logger.error(f"Колесо: ошибка удаления сектора {prize_id}: {e}")
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+    @flask_app.route('/other/wheel/save', methods=['POST'])
+    @login_required
+    def wheel_save():
+        try:
+            enabled = '1' if request.form.get('enabled') == 'true' else '0'
+            hours = int(request.form.get('cooldown_hours') or 24)
+            if hours < 1:
+                return jsonify({'ok': False, 'error': 'Пауза не может быть меньше часа'}), 400
+            if enabled == '1' and not rw_repo.database.get_wheel_prizes(active_only=True):
+                return jsonify({'ok': False, 'error': 'Сначала добавьте хотя бы один активный сектор'}), 400
+            rw_repo.update_setting('wheel_enabled', enabled)
+            rw_repo.update_setting('wheel_cooldown_hours', str(hours))
+            return jsonify({'ok': True, 'message': 'Настройки колеса сохранены'})
+        except ValueError:
+            return jsonify({'ok': False, 'error': 'Пауза должна быть числом'}), 400
+        except Exception as e:
+            logger.error(f"Колесо: ошибка сохранения настроек: {e}")
+            return jsonify({'ok': False, 'error': str(e)}), 500
+    # ===== Конец роутов колеса удачи =====
 
     # ===== СОХРАНЕНИЕ НАСТРОЕК WEBAPP =====
     @flask_app.route('/other/webapp/save', methods=['POST'])

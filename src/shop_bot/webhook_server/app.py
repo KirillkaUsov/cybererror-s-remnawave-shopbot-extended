@@ -110,6 +110,9 @@ ALL_SETTINGS_KEYS = [
     "legal_contact_email", "legal_data_location", "legal_cross_border",
     "legal_site_domain", "legal_updated_at",
 
+    # колесо удачи: сектора лежат в отдельной таблице, здесь — общие настройки
+    "wheel_enabled", "wheel_cooldown_hours", "wheel_image",
+
     "main_menu_text", "howto_intro_text",
     "howto_android_text", "howto_ios_text", "howto_windows_text", "howto_linux_text",
 
