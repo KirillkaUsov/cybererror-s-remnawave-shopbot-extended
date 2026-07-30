@@ -162,6 +162,58 @@ def get_transaction_comment(user: types.User, action_type: str, value: any, host
 # ===== Конец функции get_transaction_comment =====
 
 
+
+# ===== ТЕКСТ ЭКРАНА КОЛЕСА =====
+# Иконки по типу приза: строчка «1 день — 25%» без них сливается в
+# однородный список, по которому не пробежаться взглядом.
+WHEEL_ICONS = {
+    'days': '📅', 'balance': '💰', 'promo_percent': '🏷',
+    'promo_fixed': '🏷', 'nothing': '🎲',
+}
+WHEEL_RULE = "━━━━━━━━━━━━━━━━━"
+
+def _wheel_text(st: dict, note: str | None = None) -> str:
+    if not st['enabled'] or st['reason'] in ('disabled', 'no_prizes'):
+        return (f"🎰 <b>Колесо удачи</b>\n\n"
+                f"<blockquote>{fortune_wheel.DECLINE_TEXT.get(st['reason'] or 'disabled')}</blockquote>")
+
+    parts = ["🎰 <b>Колесо удачи</b>"]
+    if note:
+        parts.append(f"<blockquote>{note}</blockquote>")
+
+    status = []
+    if st['tickets']:
+        status.append(f"🎟 <b>Билетов:</b> {st['tickets']}")
+    if st['wait_seconds'] > 0:
+        status.append(f"⏳ <b>Бесплатный прокрут через:</b> {fortune_wheel.format_wait(st['wait_seconds'])}")
+    else:
+        status.append("✨ <b>Бесплатный прокрут готов</b>")
+    parts.append("\n".join(status))
+
+    if st['pending']:
+        parts.append(f"🎁 <b>Не забрали приз:</b> {html.quote(str(st['pending']['label']))}\n"
+                     f"<i>Выберите подписку, к которой добавить дни.</i>")
+
+    # Шансы показываем честно: колесо, где неизвестно что и с какой
+    # вероятностью выпадает, доверия не вызывает
+    total = sum(p['weight'] for p in st['prizes']) or 1
+    rows = [f"{WHEEL_ICONS.get(p['prize_type'], '🎲')} {html.quote(str(p['label']))} — <b>{p['weight'] * 100 / total:.0f}%</b>"
+            for p in st['prizes']]
+    parts.append(f"{WHEEL_RULE}\n<b>Призы и шансы</b>\n" + "\n".join(rows))
+
+    earn = []
+    if st['tickets_per_purchase']:
+        earn.append(f"🛒 покупка подписки — <b>{st['tickets_per_purchase']}</b>")
+    if st['tickets_per_referral']:
+        earn.append(f"🤝 приглашённый друг — <b>{st['tickets_per_referral']}</b>")
+    if st['ticket_price'] > 0:
+        earn.append(f"💰 покупка за <b>{st['ticket_price']:.0f} ₽</b>")
+    if earn:
+        parts.append(f"{WHEEL_RULE}\n<b>Где брать билеты</b>\n" + "\n".join(earn))
+
+    return "\n\n".join(parts)
+# ===== Конец текста экрана колеса =====
+
 # ===== ЗАКАЗ БЕЗ ТАРИФА =====
 # Докупка устройств проходит по тем же платёжным шлюзам, что и подписка, но
 # тарифа в ней нет: цену считает device_addon по остатку срока. Чтобы не
@@ -1866,44 +1918,6 @@ def get_user_router() -> Router:
     # ===== КОЛЕСО УДАЧИ =====
     # Бесплатный прокрут раз в сутки плюс билеты: за покупку, за рефералов,
     # за баланс или выданные админом. Сектора и веса задаются в панели.
-    def _wheel_text(st: dict, note: str | None = None) -> str:
-        if not st['enabled'] or st['reason'] in ('disabled', 'no_prizes'):
-            return f"🎰 <b>Колесо удачи</b>\n\n{fortune_wheel.DECLINE_TEXT.get(st['reason'] or 'disabled')}"
-
-        lines = ["🎰 <b>Колесо удачи</b>", ""]
-
-        tickets = st['tickets']
-        if tickets:
-            word = keyboards.get_declension(tickets, ['билет', 'билета', 'билетов'])
-            lines.append(f"🎟 Билетов: <b>{tickets}</b> {word}")
-        if st['wait_seconds'] > 0:
-            lines.append(f"⏳ Бесплатный прокрут через <b>{fortune_wheel.format_wait(st['wait_seconds'])}</b>")
-        else:
-            lines.append("✅ Бесплатный прокрут доступен")
-
-        if st['pending']:
-            lines += ["", f"🎁 Не выдан приз: <b>{html.quote(str(st['pending']['label']))}</b>",
-                      "Выберите подписку, к которой добавить дни."]
-        lines.append("")
-
-        # Шансы показываем честно: колесо, где неизвестно что и с какой
-        # вероятностью выпадает, доверия не вызывает
-        total = sum(p['weight'] for p in st['prizes']) or 1
-        lines.append("<b>Что стоит на колесе</b>")
-        for p in st['prizes']:
-            lines.append(f"  {html.quote(str(p['label']))} — {p['weight'] * 100 / total:.0f}%")
-
-        earn = []
-        if st['tickets_per_purchase']:
-            earn.append(f"за покупку подписки — {st['tickets_per_purchase']}")
-        if st['tickets_per_referral']:
-            earn.append(f"за приглашённого друга — {st['tickets_per_referral']}")
-        if earn:
-            lines += ["", "<b>Как получить билеты</b>"] + [f"  • {e}" for e in earn]
-
-        text = "\n".join(lines)
-        return (note + "\n\n" + text) if note else text
-
     async def _render_wheel(message, user_id: int, note: str | None = None):
         st = fortune_wheel.state(user_id)
         await smart_edit_message(message, _wheel_text(st, note),

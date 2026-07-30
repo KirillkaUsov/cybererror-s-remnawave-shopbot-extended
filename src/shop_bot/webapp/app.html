@@ -236,32 +236,42 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .wheel-chip b{color:var(--text);font-weight:600}
 .wheel-chip--ready{border-color:var(--accent-line);background:var(--accent-soft);color:var(--text)}
 
-.wheel-stage{position:relative;display:grid;place-items:center;padding:4px 0 2px}
-.wheel-disc-wrap{position:relative;width:min(268px,74vw);aspect-ratio:1}
-/* Обод отдельным слоем: без него сектора упираются в фон и колесо выглядит
-   плоской диаграммой, а не колесом. */
-.wheel-rim{position:absolute;inset:0;border-radius:50%;padding:7px;
-  background:linear-gradient(160deg,rgba(236,238,242,.16),rgba(236,238,242,.03) 45%,rgba(0,0,0,.5));
-  box-shadow:0 18px 40px rgba(0,0,0,.45),inset 0 0 0 1px rgba(236,238,242,.06)}
-.wheel-disc{position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;
-  transition:transform 4s cubic-bezier(.12,.72,.12,1);transform:rotate(0deg);
-  box-shadow:inset 0 0 26px rgba(0,0,0,.45)}
-.wheel-disc.is-idle{transition:none}
-.wheel-label{position:absolute;transform:translate(-50%,-50%);
-  font-size:11.5px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;pointer-events:none;
-  text-shadow:0 1px 2px rgba(0,0,0,.18)}
-.wheel-pin{position:absolute;top:-3px;left:50%;transform:translateX(-50%);z-index:2;
-  width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;
-  border-top:20px solid var(--accent);filter:drop-shadow(0 3px 5px rgba(0,0,0,.6))}
-.wheel-hub{position:absolute;inset:36%;border-radius:50%;z-index:2;display:grid;place-items:center;
-  font-size:21px;background:radial-gradient(circle at 32% 28%,var(--surface-2),#0c0d10);
-  border:1px solid var(--line-2);box-shadow:0 6px 18px rgba(0,0,0,.55)}
-.wheel-disc-wrap.is-spinning .wheel-hub{animation:wheel-shake .35s linear infinite}
-@keyframes wheel-shake{0%,100%{transform:translate(0,0)}50%{transform:translate(.6px,-.6px)}}
+/* Барабан вместо колеса: на телефоне вертикальная лента карточек читается
+   лучше круга — приз виден целиком, а не подписью в сектор шириной в палец. */
+.reel{--reel-card:76px;position:relative;height:calc(var(--reel-card) * 3);overflow:hidden;
+  border-radius:var(--r-lg);border:1px solid var(--line);background:rgba(0,0,0,.26)}
+.reel__strip{will-change:transform;transform:translateY(0)}
+.reel__strip.is-moving{transition:transform var(--reel-time,4s) cubic-bezier(.16,.66,.14,1)}
+.reel__card{height:var(--reel-card);display:flex;align-items:center;gap:12px;padding:0 14px;
+  border-bottom:1px solid rgba(236,238,242,.05)}
+.reel__icon{width:42px;height:42px;border-radius:var(--r-md);flex:0 0 auto;display:grid;place-items:center;
+  font-size:20px;background:rgba(236,238,242,.05);border:1px solid var(--line)}
+.reel__body{min-width:0;flex:1}
+.reel__body b{display:block;font-size:15px;font-weight:700;letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reel__body span{display:block;font-size:12px;color:var(--dim);margin-top:2px}
+.reel__card--blank .reel__body b{color:var(--dim)}
+/* Окно выбора: рамка по центру и затемнение сверху/снизу — иначе непонятно,
+   какая именно карточка считается выпавшей. */
+.reel__window{position:absolute;left:0;right:0;top:var(--reel-card);height:var(--reel-card);
+  pointer-events:none;border-top:1px solid var(--accent-line);border-bottom:1px solid var(--accent-line);
+  background:linear-gradient(90deg,rgba(215,171,255,.10),transparent 22%,transparent 78%,rgba(215,171,255,.10))}
+.reel__window::before,.reel__window::after{content:'';position:absolute;top:50%;width:0;height:0;
+  transform:translateY(-50%);border-top:7px solid transparent;border-bottom:7px solid transparent}
+.reel__window::before{left:0;border-left:8px solid var(--accent)}
+.reel__window::after{right:0;border-right:8px solid var(--accent)}
+.reel__fade{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,var(--surface-2) 0%,transparent 26%,transparent 74%,var(--surface-2) 100%);
+  opacity:.85}
+.reel.is-spinning .reel__window{border-color:var(--accent);box-shadow:0 0 22px rgba(215,171,255,.14) inset}
+
 
 .wheel-result{margin:16px 0 0;padding:13px 14px;border-radius:var(--r-md);text-align:center;
   border:1px solid var(--line);background:rgba(236,238,242,.03);font-size:13.5px;color:var(--dim);min-height:22px}
-.wheel-result b{display:block;font-size:15px;color:var(--text);margin-bottom:3px}
+/* блочный только заголовок: <b> внутри текста приза (сумма, срок) должен
+   оставаться в строке, иначе фраза рвётся на куски */
+.wheel-result > b:first-child{display:block;font-size:15px;color:var(--text);margin-bottom:3px}
+.wheel-result b{color:var(--text);font-weight:600}
 .wheel-result--win{border-color:var(--accent-line);background:var(--accent-soft);color:var(--text)}
 .wheel-result code{font-family:var(--mono);font-size:13px;color:var(--accent)}
 .wheel-odds{margin-top:12px}
@@ -270,7 +280,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .wheel-odds summary::before{content:'▸ ';color:var(--faint)}
 .wheel-odds[open] summary::before{content:'▾ '}
 .wheel-odds__row{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--dim);padding:4px 0}
-.wheel-odds__row i{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.wheel-odds__row i{font-style:normal;width:18px;text-align:center;flex:0 0 auto}
 .wheel-odds__row b{margin-left:auto;color:var(--text);font-weight:600;font-family:var(--mono);font-size:11.5px}
 .wheel-earn{margin-top:12px;font-size:12.5px;color:var(--dim);line-height:1.7}
 .wheel-keys{display:grid;gap:8px;margin-top:4px}
@@ -948,7 +958,7 @@ const state = {
   host: null, plan: null, tier: null, method: null,
   /* заказ на докупку устройств: живёт отдельно от каталога, тарифа в нём нет */
   addon: null,
-  wheel: null, wheelSectors: null,
+  wheel: null, wheelPrizes: null,
   methods: [], balance: 0, useBalance: false, topupMethod: null,
   promoPreview: null,
   pendingPaymentId: null, pendingPaymentKind: 'order',
@@ -1382,42 +1392,84 @@ function pickAddon(keyId, devices, price){
 /* Диск рисуется по секторам, которые прислал сервер, а результат приходит
    оттуда же — крутим анимацию, уже зная, куда встать. Иначе выигрыш можно
    было бы подделать на клиенте. */
-const WHEEL_SECTOR_COLORS = [
-  {bg:'#d7abff', ink:'#2a1740'}, {bg:'#4d2b68', ink:'#f4e9ff'},
-  {bg:'#ebd8ff', ink:'#2a1740'}, {bg:'#6b3d90', ink:'#f4e9ff'},
-  {bg:'#c48ff2', ink:'#241436'}, {bg:'#8b52b8', ink:'#f9f4ff'},
-  {bg:'#f4e9ff', ink:'#2a1740'}, {bg:'#a96fd9', ink:'#1d1029'},
-];
-let wheelTurns = 0;
+/* Барабан: карточки призов проматываются вертикально и тормозят на той,
+   которую выбрал сервер. Шансы задаются весами в панели — здесь они влияют
+   только на то, что мелькает по дороге; результат приходит с сервера. */
+const REEL_CARD_H = 76;
+const REEL_VISIBLE = 3;
+const REEL_RUNWAY = 34;          /* сколько карточек пролетает до нужной */
+const REEL_TIME_MS = 4200;
 
-function wheelSectors(prizes){
+const PRIZE_FACE = {
+  days:          {icon:'📅', note:'дни к подписке'},
+  balance:       {icon:'💰', note:'на баланс'},
+  promo_percent: {icon:'🏷', note:'промокод на скидку'},
+  promo_fixed:   {icon:'🏷', note:'промокод на скидку'},
+  nothing:       {icon:'🎲', note:'в этот раз мимо'},
+};
+function prizeFace(p){ return PRIZE_FACE[p && p.prize_type] || PRIZE_FACE.nothing; }
+
+function wheelPrizes(prizes){
   const total = prizes.reduce((s,p) => s + Number(p.weight||0), 0) || 1;
-  let from = 0;
-  return prizes.map((p, i) => {
-    const size = Number(p.weight||0) * 360 / total;
-    const c = WHEEL_SECTOR_COLORS[i % WHEEL_SECTOR_COLORS.length];
-    const sector = { label: p.label, bg: c.bg, ink: c.ink, from, to: from + size,
-                     mid: from + size / 2, size, chance: Number(p.weight||0) * 100 / total };
-    from += size;
-    return sector;
-  });
+  return prizes.map(p => ({ ...p, chance: Number(p.weight||0) * 100 / total }));
 }
-function wheelDiscHtml(sectors){
-  const grad = sectors.map(s => `${s.bg} ${s.from.toFixed(2)}deg ${s.to.toFixed(2)}deg`).join(',');
-  /* Подписи ставим на сами сектора: легенда под колесом заставляет
-     сопоставлять цвета глазами. Позицию считаем тригонометрией и держим
-     текст горизонтальным — повёрнутый вдоль радиуса встаёт вверх ногами
-     на нижней половине колеса. */
-  const labels = sectors.map(s => {
-    if(s.size < 20) return '';
-    const short = s.label.length > 12 ? s.label.slice(0, 11) + '…' : s.label;
-    const rad = (s.mid - 90) * Math.PI / 180;
-    const x = (50 + 30 * Math.cos(rad)).toFixed(2);
-    const y = (50 + 30 * Math.sin(rad)).toFixed(2);
-    return `<span class="wheel-label" style="color:${s.ink};left:${x}%;top:${y}%">${esc(short)}</span>`;
-  }).join('');
-  return `<div class="wheel-disc" id="wheelDisc" style="background:conic-gradient(${grad})">${labels}</div>`;
+/* случайный приз с учётом весов — только для «мусора», который пролетает
+   мимо окна: что выпало на самом деле, решает сервер */
+function reelFiller(prizes){
+  const total = prizes.reduce((s,p) => s + Number(p.weight||0), 0) || 1;
+  let roll = Math.random() * total;
+  for(const p of prizes){ roll -= Number(p.weight||0); if(roll <= 0) return p; }
+  return prizes[prizes.length - 1];
 }
+function reelCardHtml(p){
+  const face = prizeFace(p);
+  const blank = (p.prize_type || 'nothing') === 'nothing';
+  return `<div class="reel__card${blank ? ' reel__card--blank' : ''}">
+    <span class="reel__icon">${face.icon}</span>
+    <span class="reel__body"><b>${esc(p.label || '')}</b><span>${esc(face.note)}</span></span>
+  </div>`;
+}
+function reelHtml(prizes){
+  /* стартовая лента: показываем сразу нормальные карточки, чтобы до первого
+     прокрута барабан не выглядел пустым */
+  const cards = [];
+  for(let i = 0; i < REEL_VISIBLE + 1; i++) cards.push(prizes[i % prizes.length]);
+  return `<div class="reel" id="wheelReel" style="--reel-card:${REEL_CARD_H}px">
+      <div class="reel__strip" id="wheelStrip">${cards.map(reelCardHtml).join('')}</div>
+      <div class="reel__fade"></div>
+      <div class="reel__window"></div>
+    </div>`;
+}
+/* Прокрут: собираем ленту из случайных карточек и ставим выигрыш в конец,
+   потом одним переходом доводим его до окна выбора. */
+function reelSpinTo(prizes, winner){
+  const strip = $('wheelStrip');
+  const reel = $('wheelReel');
+  if(!strip) return Promise.resolve();
+
+  const cards = [];
+  for(let i = 0; i < REEL_RUNWAY; i++) cards.push(reelFiller(prizes));
+  cards.push(winner);
+  /* хвост после выигрыша: без него под окном видна пустота */
+  for(let i = 0; i < REEL_VISIBLE; i++) cards.push(reelFiller(prizes));
+
+  strip.classList.remove('is-moving');
+  strip.style.transform = 'translateY(0)';
+  strip.innerHTML = cards.map(reelCardHtml).join('');
+  void strip.offsetHeight;                       /* сбрасываем анимацию */
+
+  reel.classList.add('is-spinning');
+  strip.style.setProperty('--reel-time', REEL_TIME_MS + 'ms');
+  strip.classList.add('is-moving');
+  /* окно — вторая строка сверху, поэтому вычитаем одну карточку */
+  strip.style.transform = `translateY(-${(cards.length - REEL_VISIBLE - 1) * REEL_CARD_H}px)`;
+
+  return new Promise(resolve => setTimeout(() => {
+    reel.classList.remove('is-spinning');
+    resolve();
+  }, REEL_TIME_MS + 120));
+}
+
 async function openWheel(){
   openModal('wheelModal');
   $('wheelBody').innerHTML = '<div class="card skeleton" style="min-height:200px"></div>';
@@ -1449,19 +1501,16 @@ function renderWheel(d, resultHtml){
      подписку, крутить нельзя, и объяснить это надо первым делом */
   if(d.pending){ renderWheelChoice(d.pending); return; }
 
-  const sectors = wheelSectors(d.prizes || []);
-  state.wheelSectors = sectors;
+  const prizes = wheelPrizes(d.prizes || []);
+  state.wheelPrizes = prizes;
   $('wheelSub').textContent = d.enabled
     ? `Бесплатно раз в ${d.cooldown_hours} ч, а ещё по билету в любой момент`
     : (d.note || 'Колесо выключено');
   $('wheelBody').innerHTML = wheelChips(d)
-    + `<div class="wheel-stage"><div class="wheel-disc-wrap" id="wheelWrap">
-         <div class="wheel-rim">${wheelDiscHtml(sectors)}</div>
-         <div class="wheel-pin"></div><div class="wheel-hub">🎰</div>
-       </div></div>`
+    + reelHtml(prizes)
     + `<div class="wheel-result" id="wheelResult">${resultHtml || 'Крутите — и посмотрим, что выпадет.'}</div>`
-    + `<details class="wheel-odds"><summary>Шансы секторов</summary>${
-        sectors.map(x => `<div class="wheel-odds__row"><i style="background:${x.bg}"></i>${esc(x.label)}<b>${x.chance.toFixed(1)}%</b></div>`).join('')
+    + `<details class="wheel-odds"><summary>Шансы призов</summary>${
+        prizes.map(x => `<div class="wheel-odds__row"><i>${prizeFace(x).icon}</i>${esc(x.label)}<b>${x.chance.toFixed(1)}%</b></div>`).join('')
       }</details>`
     + wheelEarnHtml(d);
 
@@ -1503,26 +1552,18 @@ async function claimWheelDays(keyId){
 async function spinWheel(){
   const btn = $('wheelSpinBtn');
   btn.disabled = true; btn.textContent = 'Крутим…';
-  const wrap = $('wheelWrap');
-  if(wrap) wrap.classList.add('is-spinning');
   try{
     const d = await api('/api/wheel/spin', { method:'POST', headers: JSON_H });
     if(!d.ok){
-      if(wrap) wrap.classList.remove('is-spinning');
       $('wheelResult').innerHTML = `<b>${esc(d.error || 'Сейчас крутить нельзя')}</b>`;
       btn.disabled = false;
       return openWheel();
     }
-    const sectors = state.wheelSectors || [];
-    const target = sectors.find(s => s.label === d.label) || sectors[0];
-    const disc = $('wheelDisc');
-    /* стрелка сверху: доводим середину нужного сектора до 0° и добавляем
-       несколько полных оборотов, чтобы это выглядело как настоящий прокрут */
-    wheelTurns += 6;
-    if(disc && target) disc.style.transform = `rotate(${wheelTurns * 360 - target.mid}deg)`;
+    const prizes = state.wheelPrizes || [];
+    const winner = prizes.find(p => p.label === d.label)
+                || { label: d.label, prize_type: d.prize_type, amount: d.amount };
     haptic();
-    await new Promise(r => setTimeout(r, 4100));
-    if(wrap) wrap.classList.remove('is-spinning');
+    await reelSpinTo(prizes.length ? prizes : [winner], winner);
 
     if(d.needs_choice){
       haptic();
@@ -1542,7 +1583,8 @@ async function spinWheel(){
     btn.disabled = false;
     refreshWheelButton(st);
   }catch(e){
-    if(wrap) wrap.classList.remove('is-spinning');
+    const reel = $('wheelReel');
+    if(reel) reel.classList.remove('is-spinning');
     $('wheelResult').innerHTML = `<b>${esc(e.message)}</b>`;
     btn.disabled = false; btn.textContent = 'Крутить';
   }
