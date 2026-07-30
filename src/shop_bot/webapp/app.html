@@ -49,8 +49,11 @@
      по номиналу и между ними просвечивает пиксель фона */
   --tabbar-real:calc(var(--tabbar-h) + var(--safe-b));
   --rail:252px;
-  --safe-t:max(env(safe-area-inset-top),0px);
-  --safe-b:max(env(safe-area-inset-bottom),0px);
+  /* Вырез экрана Telegram внутри вебвью не отдаёт: env(safe-area-inset-*)
+     там нулевой даже в полноэкранном режиме, где поверх страницы висят
+     кнопки «Закрыть» и меню. Настоящие величины приносит JS в --inset-*. */
+  --safe-t:max(env(safe-area-inset-top),var(--inset-t,0px));
+  --safe-b:max(env(safe-area-inset-bottom),var(--inset-b,0px));
   --app-h:100dvh;
   color-scheme:dark;
 }
@@ -157,8 +160,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .btn--sm{min-height:38px;padding:8px 14px;font-size:13px;border-radius:var(--r-sm)}
 .btn--block{width:100%}
 .btn--icon{min-height:44px;min-width:44px;padding:0;border-radius:var(--r-md)}
+/* доли равные, иначе ширина кнопки зависит от длины подписи и точка
+   раздела гуляет от строки к строке — карточка выглядит косой */
 .btn-row{display:flex;gap:8px;flex-wrap:wrap}
-.btn-row .btn{flex:1 1 auto;min-width:104px}
+.btn-row .btn{flex:1 1 0;min-width:104px}
 .btn.is-copied,.btn.is-copied:hover{background:var(--ok-soft);border:1px solid var(--ok-line);color:var(--ok)}
 .info-row.is-copied .info-row__main b{color:var(--ok)}
 
@@ -202,13 +207,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .sub-card__link code{min-width:0;flex:1;font-family:var(--mono);font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* прижимаем действия к низу — в сетке карточки выравниваются по одной линии */
 .sub-card__actions{display:flex;flex-direction:column;gap:8px;margin-top:auto}
-/* «Открыть» держит свою ширину, чтобы строка не переносилась, когда кнопка
-   копирования на пару секунд меняет подпись */
+/* подписи не переносим: кнопка копирования на пару секунд меняет текст,
+   и строка не должна от этого прыгать */
 .link-actions .btn{white-space:nowrap}
-.link-actions .btn--primary{flex:1 1 auto;min-width:0}
-/* ...но если строка всё-таки перенеслась (узкие экраны), «Открыть» занимает
-   свою строку целиком, а не висит огрызком слева */
-.link-actions .btn--ghost{flex:1 0 auto;min-width:0}
 
 /* ---------- catalog ---------- */
 .buy-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
@@ -434,7 +435,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   .shell{flex-direction:row;align-items:stretch}
   .sidenav{
     display:flex;flex-direction:column;width:var(--rail);flex:0 0 var(--rail);
-    padding:22px 14px 14px;gap:2px;border-right:1px solid var(--line);
+    /* в полноэкранном режиме кнопки Telegram висят и над боковым меню */
+    padding:calc(22px + var(--safe-t)) 14px calc(14px + var(--safe-b));
+    gap:2px;border-right:1px solid var(--line);
     height:var(--app-h);overflow-y:auto;background:var(--bg-elev);
   }
   .sidenav__brand{display:flex;align-items:center;gap:11px;padding:4px 10px 22px}
@@ -1095,7 +1098,7 @@ function keyCardHtml(k){
     <div class="sub-card__link"><svg class="icon icon--xs" style="color:var(--faint)"><use href="#ic-link"/></svg><code>${esc(k.sub_url || 'Ссылка появится после синхронизации')}</code></div>
     <div class="sub-card__actions">
       <div class="btn-row link-actions">
-        <button class="btn btn--primary" id="copyBtn-${Number(k.key_id)}" onclick="copySub(${Number(k.key_id)})"><svg class="icon icon--sm"><use href="#ic-copy"/></svg>Копировать ссылку</button>
+        <button class="btn btn--primary" id="copyBtn-${Number(k.key_id)}" onclick="copySub(${Number(k.key_id)})"><svg class="icon icon--sm"><use href="#ic-copy"/></svg>Копировать</button>
         <button class="btn btn--ghost" onclick="openSub(${Number(k.key_id)})"><svg class="icon icon--sm"><use href="#ic-link"/></svg>Открыть</button>
       </div>
       <div class="btn-row">
@@ -1108,7 +1111,7 @@ function keyCardHtml(k){
 }
 function copySub(id){
   const k = findKey(id);
-  return copyText(k && k.sub_url, 'Ссылка скопирована', null, $('copyBtn-' + id));
+  return copyText(k && k.sub_url, 'Скопировано', null, $('copyBtn-' + id));
 }
 /* ссылка подписки открывается во внешнем браузере: внутри Telegram —
    через openLink, иначе обычной вкладкой */
@@ -2053,6 +2056,22 @@ function syncViewportHeight(){
   if(h > 0) document.documentElement.style.setProperty('--app-h', h + 'px');
   syncTabbarHeight();
 }
+/* В полноэкранном режиме Telegram рисует «Закрыть» и меню поверх страницы,
+   а env(safe-area-inset-*) внутри вебвью остаётся нулевым — контент уезжал
+   под эти кнопки. Отступы спрашиваем у самого Telegram: safeAreaInset — это
+   вырез экрана, contentSafeAreaInset — место под его собственные контролы. */
+function applyTelegramInsets(){
+  if(!tg) return;
+  const px = v => { const n = Math.round(Number(v)); return n > 0 ? n : 0; };
+  const sa = tg.safeAreaInset || {};
+  const csa = tg.contentSafeAreaInset || {};
+  const root = document.documentElement.style;
+  /* нули не выставляем: тогда работает запасное значение из настроек для
+     старых клиентов, которые про эти поля ещё не знают */
+  [['--inset-t', px(sa.top) + px(csa.top)], ['--inset-b', px(sa.bottom) + px(csa.bottom)]]
+    .forEach(([name, value]) => value > 0 ? root.setProperty(name, value + 'px') : root.removeProperty(name));
+  syncTabbarHeight();
+}
 /* округляем вниз: панель оплаты должна перекрыть верхнюю границу таббара,
    а не оставить между ними щель в полпикселя */
 function syncTabbarHeight(){
@@ -2090,6 +2109,12 @@ function init(){
       /* внутренние скролл-контейнеры конфликтуют со свайпом-закрытием Telegram */
       tg.disableVerticalSwipes && tg.disableVerticalSwipes();
       if(tg.BackButton) tg.BackButton.onClick(goBack);
+      applyTelegramInsets();
+      /* размеры приходят не сразу и меняются на лету: поворот экрана, вход
+         и выход из полноэкранного режима */
+      ['safeAreaChanged','contentSafeAreaChanged','fullscreenChanged','viewportChanged']
+        .forEach(ev => tg.onEvent && tg.onEvent(ev, applyTelegramInsets));
+      setTimeout(applyTelegramInsets, 400);
     }catch(e){}
   }
 

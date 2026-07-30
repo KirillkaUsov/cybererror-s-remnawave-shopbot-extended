@@ -286,8 +286,10 @@ def _process_template_placeholders(html: str, user_id: int, webapp_settings: dic
         "{{ user_id }}": str(user_id),
         # В полноэкранном режиме Telegram рисует свои контролы поверх страницы —
         # резервируем место сверху через ту же переменную, что использует вся вёрстка.
+        # Запасной отступ для клиентов, которые ещё не сообщают свои
+        # safeAreaInset: настоящие величины приносит JS и перекрывает эту.
         "{{ tg_fullscreen_css }}": """
-    <style>:root{ --safe-t: max(env(safe-area-inset-top), 70px) !important; }</style>
+    <style>:root{ --inset-t: 70px; }</style>
         """ if webapp_settings.get("tg_fullscreen") else "",
     }
 
