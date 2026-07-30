@@ -46,6 +46,7 @@ import shop_bot.data_manager.remnawave_repository as rw_repo
 from shop_bot.data_manager.database import get_seller_user, get_device_tiers, get_host
 from shop_bot.modules import remnawave_api
 from shop_bot.modules import device_addon
+from shop_bot.modules import fortune_wheel
 from shop_bot.config import get_purchase_success_text
 import re
 from decimal import Decimal
@@ -1480,6 +1481,32 @@ async def api_device_addon(req: DeviceAddonRequest, auth: dict = Depends(webapp_
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка API device-addon для ключа {req.key_id}: {e}")
         return {"ok": False, "error": "Не удалось получить наборы устройств"}
+
+
+@app.get("/api/wheel/state")
+async def api_wheel_state(auth: dict = Depends(webapp_user)):
+    """Состав колеса и готовность к прокруту."""
+    try:
+        st = fortune_wheel.state(session_user_id(auth))
+        return {"ok": True, **st,
+                "note": None if st["can_spin"] else fortune_wheel.DECLINE_TEXT.get(st["reason"] or "cooldown"),
+                "wait_text": fortune_wheel.format_wait(st["wait_seconds"]) if st["wait_seconds"] else ""}
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка состояния колеса: {e}")
+        return {"ok": False, "error": "Колесо недоступно"}
+
+
+@app.post("/api/wheel/spin")
+async def api_wheel_spin(auth: dict = Depends(webapp_user)):
+    """Прокрут. Что выпало — решает сервер, клиент только отрисовывает."""
+    try:
+        result = await fortune_wheel.spin(session_user_id(auth))
+        if not result.get("ok"):
+            result["wait_text"] = fortune_wheel.format_wait(result.get("wait_seconds") or 0)
+        return result
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка прокрута колеса: {e}", exc_info=True)
+        return {"ok": False, "error": "Не удалось прокрутить колесо"}
 
 
 @app.post("/api/payment-methods")

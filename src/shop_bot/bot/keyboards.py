@@ -1030,7 +1030,7 @@ def create_admin_months_pick_keyboard(action: str = "gift") -> InlineKeyboardMar
     return builder.as_markup()
 
 
-def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_available: bool = False, is_admin: bool = False, balance: float = 0.0, key_id: int = None, connection_string: str = None, addon_devices: bool = False) -> InlineKeyboardMarkup:
+def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_available: bool = False, is_admin: bool = False, balance: float = 0.0, key_id: int = None, connection_string: str = None, addon_devices: bool = False, wheel_available: bool = False) -> InlineKeyboardMarkup:
     """Create a keyboard based on database configuration"""
     try:
         button_configs = get_button_configs(menu_type)
@@ -1083,6 +1083,11 @@ def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_availa
                 
 
                 if menu_type == "main_menu" and button_id == "admin" and not is_admin:
+
+                    continue
+
+                # Колесо показываем, только когда оно включено в настройках
+                if menu_type == "main_menu" and button_id == "wheel" and not wheel_available:
 
                     continue
 
@@ -1155,7 +1160,19 @@ def create_dynamic_keyboard(menu_type: str, user_keys: list = None, trial_availa
 
 def create_dynamic_main_menu_keyboard(user_keys: list, trial_available: bool, is_admin: bool, balance: float = 0.0) -> InlineKeyboardMarkup:
     """Create main menu keyboard using dynamic configuration"""
-    return create_dynamic_keyboard("main_menu", user_keys, trial_available, is_admin, balance)
+    return create_dynamic_keyboard("main_menu", user_keys, trial_available, is_admin, balance,
+                                   wheel_available=_wheel_enabled())
+
+def _wheel_enabled() -> bool:
+    return (get_setting("wheel_enabled") or "0").strip() == "1"
+
+def create_wheel_keyboard(can_spin: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if can_spin:
+        builder.button(text="🎰 Крутить колесо", callback_data="wheel_spin")
+    builder.button(text="⬅️ Назад в меню", callback_data="back_to_main_menu")
+    builder.adjust(1)
+    return builder.as_markup()
 
 def create_dynamic_admin_menu_keyboard() -> InlineKeyboardMarkup:
     """Create admin menu keyboard using dynamic configuration"""
