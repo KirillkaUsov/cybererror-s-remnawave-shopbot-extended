@@ -190,12 +190,21 @@ def pending_prizes(user_id: int) -> list[dict]:
 
 
 def history(user_id: int, limit: int = 20) -> list[dict]:
-    """История призов: что выпало, что забрано, что сгорело."""
+    """История призов: что забрано, что ждёт и что сгорело.
+
+    Пустые сектора сюда не попадают: «Мимо» — это не приз, а в списке
+    выигрышей они только мешают искать настоящие. В журнале прокрутов у
+    администратора они остаются.
+    """
     now = _now()
     database.expire_wheel_prizes(now.strftime(TIME_FORMAT))
-    rows = database.get_user_wheel_history(user_id, limit) or []
+    rows = database.get_user_wheel_history(user_id, limit * 3) or []
     out = []
     for row in rows:
+        if (row.get("prize_type") or PRIZE_NOTHING) == PRIZE_NOTHING or float(row.get("amount") or 0) <= 0:
+            continue
+        if len(out) >= limit:
+            break
         created = _parse(row.get("created_at"))
         out.append({
             "spin_id": row.get("spin_id"),
@@ -208,6 +217,8 @@ def history(user_id: int, limit: int = 20) -> list[dict]:
             "expires_text": (_parse(row.get("expires_at")) or created or now).strftime("%d.%m.%Y")
                             if row.get("expires_at") else "",
         })
+    # невыданные наверх: по ним нужно действие, остальное — просто память
+    out.sort(key=lambda p: (p["status"] != "pending", -int(p["spin_id"] or 0)))
     return out
 
 

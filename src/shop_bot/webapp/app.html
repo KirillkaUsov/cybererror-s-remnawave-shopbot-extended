@@ -230,6 +230,11 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .sidenav__count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:99px;
   background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:700;display:grid;place-items:center}
 
+.wheel-title{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.wheel-title h2{min-width:0}
+/* Лист колеса должен помещаться целиком: листать барабан, чтобы добраться
+   до кнопки, — худшее, что можно сделать с этим экраном. */
+.sheet--wheel{max-height:92dvh}
 .wheel-head{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .wheel-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;
   border:1px solid var(--line);background:rgba(236,238,242,.035);font-size:12.5px;color:var(--dim)}
@@ -265,6 +270,23 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   opacity:.85}
 .reel.is-spinning .reel__window{border-color:var(--accent);box-shadow:0 0 22px rgba(215,171,255,.14) inset}
 
+@media (max-height:760px){
+  .sheet--wheel{padding-top:6px}
+  .sheet--wheel .sheet__sub{display:none}
+  .reel{--reel-card:64px}
+  .wheel-result{padding:10px 12px;font-size:13px;margin-top:12px}
+  .wheel-head{margin-bottom:10px}
+}
+@media (max-height:670px){
+  .reel{--reel-card:54px}
+  .reel__icon{width:34px;height:34px;font-size:17px}
+  .reel__body b{font-size:13.5px}
+  .reel__body span{font-size:11px}
+}
+@media (max-width:380px){
+  .wheel-chip{padding:6px 10px;font-size:11.5px}
+}
+
 
 .wheel-result{margin:16px 0 0;padding:13px 14px;border-radius:var(--r-md);text-align:center;
   border:1px solid var(--line);background:rgba(236,238,242,.03);font-size:13.5px;color:var(--dim);min-height:22px}
@@ -283,6 +305,12 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .wheel-odds__row i{font-style:normal;width:18px;text-align:center;flex:0 0 auto}
 .wheel-odds__row b{margin-left:auto;color:var(--text);font-weight:600;font-family:var(--mono);font-size:11.5px}
 .wheel-earn{margin-top:12px;font-size:12.5px;color:var(--dim);line-height:1.7}
+.prizes-more{margin-top:4px}
+.prizes-more summary{cursor:pointer;list-style:none;padding:9px 0 2px;font-size:12.5px;color:var(--dim)}
+.prizes-more summary::-webkit-details-marker{display:none}
+.prizes-more summary::before{content:'▸ ';color:var(--faint)}
+.prizes-more[open] summary::before{content:'▾ '}
+.prizes-scroll{max-height:232px;overflow-y:auto;overscroll-behavior:contain}
 .prize-row{display:flex;align-items:center;gap:11px;padding:10px 0}
 .prize-row + .prize-row{border-top:1px solid var(--line)}
 .prize-row__main{min-width:0;flex:1}
@@ -678,6 +706,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 <symbol id="ic-x" viewBox="0 0 24 24"><path d="M5 5l14 14"/><path d="M19 5L5 19"/></symbol>
 <symbol id="ic-chevron-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
 <symbol id="ic-chevron-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+<symbol id="ic-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.4"/></symbol>
 <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3Z"/></symbol>
 <symbol id="ic-send" viewBox="0 0 24 24"><path d="M4 12L20 4 13 20l-2-7-7-1Z"/></symbol>
 <symbol id="ic-paperclip" viewBox="0 0 24 24"><path d="M8 12l6-6a3 3 0 1 1 4 4l-8 8a5 5 0 1 1-7-7l7-7"/></symbol>
@@ -858,19 +887,36 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 </div>
 
 <div class="modal" id="wheelModal" data-modal>
-  <div class="sheet">
+  <div class="sheet sheet--wheel">
     <div class="sheet__handle"></div>
-    <h2>Колесо удачи</h2>
+    <div class="wheel-title">
+      <h2>Колесо удачи</h2>
+      <button class="icon-btn" type="button" title="Шансы и билеты" onclick="openWheelInfo()">
+        <svg class="icon"><use href="#ic-info"/></svg>
+      </button>
+    </div>
     <div class="sheet__sub" id="wheelSub">Бесплатный прокрут</div>
     <div id="wheelBody"><div class="card skeleton" style="min-height:200px"></div></div>
-    <button class="btn btn--primary btn--block is-hidden" id="wheelSpinBtn" style="margin-top:12px" onclick="spinWheel()">Крутить</button>
-    <button class="btn btn--ghost btn--block is-hidden" id="wheelBuyBtn" style="margin-top:9px" onclick="buyWheelTicket()">Купить билет</button>
-    <label class="card switch-row is-hidden" id="wheelNotifyRow" style="margin-top:9px">
+    <div class="btn-row" id="wheelActions" style="margin-top:12px">
+      <button class="btn btn--primary is-hidden" id="wheelSpinBtn" onclick="spinWheel()">Крутить</button>
+      <button class="btn btn--ghost is-hidden" id="wheelBuyBtn" onclick="buyWheelTicket()">Купить билет</button>
+    </div>
+    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('wheelModal')">Закрыть</button>
+  </div>
+</div>
+
+<div class="modal" id="wheelInfoModal" data-modal>
+  <div class="sheet">
+    <div class="sheet__handle"></div>
+    <h2>Шансы и билеты</h2>
+    <div class="sheet__sub">Что стоит на барабане и как получить больше попыток</div>
+    <div id="wheelInfoBody"></div>
+    <label class="card switch-row" id="wheelNotifyRow" style="margin-top:12px">
       <span class="switch-row__main"><b>Напоминать о прокруте</b><span>Сообщение в боте, когда снова можно крутить</span></span>
       <input type="checkbox" id="wheelNotifyInput" onchange="toggleWheelNotify(this.checked)">
       <span class="switch"></span>
     </label>
-    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('wheelModal')">Закрыть</button>
+    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('wheelInfoModal')">Закрыть</button>
   </div>
 </div>
 
@@ -1399,6 +1445,7 @@ function pickAddon(keyId, devices, price){
 /* ===== призы из колеса ===== */
 /* Невыданный приз живёт ограниченное время, поэтому в списке всегда видно
    не только что выпало, но и до какого числа это можно забрать. */
+const PRIZES_VISIBLE = 3;
 async function loadPrizes(){
   try{
     const d = await api('/api/wheel/prizes');
@@ -1406,7 +1453,15 @@ async function loadPrizes(){
     toggle('prizesCard', !items.length);
     if(!items.length) return;
     state.prizeKeys = d.keys || [];
-    $('prizesList').innerHTML = items.map(prizeRowHtml).join('');
+    /* Показываем только верх списка: у постоянного игрока призов набирается
+       столько, что карточка занимала весь кабинет. Остальное — под
+       раскрывашкой с собственным скроллом. */
+    const head = items.slice(0, PRIZES_VISIBLE).map(prizeRowHtml).join('');
+    const rest = items.slice(PRIZES_VISIBLE);
+    $('prizesList').innerHTML = head + (rest.length
+      ? `<details class="prizes-more"><summary>Ещё ${rest.length} ${plural(rest.length,'приз','приза','призов')}</summary>
+           <div class="prizes-scroll">${rest.map(prizeRowHtml).join('')}</div></details>`
+      : '');
   }catch(e){ toggle('prizesCard', true); }
 }
 const PRIZE_STATUS = {
@@ -1486,7 +1541,7 @@ function reelHtml(prizes){
      прокрута барабан не выглядел пустым */
   const cards = [];
   for(let i = 0; i < REEL_VISIBLE + 1; i++) cards.push(prizes[i % prizes.length]);
-  return `<div class="reel" id="wheelReel" style="--reel-card:${REEL_CARD_H}px">
+  return `<div class="reel" id="wheelReel">
       <div class="reel__strip" id="wheelStrip">${cards.map(reelCardHtml).join('')}</div>
       <div class="reel__fade"></div>
       <div class="reel__window"></div>
@@ -1498,6 +1553,9 @@ function reelSpinTo(prizes, winner){
   const strip = $('wheelStrip');
   const reel = $('wheelReel');
   if(!strip) return Promise.resolve();
+  /* высоту карточки берём из вёрстки: на низких экранах она ужимается
+     медиазапросом, и фиксированное число промахнулось бы мимо приза */
+  const cardH = Math.round(reel.querySelector('.reel__card')?.getBoundingClientRect().height) || REEL_CARD_H;
 
   const cards = [];
   for(let i = 0; i < REEL_RUNWAY; i++) cards.push(reelFiller(prizes));
@@ -1518,7 +1576,7 @@ function reelSpinTo(prizes, winner){
      строка сверху, поэтому нужную карточку доводим до неё, вычтя одну.
      Раньше здесь стояла длина ленты, и барабан вставал на карточку после
      выигрыша — показывал один приз, а начислялся другой. */
-  strip.style.transform = `translateY(-${(winnerIndex - 1) * REEL_CARD_H}px)`;
+  strip.style.transform = `translateY(-${(winnerIndex - 1) * cardH}px)`;
 
   return new Promise(resolve => setTimeout(() => {
     reel.classList.remove('is-spinning');
@@ -1529,7 +1587,7 @@ function reelSpinTo(prizes, winner){
 async function openWheel(){
   openModal('wheelModal');
   $('wheelBody').innerHTML = '<div class="card skeleton" style="min-height:200px"></div>';
-  ['wheelSpinBtn','wheelBuyBtn','wheelNotifyRow'].forEach(id => toggle(id, true));
+  toggle('wheelActions', true);
   try{
     const d = await api('/api/wheel/state');
     if(!d.ok) throw new Error(d.error || 'Колесо недоступно');
@@ -1550,10 +1608,12 @@ function wheelChips(d){
 }
 function wheelEarnHtml(d){
   const ways = [];
-  if(d.tickets_per_purchase) ways.push(`покупка подписки — ${d.tickets_per_purchase} 🎟`);
-  if(d.tickets_per_referral) ways.push(`приглашённый друг — ${d.tickets_per_referral} 🎟`);
-  if(Number(d.ticket_price) > 0) ways.push(`покупка за ${money(d.ticket_price)}`);
-  return ways.length ? `<div class="wheel-earn"><b>Как получить билеты:</b><br>${ways.map(esc).join('<br>')}</div>` : '';
+  if(d.tickets_per_purchase) ways.push(`🛒 покупка подписки — ${d.tickets_per_purchase} 🎟`);
+  if(d.tickets_per_referral) ways.push(`🤝 приглашённый друг — ${d.tickets_per_referral} 🎟`);
+  if(Number(d.ticket_price) > 0) ways.push(`💰 покупка за ${money(d.ticket_price)}`);
+  if(!ways.length) return '';
+  return `<div class="section-label" style="margin-top:18px">Как получить билеты</div>`
+       + `<div class="wheel-earn">${ways.map(esc).join('<br>')}</div>`;
 }
 function renderWheel(d, resultHtml){
   const prizes = wheelPrizes(d.prizes || []);
@@ -1561,23 +1621,31 @@ function renderWheel(d, resultHtml){
   $('wheelSub').textContent = d.enabled
     ? `Бесплатно раз в ${d.cooldown_hours} ч, а ещё по билету в любой момент`
     : (d.note || 'Колесо выключено');
+  /* Шансы и способы добыть билет уехали в отдельный лист: вместе с ними
+     колесо не помещалось на экран и его приходилось листать. */
   $('wheelBody').innerHTML = wheelChips(d)
     + reelHtml(prizes)
-    + `<div class="wheel-result" id="wheelResult">${resultHtml || 'Крутите — и посмотрим, что выпадет.'}</div>`
-    + `<details class="wheel-odds"><summary>Шансы призов</summary>${
-        prizes.map(x => `<div class="wheel-odds__row"><i>${prizeFace(x).icon}</i>${esc(x.label)}<b>${x.chance.toFixed(1)}%</b></div>`).join('')
-      }</details>`
-    + wheelEarnHtml(d);
+    + `<div class="wheel-result" id="wheelResult">${resultHtml || 'Крутите — и посмотрим, что выпадет.'}</div>`;
 
   const spin = $('wheelSpinBtn');
   toggle('wheelSpinBtn', !d.can_spin);
-  if(d.can_spin) spin.textContent = d.source === 'free' ? 'Крутить бесплатно' : 'Крутить за билет';
+  if(d.can_spin) spin.textContent = 'Крутить';
   spin.disabled = false;
   toggle('wheelBuyBtn', !(Number(d.ticket_price) > 0));
-  $('wheelBuyBtn').textContent = `Купить билет — ${money(d.ticket_price)}`;
+  $('wheelBuyBtn').textContent = `Билет — ${money(d.ticket_price)}`;
   $('wheelBuyBtn').disabled = false;
-  toggle('wheelNotifyRow', false);
+  toggle('wheelActions', !(d.can_spin || Number(d.ticket_price) > 0));
+}
+/* второй лист: шансы, источники билетов и напоминания */
+function openWheelInfo(){
+  const d = state.wheel || {};
+  const prizes = state.wheelPrizes || wheelPrizes(d.prizes || []);
+  $('wheelInfoBody').innerHTML =
+    `<div class="section-label" style="margin-top:14px">Что стоит на барабане</div>`
+    + prizes.map(x => `<div class="wheel-odds__row"><i>${prizeFace(x).icon}</i>${esc(x.label)}<b>${x.chance.toFixed(1)}%</b></div>`).join('')
+    + wheelEarnHtml(d);
   $('wheelNotifyInput').checked = !!d.notify;
+  openModal('wheelInfoModal');
 }
 /* выбор подписки для выигранных дней */
 function renderWheelChoice(prize, keys){
@@ -1590,7 +1658,7 @@ function renderWheelChoice(prize, keys){
         <span class="wheel-key__main"><b>${esc(k.host_name || 'Подписка')}</b><span>действует до ${esc(k.expiry_text || '—')}</span></span>
         <svg class="icon icon--sm" style="color:var(--faint)"><use href="#ic-chevron-right"/></svg>
       </button>`).join('')}</div>`;
-  ['wheelSpinBtn','wheelBuyBtn','wheelNotifyRow'].forEach(id => toggle(id, true));
+  toggle('wheelActions', true);
 }
 async function claimWheelDays(keyId, spinId){
   try{
@@ -1649,7 +1717,7 @@ async function spinWheel(){
     const st = await api('/api/wheel/state');
     state.wheel = st;
     toggle('wheelSpinBtn', !st.can_spin);
-    if(st.can_spin) btn.textContent = st.source === 'free' ? 'Крутить бесплатно' : 'Крутить за билет';
+    if(st.can_spin) btn.textContent = 'Крутить';
     btn.disabled = false;
     refreshWheelButton(st);
   }catch(e){
