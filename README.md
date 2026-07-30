@@ -1,349 +1,123 @@
 # 🛍️ Remnawave ShopBot Extended
 
-> **Telegram-бот для полностью автоматизированной продажи VPN-конфигураций с веб-панелью управления**
->
-> Расширенный форк [CyberERROR/remnawave-shopbot](https://github.com/CyberERROR/remnawave-shopbot)
+> Форк [CyberERROR/remnawave-shopbot](https://github.com/CyberERROR/remnawave-shopbot) — Telegram Mini App для клиентов, вложения в поддержке, единая тёмная тема.
 
 <div align="center">
 
 [![License](https://img.shields.io/github/license/KirillkaUsov/cybererror-s-remnawave-shopbot-extended?label=license&style=flat-square)](LICENSE)
 [![Last Commit](https://img.shields.io/github/last-commit/KirillkaUsov/cybererror-s-remnawave-shopbot-extended?label=last%20commit&style=flat-square)](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/commits)
 [![Issues](https://img.shields.io/github/issues/KirillkaUsov/cybererror-s-remnawave-shopbot-extended?label=issues&style=flat-square)](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/issues)
-[![Stars](https://img.shields.io/github/stars/KirillkaUsov/cybererror-s-remnawave-shopbot-extended?label=stars&style=flat-square)](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/stargazers)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue?style=flat-square)](https://www.python.org/downloads/)
 
-[Установка](#️-быстрая-установка-под-ключ) • [Документация](#️-первичная-конфигурация) • [Платёжные системы](#-платёжные-системы) • [Скриншоты](#️-скриншоты) • [Поддержка](#-техническая-поддержка)
 </div>
 
 ---
 
-<p align="center">
-<img width="1344" height="768" alt="Generated Image January 12, 2026 - 9_18AM" src="https://github.com/user-attachments/assets/0bcb78da-8c45-42b9-ba78-93ab1905c85f" />
-</p>
+## Для кого это
 
-<div align="center">
+Для тех, кто **уже держит** оригинальный Remnawave ShopBot и хочет большего. Как устроен сам бот, как подключить платёжки, настроить хосты, тарифы и рефералку — всё это описано в [README оригинала](https://github.com/CyberERROR/remnawave-shopbot#readme) и здесь не дублируется. Ниже только то, чем этот форк от него отличается.
 
-**Форк проекта [Remnawave ShopBot](https://github.com/CyberERROR/remnawave-shopbot)** от [@CyberERROR](https://github.com/CyberERROR)
-
-</div>
+Если вы никогда не запускали оригинальный бот — начните с него, а сюда возвращайтесь, когда захотите мини-апп и остальное.
 
 ---
 
-## 📋 Описание
+## Что добавлено
 
-**Remnawave ShopBot Extended** — комплексное решение для автоматизированной продажи VPN-конфигураций через Telegram. Проект объединяет Telegram-бот с веб-панелью управления и Telegram Mini App для пользователей.
+### 🪟 Telegram Mini App для клиентов
 
-Это форк [CyberERROR/remnawave-shopbot](https://github.com/CyberERROR/remnawave-shopbot): вся базовая функциональность — оригинального автора, здесь она доработана под свои задачи.
+Полноценный кабинет вместо переписки с ботом: подписки с оставшимся сроком и списком устройств, покупка и продление, пополнение баланса, промокоды, инструкции по подключению, обращения в поддержку с перепиской. Работает и как мини-апп внутри Telegram, и как обычный сайт в браузере.
 
-### Чем отличается от оригинала
+Вход: `initData` внутри Telegram, а в браузере — Telegram, Email или ссылка подписки. Токен кабинета живёт в `localStorage` и куке.
 
-- 🪟 **Telegram Mini App** для пользователей: кабинет, покупка и продление ключей, инструкции, обращения в поддержку
-- 🔗 **Привязка Telegram-аккаунта** к веб-приложению через `initData`
-- 📎 **Вложения в поддержке**: фото, видео, голосовые и документы из обращений с локальными копиями и разделом управления в панели
-- 🎨 **Единая тёмная тема** панели и мини-аппа — сиреневый акцент вместо неонового зелёного
-- 📐 **Правки вёрстки** мини-аппа и панели под все размеры экранов, от 390 px до десктопа
+### 🔗 Привязка Telegram к веб-аккаунту
 
----
+Аккаунт, созданный по Email, привязывается к Telegram-профилю через `initData` — дальше это один и тот же пользователь с одним балансом и одними подписками.
 
-## ✨ Основные возможности
+### 📎 Вложения в поддержке
 
-- ✅ **Telegram-бот** с автоматизированной воронкой продаж (онбординг → платёж → конфиг)
-- ✅ **Веб-панель управления** хостами, тарифами, пользователями и платежами
-- ✅ **Платёжные системы**: YooKassa, YooMoney, Platega, CryptoBot, Heleket, TON Connect, Telegram Stars
-- ✅ **Спидтесты**: SSH-speedtest и Net-Probe для мониторинга серверов
-- ✅ **Реферальная система** с гибкими моделями начисления
-- ✅ **Техсаппорт** с внешним ботом или контактом
-- ✅ **Принудительная подписка** на канал/чат
-- ✅ **Админ-меню** для управления из Telegram
-- ✅ **Дашборд мониторинга** статистики и событий
-- ✅ **Конструктор кнопок** для кастомизации интерфейса
+Фото, видео, голосовые и документы из обращений сохраняются локально рядом с тикетом, а не живут одним `file_id` в Telegram. В панели — отдельный раздел с превью, размерами, поиском осиротевших файлов и чисткой по возрасту.
 
----
+### 🎨 Одна тёмная тема на всё
 
-## 🖼️ Скриншоты
+Панель, мини-апп и лендинг в одной палитре с сиреневым акцентом. Зелёного не осталось нигде: переопределены даже Tailwind-шкалы `green/emerald/teal/lime`, чтобы случайно забытый класс не дал неоновой зелени.
 
-<details>
-<summary><b>📸 Показать скриншоты</b></summary>
+### 📐 Вёрстка под реальные экраны
 
-<br>
+Мини-апп и панель проверены от 390 px до десктопа: без горизонтального скролла, без обрезанных заголовков, без разъезжающихся строк.
 
-| Веб-панель | |
-|:---:|:---:|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Settings](docs/screenshots/settings.png) |
-| Дашборд | Настройки |
-| ![Referrals](docs/screenshots/referrals.png) | ![Speedtests](docs/screenshots/speedtests.png) |
-| Рефералы | Спидтесты |
-| ![Monitor](docs/screenshots/monitor.png) | ![Button Design](docs/screenshots/button_design.png) |
-| Мониторинг системы | Конструктор кнопок |
+### 🛡 Мелочи, которые чинили по логам
 
-| Telegram-бот | |
-|:---:|:---:|
-| ![Main Menu](docs/screenshots/bot-main-menu.png) | ![Settings](docs/screenshots/bot-settings.png) |
-| Главное меню | Настройки и помощь |
-| ![Admin Menu](docs/screenshots/bot-admin-menu.png) | ![Preview](docs/screenshots/preview.png) |
-| Админ-меню | Предпросмотр меню |
-
-<sub>💡 Клик по картинке откроет оригинал в полном размере</sub>
-
-</details>
+- Шрифты раздаются со своего домена — внешний блокирующий `<link>` на `fonts.googleapis.com` не давал странице отрендериться там, откуда до Google не дозвониться.
+- Вход через Telegram в браузере — универсальная ссылка `https://t.me/…` вместо схемы `tg://`, которую iOS во встроенных браузерах не открывает вовсе.
+- Загрузка кабинета не может зависнуть навсегда: у опроса авторизации есть таймаут, у ошибок — текст и кнопка повтора.
+- Пароли кабинета хранятся хешем с солью, а не открытым текстом.
+- Правовые документы лежат в проекте и раздаются им же — ссылки больше не могут стать битыми.
 
 ---
 
-## ⚠️ Требования к серверу
+## Установка
 
-- 🐧 **ОС**: Ubuntu 20.04+ / Debian 11+
-- 🔑 **Доступ**: SSH с правами root
-- 🌐 **Домен**: A-запись должна указывать на IP сервера
-- 📦 **Remnawave Platform**: установлена на целевых хостах
-- 💾 **Ресурсы**: 1GB RAM, 10GB свободного места (минимум)
+Скриптов-установщиков здесь нет: они предполагали чистый сервер и разворачивали Docker, Nginx и Certbot с нуля. Если бот у вас уже работает, всё это уже есть.
 
----
-
-## 🛠️ Быстрая установка «под ключ»
-
-Установочный скрипт автоматически развернёт Docker, Nginx, Certbot, бота и панель.
-
-### 1️⃣ Подключитесь по SSH
-
-```bash
-ssh root@your-server-ip
-```
-
-### 2️⃣ Запустите установщик
-
-```bash
-curl -sSL https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/main/install.sh | bash
-```
-
-### 3️⃣ Следуйте инструкциям
-
-Установщик запросит:
-- **Домен** (например: `shop.example.com`)
-- **Email** для SSL-сертификата (Let's Encrypt)
-- **Порт вебхуков** (443 или 8443, рекомендуется 8443)
-
-Скрипт автоматически:
-- ✅ Установит Docker и Docker Compose
-- ✅ Настроит Nginx как reverse proxy
-- ✅ Выпустит SSL-сертификат через Certbot
-- ✅ Поднимет контейнеры с ботом и панелью
-- ✅ Настроит автообновление сертификата
-
-### 4️⃣ После установки
-
-```
-🎉 Установка завершена!
-
-Веб-панель:      https://shop.example.com/login
-Логин:           admin
-Пароль:          admin
-
-📝 Важно: Немедленно смените пароль в панели!
-```
-
----
-
-## 🔄 Управление и обновления
-
-Все команды выполняются в папке проекта:
+**Переехать с оригинала на этот форк** — без потери базы, ключей и настроек:
 
 ```bash
 cd /root/remnawave-shopbot
+git remote set-url origin https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended.git
+git pull
+docker compose up -d --build
 ```
 
-### 📋 Основные команды
+Схема БД доезжает сама при старте — новые таблицы и колонки создаются миграциями.
+
+**С нуля** — если сервер уже с Docker, Nginx и сертификатом:
 
 ```bash
-# Просмотр логов в реальном времени
-docker-compose logs -f
-
-# Перезапуск контейнеров
-docker-compose restart
-
-# Остановка (контейнеры остаются)
-docker-compose stop
-
-# Полная остановка с удалением контейнеров
-docker-compose down
-
-# Запуск в фоне
-docker-compose up -d
-
-# Пересборка и запуск
-docker-compose up -d --build
-
-# Очистка логов Docker
-truncate -s 0 /var/lib/docker/containers/*/*-json.log
+git clone https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended.git /root/remnawave-shopbot
+cd /root/remnawave-shopbot
+docker compose up -d --build
 ```
 
-### 🆕 Обновление до последней версии
+Дальше панель на `:1488`, мини-апп на `:8000` — их принято закрывать своим Nginx с сертификатом. Мини-аппу нужен отдельный домен (или путь) с валидным HTTPS, иначе Telegram его не откроет.
+
+Требования те же, что у оригинала: Ubuntu 20.04+ / Debian 11+, root по SSH, Remnawave на целевых хостах, 1 ГБ RAM.
+
+---
+
+## Обновление
 
 ```bash
-# Запустить установщик (загружает свежую версию)
-curl -sSL https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/main/install.sh | bash
-
+cd /root/remnawave-shopbot && git pull && docker compose up -d --build
 ```
 
-### 🔄 Пересоздать контейнеры в ручную
+Правки шаблонов и HTML подхватываются без пересборки — каталог проекта смонтирован в контейнер. Пересборка нужна только для изменений в Python и зависимостях.
+
+---
+
+## Что взять из оригинала
+
+Обновления автора не прилетают автоматически — он остался вторым remote:
+
 ```bash
-cd /root/remnawave-shopbot && docker-compose down && docker-compose up -d --build
-
+git remote add upstream https://github.com/CyberERROR/remnawave-shopbot.git
+git fetch upstream
+git merge upstream/main
 ```
 
-### 🗑 Полное удаление
-```bash
-# Запустить скрипт удаления (полностью удаляет бота и связанные контейнеры)
-curl -sSL https://raw.githubusercontent.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/main/uninstall.sh | bash
-```
+Конфликты будут в шаблонах панели и в `webapp/app.html` — там переписано больше всего.
 
 ---
 
-## ⚙️ Первичная конфигурация
+## Баги
 
-| 🛡️ Безопасность | 🤖 Telegram-бот |
-| :--- | :--- |
-| 1. Откройте панель: `https://domain.com/login`<br>2. Авторизуйтесь: `admin` / `admin`<br>3. **Немедленно смените** пароль в **Настройки → Настройки панели** | В **Настройки → Telegram параметры**:<br>• **Токен** — от [@BotFather](https://t.me/botfather)<br>• **Имя** — username бота<br>• **ID админа** — ваш ID от [@userinfobot](https://t.me/userinfobot) |
-| 🌐 Remnawave хосты | 💳 Тарифы и запуск |
-| В **Настройки → Управление хостами**:<br>• **URL**: `https://host.example.com:10443`<br>• **API**: доступы к Remnawave API<br>• **SSH**: адрес, порт, юзер (для спидтеста) | 1. Создайте пакеты в разделе **Тарифы**<br>2. Сохраните все настройки<br>3. Нажмите **«Запустить бота»** в шапке панели |
-
-<p align="center">🎊 <b>Готово! Бот принимает заказы.</b></p>
+Про то, что появилось в форке — [сюда](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/issues). Про то, что воспроизводится и в оригинале — [в апстрим](https://github.com/CyberERROR/remnawave-shopbot/issues), там это починят для всех.
 
 ---
 
-## 💳 Платёжные системы
+## Лицензия и происхождение
 
-Откройте **Настройки → Платёжные системы** и выберите нужные способы оплаты.
+[GPLv3](LICENSE) — та же, что у оригинала.
 
-| 🟡 YooKassa | 🔗 Platega |
-| :--- | :--- |
-| 1. Заполните поля:<br>• `yookassa_shop_id`<br>• `yookassa_secret_key`<br>• Почта для чеков (опц.)<br>2. Установите вебхук:<br><code>https://domain.com/yookassa-webhook</code> | 1. Заполните:<br>• `Merchant ID`<br>• `API Key`<br>2. Настройте вебхук:<br><code>https://domain.com/platega-webhook</code> |
-| 🤖 CryptoBot (Telegram Stars) | 💎 Heleket |
-| 1. `@CryptoBot` → **Crypto Pay**<br>2. Скопируйте токен в `cryptobot_token`<br>3. Включите вебхуки на:<br><code>https://domain.com/cryptobot-webhook</code> | Заполните обязательные поля:<br>• `heleket_merchant_id`<br>• `heleket_api_key`<br><br><i>Настройка вебхуков не требуется.</i> |
+Основан на [Remnawave ShopBot](https://github.com/CyberERROR/remnawave-shopbot) © [@CyberERROR](https://github.com/CyberERROR). Авторство базового кода принадлежит ему, изменения в форке — [@KirillkaUsov](https://github.com/KirillkaUsov).
 
-|⚡ TON Connect|
-| :--- |
-| ⚡ (опционально)
-Для отображения курсов и оплаты в TON: <br> - `ton_wallet_address` — адрес вашего кошелька <br> - `tonapi_key` — ключ API для получения актуальных курсов|
-
----
-
-## 🔗 Принудительная подписка
-
-Настройки в веб-панели (**Настройки → Общие**):
-
-| Параметр | Назначение |
-|:---|:---|
-| **force_subscription** | Включить обязательную подписку (`true`/`false`) |
-| **channel_url** | Ссылка на канал/группу для подписки |
-| **terms_url** | Ссылка на условия использования |
-| **privacy_url** | Ссылка на политику конфиденциальности |
-
-⚠️ **Важно**: Бот должен быть администратором канала для проверки подписки!
-
----
-
-## 🧪 Спидтесты и мониторинг
-
-Доступны **2 метода** проверки скорости:
-
-### 📊 SSH-Speedtest
-- Запускает `speedtest-cli` на удалённом сервере
-- Требует SSH доступа и установленного speedtest
-- **Автоустановка**: из админ-меню бота или веб-панели
-
-**Запуск:**
-```
-Бот:   Админ-меню → Speedtest → Выбрать хост
-Панель: Дашборд → Кнопка "Run speedtests"
-```
-
-### 🌐 Net-Probe
-- Проверка доступности и пинга HTTP
-- Без необходимости SSH
-- Более быстрый результат
-
-**Результаты**: автоматически сохраняются в БД и видны на дашборде у каждого хоста.
-
----
-
-## 🤝 Реферальная система
-
-**Основные параметры** в **Настройки → Общие**:
-
-### Типы начисления
-- 📊 **Процент с покупки** реферала (например, 10%)
-- 💰 **Фиксированная сумма** за каждую покупку
-- 🎁 **Бонус приглашающему** при регистрации реферала
-
-### Дополнительно
-- **Скидка реферала**: процент скидки для приглашённого
-- **Минимум вывода**: минимальная сумма для перевода средств
-
-### Рефссылка
-Автоматически генерируется в формате:
-```
-https://t.me/<bot_username>?start=ref_<telegram_id>
-```
-
----
-
-## 🆘 Техническая поддержка
-
-Доступны **2 режима** поддержки пользователей:
-
-### 1️⃣ Внешний саппорт-бот
-```
-Параметры:
-• support_bot_token    → токен бота поддержки
-• support_bot_username → username бота
-• support_text         → текст кнопки
-
-Пользователь переходит в отдельного бота по кнопке "Помощь"
-```
-
-### 2️⃣ Внешний контакт
-```
-Параметр:
-• support_user → username контакта (например: @admin)
-
-Кнопка ведёт в личные сообщения контакту
-```
-
-### Расширенные сценарии
-```
-Параметр:
-• support_forum_chat_id → ID форума/топиков для сложных вопросов
-```
-
----
-
-## 🐛 Баги и предложения
-
-Если вы нашли баг или хотите предложить улучшение:
-
-1. Проверьте [Issues](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/issues) — возможно, это уже известно
-2. Создайте новый issue с описанием:
-   - Что произошло
-   - Как это воспроизвести
-   - Ваша ОС и версия бота
-
-⚠️ Баги, которые воспроизводятся и в оригинальном проекте, лучше сообщать [в апстрим](https://github.com/CyberERROR/remnawave-shopbot/issues) — сюда стоит писать про то, что появилось в форке.
-
----
-
-## 📄 Лицензия и происхождение
-
-Проект распространяется по лицензии [GPLv3](LICENSE) — той же, что и оригинал.
-
-Основан на [Remnawave ShopBot](https://github.com/CyberERROR/remnawave-shopbot) © [@CyberERROR](https://github.com/CyberERROR). Авторство базового кода принадлежит ему, изменения в этом форке — [@KirillkaUsov](https://github.com/KirillkaUsov).
-
-Вы можете свободно использовать, изучать, модифицировать и распространять этот код при условии соблюдения лицензии.
-
----
-
-<div align="center">
-
-**Сделано с ❤️ для сообщества**
-
-[⭐ Звёздочка на GitHub](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended) поддержит развитие проекта
-
+Шрифты Golos Text и JetBrains Mono в `src/shop_bot/webapp/static/fonts/` — [SIL Open Font License 1.1](src/shop_bot/webapp/static/fonts/OFL.txt).

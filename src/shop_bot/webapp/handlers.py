@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 import aiohttp
 from shop_bot.data_manager.remnawave_repository import get_setting, get_user_keys, get_msk_time, get_webapp_settings, get_user, get_referral_count, get_all_hosts, list_squads, get_plans_for_host
+from shop_bot.data_manager import passwords
 import os
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
@@ -670,6 +671,91 @@ async def _render_main_page(user_id: int):
     return HTMLResponse(content=content)
 
 
+LEGAL_DOCS = {"terms": "Пользовательское соглашение",
+              "privacy": "Политика в отношении обработки персональных данных",
+              "consent": "Согласие на обработку персональных данных"}
+
+# реквизиты оператора берём из настроек: в коде их держать нельзя, а политика
+# без имени оператора юридически пуста — поэтому пропуск подсвечивается прямо
+# в документе, а не подставляется молча пустой строкой
+LEGAL_FIELDS = {
+    "operator_name":    ("legal_operator_name",    "укажите наименование оператора"),
+    "operator_inn":     ("legal_operator_inn",     "укажите ИНН"),
+    "operator_address": ("legal_operator_address", "укажите адрес"),
+    "contact_email":    ("legal_contact_email",    "укажите адрес для обращений"),
+    "data_location":    ("legal_data_location",    "укажите, где размещены базы данных"),
+}
+
+
+def _legal_placeholder(value: str | None, hint: str) -> tuple[str, bool]:
+    if value and str(value).strip():
+        return str(value).strip(), True
+    return f'<span class="todo">{hint}</span>', False
+
+
+def _render_legal(doc: str) -> HTMLResponse:
+    path = os.path.join(os.path.dirname(__file__), "legal", f"{doc}.html")
+    if doc not in LEGAL_DOCS or not os.path.exists(path):
+        return HTMLResponse(content="<h1>404</h1>", status_code=404)
+
+    with open(path, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    filled = True
+    values = {}
+    for key, (setting, hint) in LEGAL_FIELDS.items():
+        values[key], ok = _legal_placeholder(get_setting(setting), hint)
+        filled = filled and ok
+
+    app_domain = (get_webapp_settings().get("webapp_domen") or "").strip() or "домен веб-приложения"
+    bot_username = (get_setting("telegram_bot_username") or "").lstrip("@")
+
+    # трансграничная передача (ст. 12 152-ФЗ) зависит от того, где стоят серверы,
+    # поэтому текст раздела задаётся настройкой, а не выдумывается
+    cross_border = (get_setting("legal_cross_border") or "").strip() or (
+        '<span class="todo">опишите, передаются ли данные за пределы Российской '
+        'Федерации, и если да — в какие страны</span>')
+
+    notice = ""
+    if not filled:
+        notice = ('<p class="notice"><b>Черновик.</b> В документе не заполнены '
+                  'реквизиты оператора — они задаются в настройках панели. '
+                  'Публиковать документ в таком виде нельзя: политика без '
+                  'указания оператора не соответствует статье 18.1 152-ФЗ.</p>')
+
+    values.update({
+        "service_name": get_webapp_settings().get("webapp_title") or get_setting("panel_brand_title") or "Сервис",
+        "app_domain": app_domain,
+        "site_domain": (get_setting("legal_site_domain") or "").strip() or app_domain,
+        "bot_username": f"@{bot_username}" if bot_username else "бот не настроен",
+        "updated_at": (get_setting("legal_updated_at") or "").strip() or get_msk_time().strftime("%d.%m.%Y"),
+        "cross_border": cross_border,
+        "draft_notice": notice,
+    })
+
+    for key, value in values.items():
+        html = html.replace(f"{{{{ {key} }}}}", value)
+    return HTMLResponse(content=html)
+
+
+@app.get("/legal/{doc}", response_class=HTMLResponse)
+async def legal_document(doc: str):
+    return _render_legal(doc)
+
+
+@app.get("/legal", response_class=HTMLResponse)
+async def legal_index():
+    links = "".join(f'<li><a href="/legal/{d}">{t}</a></li>' for d, t in LEGAL_DOCS.items())
+    return HTMLResponse(content=(
+        '<!doctype html><html lang="ru"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<title>Правовые документы</title>'
+        '<link href="/static/fonts/fonts.css" rel="stylesheet">'
+        '<link href="/static/legal.css" rel="stylesheet"></head><body><div class="wrap">'
+        '<header><h1>Правовые документы</h1></header>'
+        f'<ul>{links}</ul></div></body></html>'))
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, user_id: int | None = None, token: str | None = None):
     try:
@@ -1013,7 +1099,7 @@ async def api_email_register(req: EmailAuthRequest):
     pw_err = _validate_password(req.password)
     if pw_err:
         return {"ok": False, "error": pw_err}
-    user = database.create_user_by_email(req.email, req.password)
+    user = database.create_user_by_email(req.email, passwords.hash_password(req.password))
     if not user:
         return {"ok": False, "error": "Ошибка при регистрации"}
         
@@ -1025,11 +1111,18 @@ async def api_email_register(req: EmailAuthRequest):
 async def api_email_login(req: EmailAuthRequest):
     from shop_bot.data_manager import database
     user = database.get_user_by_email(req.email)
-    if not user or user.get('auth_pass') != req.password:
+    ok, needs_rehash = passwords.verify_password(req.password, user.get('auth_pass') if user else None)
+    if not ok:
         return {"ok": False, "error": "Неверный email или пароль"}
-        
+
     if user.get('is_banned'):
         return {"ok": False, "error": "Аккаунт заблокирован"}
+
+    # пароль лежал открытым текстом — переписываем на хеш молча, чтобы не
+    # выключать разом уже существующие аккаунты
+    if needs_rehash:
+        database.update_user_password(req.email, passwords.hash_password(req.password))
+        logger.info(f"[WEBAPP] - Пароль аккаунта {user['telegram_id']} переведён на хеш при входе")
 
     token = str(uuid.uuid4())
     database.update_user_auth_token(user['telegram_id'], token)
@@ -1101,7 +1194,7 @@ async def api_email_reset_verify(req: PasswordResetVerifyRequest):
     pw_err = _validate_password(req.new_password)
     if pw_err:
         return {"ok": False, "error": pw_err}
-    if not database.update_user_password(req.email, req.new_password):
+    if not database.update_user_password(req.email, passwords.hash_password(req.new_password)):
         return {"ok": False, "error": "Ошибка базы данных"}
         
     del PASSWORD_RESET_TOKENS[email_lower]

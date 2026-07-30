@@ -315,7 +315,7 @@ def create_broadcast_cancel_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="❌ Отмена", callback_data="cancel_broadcast")
     return builder.as_markup()
 
-def create_about_keyboard(channel_url: str | None, terms_url: str | None, privacy_url: str | None) -> InlineKeyboardMarkup:
+def create_about_keyboard(channel_url: str | None, terms_url: str | None, privacy_url: str | None, consent_url: str | None = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if channel_url:
         builder.button(text="📰 Наш канал", url=channel_url)
@@ -323,6 +323,8 @@ def create_about_keyboard(channel_url: str | None, terms_url: str | None, privac
         builder.button(text="📄 Условия использования", url=terms_url)
     if privacy_url:
         builder.button(text="🔒 Политика конфиденциальности", url=privacy_url)
+    if consent_url:
+        builder.button(text="✍️ Согласие на обработку ПДн", url=consent_url)
     builder.button(text=_setting_button_text("btn_back_to_menu", "⬅️ Назад в меню"), callback_data="back_to_main_menu", **_setting_button_extra("btn_back_to_menu"))
     builder.adjust(1)
     return builder.as_markup()
