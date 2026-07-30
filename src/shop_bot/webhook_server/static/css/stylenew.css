@@ -94,7 +94,7 @@
     --text-muted: #a0a0a0;
     --border-color: #333333;
     --primary-color: #ffffff;
-    --success-color: #00ff88;
+    --success-color: #d7abff;
     --warning-color: #ffaa00;
     --danger-color: #ff4444;
     --info-color: #00aaff;
@@ -275,7 +275,7 @@ body {
 
 .status-indicator.bg-success {
     background: var(--success-color) !important;
-    box-shadow: 0 0 15px rgba(0, 255, 136, 0.6);
+    box-shadow: 0 0 15px rgba(215, 171, 255, 0.6);
 }
 
 .status-indicator.bg-warning {
@@ -380,7 +380,7 @@ body {
 
 .text-success {
     color: var(--success-color) !important;
-    text-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
+    text-shadow: 0 0 10px rgba(215, 171, 255, 0.4);
 }
 
 .text-warning {
@@ -880,7 +880,7 @@ body {
 :root {
 
     --primary-color: #ae3ec9;
-    --success-color: #51cf66;
+    --success-color: #d7abff;
     --danger-color: #ff6b6b;
     --warning-color: #ff922b;
 
@@ -913,7 +913,7 @@ body {
     --bs-primary: var(--primary-color);
     --accent-1: color-mix(in oklab, var(--primary-color) 16%, transparent);
     --accent-2: color-mix(in oklab, #3e8cc9 12%, transparent);
-    --accent-3: color-mix(in oklab, #3ec996 10%, transparent);
+    --accent-3: color-mix(in oklab, #e4c4ff 10%, transparent);
 }
 
 
@@ -929,7 +929,7 @@ body {
 
     --accent-1: color-mix(in oklab, var(--primary-color) 18%, transparent);
     --accent-2: color-mix(in oklab, #3e8cc9 14%, transparent);
-    --accent-3: color-mix(in oklab, #3ec996 12%, transparent);
+    --accent-3: color-mix(in oklab, #e4c4ff 12%, transparent);
 }
 
 * {
@@ -1072,7 +1072,7 @@ body::after {
         conic-gradient(from var(--aurora-rot, 0deg) at 50% 50%,
             color-mix(in oklab, var(--primary-color) 12%, transparent) 0deg,
             color-mix(in oklab, #3e8cc9 12%, transparent) 120deg,
-            color-mix(in oklab, #3ec996 10%, transparent) 240deg,
+            color-mix(in oklab, #e4c4ff 10%, transparent) 240deg,
             color-mix(in oklab, var(--primary-color) 12%, transparent) 360deg),
 
         radial-gradient(900px 700px at var(--aurora-x1, 20%) var(--aurora-y1, 20%), color-mix(in oklab, var(--accent-1) 90%, transparent) 0%, transparent 60%),
@@ -1401,7 +1401,7 @@ h4 {
 }
 
 .button-start:hover {
-    background-color: #37b24d;
+    background-color: #c48ff2;
 }
 
 .button-stop {
@@ -1454,8 +1454,8 @@ h4 {
 
 .flash-success {
     color: var(--light-color);
-    background-color: #2f6b3b;
-    border-color: #3e874b;
+    background-color: #6b3d90;
+    border-color: #8b52b8;
 }
 
 .flash-danger {
@@ -3387,9 +3387,9 @@ body.login-page {
 
 
 .server-item .btn-outline-primary {
-    border-color: #51cf66 !important;
-    color: #51cf66 !important;
-    box-shadow: 0 0 0 1px #51cf66, 0 0 6px rgba(81, 207, 102, 0.2) !important;
+    border-color: #d7abff !important;
+    color: #d7abff !important;
+    box-shadow: 0 0 0 1px #d7abff, 0 0 6px rgba(215, 171, 255, 0.2) !important;
     font-weight: 600 !important;
 }
 
