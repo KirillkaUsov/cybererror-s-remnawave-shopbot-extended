@@ -1,5 +1,5 @@
 from typing import Any
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 
 # Загрузка файлов требует python-multipart. Если пакета нет, приложение
 # должно продолжать работать без вложений, а не падать целиком на импорте.
@@ -15,7 +15,7 @@ except Exception:
     except Exception:
         MULTIPART_AVAILABLE = False
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 import aiohttp
 from shop_bot.data_manager.remnawave_repository import get_setting, get_user_keys, get_msk_time, get_webapp_settings, get_user, get_referral_count, get_all_hosts, list_squads, get_plans_for_host
 from shop_bot.data_manager import passwords
@@ -23,6 +23,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 import uuid
+import time
 import asyncio
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, FSInputFile, LabeledPrice
@@ -213,7 +214,9 @@ def _build_yoomoney_link(receiver: str, amount_rub: Decimal, label: str, descrip
     }
     return base + "?" + urlencode(params)
 
-app = FastAPI()
+# Схему и /docs наружу не отдаём: публичный список всех ручек с их полями —
+# готовая карта для перебора, а посетителю кабинета она не нужна.
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 ico_dir = os.path.join(os.path.dirname(__file__), "module", "ico")
 if os.path.exists(ico_dir):
@@ -776,44 +779,47 @@ async def legal_index():
         f'<ul>{links}</ul></div></body></html>'))
 
 
+def _render_login_page() -> HTMLResponse:
+    p = os.path.join(os.path.dirname(__file__), "login.html")
+    if not os.path.exists(p):
+        return HTMLResponse(content="<h1>Login page not found</h1>", status_code=404)
+    with open(p, "r", encoding="utf-8") as f:
+        content = f.read()
+    webapp_settings = get_webapp_settings()
+    context = {
+        "webapp_logo": webapp_settings.get("webapp_logo") or "",
+        "webapp_icon": webapp_settings.get("webapp_icon") or "",
+    }
+    return HTMLResponse(content=_process_template_placeholders(content, 0, webapp_settings, context))
+
+
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, user_id: int | None = None, token: str | None = None):
+async def index(request: Request, token: str | None = None):
+    """Кабинет открывается только владельцу сессии.
+
+    Раньше параметр ?user_id= отдавал чужой кабинет целиком — с подписками
+    и ссылками — ещё до единого запроса к API. Теперь личность подтверждает
+    токен: из адреса (сразу после входа) или из куки.
+    """
     try:
-        # 1. Authorize by Token (query param)
-        if token:
-            from shop_bot.data_manager import database
-            user = database.get_user_by_auth_token(token)
-            if user:
-                user_id = user['telegram_id']
-        
-        # 2. If no user_id (and no valid token), serve login.html
-        if user_id is None:
-            p = os.path.join(os.path.dirname(__file__), "login.html")
-            if os.path.exists(p):
-                with open(p, "r", encoding="utf-8") as f:
-                    content = f.read()
-                
-                # Process placeholders for login page too
-                webapp_settings = get_webapp_settings()
-                context = {
-                    "webapp_logo": webapp_settings.get("webapp_logo") or "",
-                    "webapp_icon": webapp_settings.get("webapp_icon") or ""
-                }
-                content = _process_template_placeholders(content, 0, webapp_settings, context)
-                return HTMLResponse(content=content)
-            else:
-                return HTMLResponse(content="<h1>Login page not found</h1>", status_code=404)
+        from shop_bot.data_manager import database
 
-        webapp_settings = get_webapp_settings()
-        user = get_user(user_id)
-        if user and user.get('is_banned'):
-            return _render_banned_page(webapp_settings)
+        session_token = (token or "").strip() or _read_auth_token(request) or ""
+        user = database.get_user_by_auth_token(session_token) if len(session_token) >= 16 else None
+        if not user:
+            return _render_login_page()
 
-        return await _render_main_page(user_id)
+        if user.get('is_banned'):
+            return _render_banned_page(get_webapp_settings())
 
+        response = await _render_main_page(user['telegram_id'])
+        _set_auth_cookie(response, session_token)
+        return response
     except Exception as e:
-        error_details = traceback.format_exc()
-        return HTMLResponse(content=f"<h1>500 Internal Server Error</h1><pre>{error_details}</pre>", status_code=500)
+        # Раньше сюда печатался traceback — он показывал пути и внутренности
+        # приложения любому, кто открыл страницу с ошибкой.
+        logger.error(f"[WEBAPP] - Ошибка главной страницы: {e}", exc_info=True)
+        return HTMLResponse(content="<h1>500 Internal Server Error</h1>", status_code=500)
 
 # ===== API Models =====
 
@@ -837,6 +843,7 @@ class TokenRequest(BaseModel):
 
 class TelegramDirectAuthRequest(BaseModel):
     user_id: int
+    init_data: str | None = None
 
 class EmailAuthRequest(BaseModel):
     email: str
@@ -896,6 +903,11 @@ class ApplyPromoRequest(BaseModel):
 # ===== API Endpoints =====
 
 
+# Сколько живёт подписанная Telegram строка. Сутки с запасом покрывают и
+# перекос часов, и вкладку, которую забыли закрыть.
+TELEGRAM_INITDATA_MAX_AGE = 24 * 3600
+
+
 def validate_telegram_data(init_data: str, bot_token: str) -> dict | None:
     from urllib.parse import parse_qsl, unquote
     import hmac
@@ -920,18 +932,106 @@ def validate_telegram_data(init_data: str, bot_token: str) -> dict | None:
         
         secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
         calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
-        
-        if calculated_hash == received_hash:
-            user_json = parsed_data.get("user")
-            if user_json:
-                return json.loads(user_json)
-            logger.warning("Telegram auth: hash valid but no user field")
-        else:
+
+        if not hmac.compare_digest(calculated_hash, received_hash):
             logger.warning(f"Telegram auth: hash mismatch. Expected={calculated_hash[:16]}... Got={received_hash[:16]}...")
+            return None
+
+        # Подпись у initData бессрочная: без проверки возраста однажды
+        # подсмотренная строка открывала бы кабинет и через год.
+        try:
+            age = time.time() - int(parsed_data.get("auth_date") or 0)
+        except (TypeError, ValueError):
+            age = None
+        if age is None or age > TELEGRAM_INITDATA_MAX_AGE:
+            logger.warning(f"Telegram auth: initData устарела (возраст {age} с)")
+            return None
+
+        user_json = parsed_data.get("user")
+        if user_json:
+            return json.loads(user_json)
+        logger.warning("Telegram auth: hash valid but no user field")
         return None
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка валидации данных Telegram: {e}")
         return None
+
+# ===== СЕССИЯ КАБИНЕТА =====
+# Раньше каждый /api/* верил user_id, присланному клиентом: зная чужой
+# Telegram ID, можно было прочитать чужие подписки, переписку с поддержкой и
+# потратить чужой баланс. Теперь личность вычисляет сервер по токену сессии,
+# а user_id из запроса не используется вовсе.
+
+AUTH_COOKIE = "auth_token"
+AUTH_COOKIE_MAX_AGE = 365 * 24 * 3600
+
+
+class AuthRequired(Exception):
+    """Нет сессии или она больше не действует."""
+
+    def __init__(self, status: int = 401, message: str = "Сессия истекла — войдите заново"):
+        self.status = status
+        self.message = message
+
+
+@app.exception_handler(AuthRequired)
+async def _auth_required_handler(request: Request, exc: AuthRequired):
+    return JSONResponse(
+        {"ok": False, "error": exc.message, "auth_required": True},
+        status_code=exc.status,
+    )
+
+
+def _read_auth_token(request: Request) -> str | None:
+    """Токен из заголовка (мини-апп шлёт его сам) или из куки (картинки и
+    вложения грузятся тегами, заголовок к ним не приделать)."""
+    token = (request.headers.get("X-Auth-Token") or "").strip()
+    if not token:
+        header = (request.headers.get("Authorization") or "").strip()
+        if header.lower().startswith("bearer "):
+            token = header[7:].strip()
+    if not token:
+        token = (request.cookies.get(AUTH_COOKIE) or "").strip()
+    # выдаём uuid4; всё, что заметно короче, — мусор, в базу с ним не идём
+    return token if len(token) >= 16 else None
+
+
+def _set_auth_cookie(response, token: str) -> None:
+    """Куку ставит сервер и закрывает от скриптов: до этого токен лежал в
+    document.cookie, откуда его мог прочитать любой скрипт на странице."""
+    response.set_cookie(
+        AUTH_COOKIE,
+        token,
+        max_age=AUTH_COOKIE_MAX_AGE,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=True,
+    )
+
+
+def _resolve_session_user(request: Request) -> dict:
+    from shop_bot.data_manager import database
+
+    token = _read_auth_token(request)
+    user = database.get_user_by_auth_token(token) if token else None
+    if not user:
+        raise AuthRequired()
+    if user.get("is_banned"):
+        raise AuthRequired(status=403, message="Доступ закрыт")
+    return user
+
+
+async def webapp_user(request: Request) -> dict:
+    """Зависимость FastAPI: кто именно прислал запрос."""
+    return _resolve_session_user(request)
+
+
+def session_user_id(auth: dict) -> int:
+    return int(auth.get("telegram_id") or 0)
+
+# ===== Конец блока сессии =====
+
 
 @app.get("/api/auth/request-token")
 async def api_request_auth_token():
@@ -1006,10 +1106,32 @@ async def api_create_token(req: TokenRequest):
     return {"ok": True, "token": token}
 
 
+@app.post("/api/auth/logout")
+async def api_logout():
+    """Гасит сессию в браузере. Кука недоступна скриптам, поэтому снять её
+    может только сервер."""
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(AUTH_COOKIE, path="/")
+    return response
+
+
 @app.post("/api/auth/telegram-direct")
 async def api_telegram_direct_auth(req: TelegramDirectAuthRequest):
     from shop_bot.data_manager import database
     try:
+        # Раньше хватало одного user_id — сервер отдавал постоянный токен
+        # кого угодно, то есть полный доступ к чужому кабинету. Теперь
+        # личность подтверждает подпись Telegram, как и в /api/auth/token.
+        bot_token = get_setting("telegram_bot_token")
+        if not bot_token:
+            logger.error("[WEBAPP] - Токен бота не настроен, вход через Telegram невозможен")
+            return {"ok": False, "error": "Server configuration error"}
+
+        verified = validate_telegram_data(req.init_data or "", bot_token)
+        if not verified or int(verified.get("id") or 0) != int(req.user_id):
+            logger.warning(f"[WEBAPP] - Вход telegram-direct для {req.user_id} отклонён: подпись Telegram не подтверждена")
+            return {"ok": False, "error": "Invalid auth data"}
+
         user = get_user(req.user_id)
         if not user:
             return {"ok": False, "error": "User not registered"}
@@ -1258,7 +1380,7 @@ class TgLinkStartRequest(BaseModel):
 
 
 @app.post("/api/tg-link/start")
-async def api_tg_link_start(req: TgLinkStartRequest):
+async def api_tg_link_start(req: TgLinkStartRequest, auth: dict = Depends(webapp_user)):
     """
     Готовит ссылку «привязать Telegram» для аккаунта, заведённого по email
     или по ссылке подписки.
@@ -1268,6 +1390,7 @@ async def api_tg_link_start(req: TgLinkStartRequest):
     telegram_id и склеивает аккаунты. Токен здесь одноразовый и не является
     токеном входа — по нему нельзя авторизоваться, только привязаться.
     """
+    req.user_id = session_user_id(auth)
     import time as _time
     from shop_bot.data_manager.database import is_telegram_account
     try:
@@ -1334,8 +1457,9 @@ async def api_device_tiers(req: DeviceTiersRequest):
 
 
 @app.post("/api/device-addon")
-async def api_device_addon(req: DeviceAddonRequest):
+async def api_device_addon(req: DeviceAddonRequest, auth: dict = Depends(webapp_user)):
     """Что можно докупить к подписке и почём — без продления срока."""
+    req.user_id = session_user_id(auth)
     try:
         key = get_key_by_id(req.key_id)
         if not key or int(key.get('user_id') or 0) != int(req.user_id):
@@ -1357,8 +1481,8 @@ async def api_device_addon(req: DeviceAddonRequest):
 
 
 @app.post("/api/payment-methods")
-async def api_get_payment_methods(req: PaymentMethodsRequest):
-    user_id = req.user_id
+async def api_get_payment_methods(req: PaymentMethodsRequest, auth: dict = Depends(webapp_user)):
+    user_id = session_user_id(auth)
     user = get_user(user_id)
     
     methods = []
@@ -1403,7 +1527,8 @@ async def api_get_payment_methods(req: PaymentMethodsRequest):
 
 
 @app.post("/api/create-payment")
-async def api_create_payment(req: CreatePaymentRequest):
+async def api_create_payment(req: CreatePaymentRequest, auth: dict = Depends(webapp_user)):
+    req.user_id = session_user_id(auth)
     try:
         user_id = req.user_id
         plan_id = req.plan_id
@@ -1789,11 +1914,11 @@ TOPUP_MAX = 100000.0
 
 
 @app.post("/api/topup/create")
-async def api_topup_create(req: TopUpRequest):
+async def api_topup_create(req: TopUpRequest, auth: dict = Depends(webapp_user)):
     """Счёт на пополнение баланса. Метаданные те же, что у бота (action=top_up),
     поэтому вебхуки зачисляют деньги существующим кодом."""
     try:
-        user_id = req.user_id
+        user_id = session_user_id(auth)
         user = get_user(user_id)
         if not user or user.get('is_banned'):
             return {"ok": False, "error": "Access denied"}
@@ -1901,7 +2026,8 @@ async def api_topup_create(req: TopUpRequest):
 
 
 @app.post("/api/apply-promo")
-async def api_apply_promo(req: ApplyPromoRequest):
+async def api_apply_promo(req: ApplyPromoRequest, auth: dict = Depends(webapp_user)):
+    req.user_id = session_user_id(auth)
     try:
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
@@ -1983,7 +2109,8 @@ class CheckPaymentRequest(BaseModel):
     payment_id: str
 
 @app.post("/api/check-payment")
-async def api_check_payment(req: CheckPaymentRequest):
+async def api_check_payment(req: CheckPaymentRequest, auth: dict = Depends(webapp_user)):
+    req.user_id = session_user_id(auth)
     try:
         if not req.payment_id or req.payment_id == "undefined" or req.payment_id == "null":
             return {"ok": False, "error": "Invalid payment_id"}
@@ -2018,7 +2145,8 @@ class CommentRequest(BaseModel):
     comment: str
 
 @app.post("/api/key/devices")
-async def api_key_devices(req: KeyActionRequest):
+async def api_key_devices(req: KeyActionRequest, auth: dict = Depends(webapp_user)):
+    req.user_id = session_user_id(auth)
     try:
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
@@ -2045,7 +2173,8 @@ async def api_key_devices(req: KeyActionRequest):
         return {"ok": False, "error": str(e)}
 
 @app.post("/api/key/device/delete")
-async def api_key_device_delete(req: DeleteDeviceRequest):
+async def api_key_device_delete(req: DeleteDeviceRequest, auth: dict = Depends(webapp_user)):
+    req.user_id = session_user_id(auth)
     try:
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
@@ -2071,7 +2200,8 @@ async def api_key_device_delete(req: DeleteDeviceRequest):
         return {"ok": False, "error": str(e)}
 
 @app.post("/api/key/comment")
-async def api_key_comment(req: CommentRequest):
+async def api_key_comment(req: CommentRequest, auth: dict = Depends(webapp_user)):
+    req.user_id = session_user_id(auth)
     try:
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
@@ -2094,13 +2224,14 @@ class ResetSubscriptionRequest(BaseModel):
 
 
 @app.post("/api/key/reset-subscription")
-async def api_key_reset_subscription(req: ResetSubscriptionRequest):
+async def api_key_reset_subscription(req: ResetSubscriptionRequest, auth: dict = Depends(webapp_user)):
     """
     Пересоздаёт ссылку подписки: отзывает текущую в Remnawave и выдаёт новую.
     Старая ссылка после этого перестаёт работать.
 
     Ограничение по частоте общее с ботом и админкой — оно хранится в БД.
     """
+    req.user_id = session_user_id(auth)
     from shop_bot.data_manager import database
     try:
         user = get_user(req.user_id)
@@ -2170,7 +2301,8 @@ def _format_media(message_id, user_id: int | None = None) -> list:
                 "id": a.get("media_id"),
                 "kind": a.get("kind"),
                 "name": a.get("file_name"),
-                "url": f"/api/support/media/{a.get('media_id')}?user_id={user_id}" if user_id else None,
+                # user_id в адресе больше не нужен: владельца определяет сессия
+                "url": f"/api/support/media/{a.get('media_id')}",
             }
             for a in grouped.get(int(message_id), [])
         ]
@@ -2183,8 +2315,9 @@ class SupportHistoryRequest(BaseModel):
 
 
 @app.post("/api/support/history")
-async def api_support_history(req: SupportHistoryRequest):
+async def api_support_history(req: SupportHistoryRequest, auth: dict = Depends(webapp_user)):
     """Список всех обращений пользователя — открытых и закрытых."""
+    req.user_id = session_user_id(auth)
     try:
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
@@ -2221,8 +2354,9 @@ class SupportTicketViewRequest(BaseModel):
 
 
 @app.post("/api/support/ticket")
-async def api_support_ticket(req: SupportTicketViewRequest):
+async def api_support_ticket(req: SupportTicketViewRequest, auth: dict = Depends(webapp_user)):
     """Переписка по конкретному обращению, в том числе закрытому."""
+    req.user_id = session_user_id(auth)
     try:
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
@@ -2262,7 +2396,8 @@ async def api_support_ticket(req: SupportTicketViewRequest):
 
 
 @app.post("/api/support/status")
-async def api_support_status(req: SupportStatusRequest):
+async def api_support_status(req: SupportStatusRequest, auth: dict = Depends(webapp_user)):
+    req.user_id = session_user_id(auth)
     try:
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
@@ -2304,7 +2439,8 @@ async def api_support_status(req: SupportStatusRequest):
         return {"ok": False, "error": str(e)}
 
 @app.post("/api/support/create")
-async def api_support_create(req: SupportTicketCreateRequest):
+async def api_support_create(req: SupportTicketCreateRequest, auth: dict = Depends(webapp_user)):
+    req.user_id = session_user_id(auth)
     try:
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
@@ -2378,7 +2514,7 @@ async def api_support_create(req: SupportTicketCreateRequest):
         return {"ok": False, "error": str(e)}
 
 @app.get("/api/support/media/{media_id}")
-async def api_support_media_file(request: Request, media_id: int, user_id: int | None = None):
+async def api_support_media_file(request: Request, media_id: int, auth: dict = Depends(webapp_user)):
     """
     Отдаёт вложение пользователю. Доступ только к файлам из собственных
     обращений — чужие id вернут 403 даже при прямом переборе.
@@ -2396,7 +2532,7 @@ async def api_support_media_file(request: Request, media_id: int, user_id: int |
         ticket = get_ticket(row.get('ticket_id'))
         if not ticket:
             return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
-        if user_id is None or int(ticket.get('user_id') or 0) != int(user_id):
+        if int(ticket.get('user_id') or 0) != session_user_id(auth):
             return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
 
         path = media_store.abs_path(row.get('local_path'))
@@ -2478,7 +2614,7 @@ async def api_support_media_config():
 if MULTIPART_AVAILABLE:
   @app.post("/api/support/upload")
   async def api_support_upload(
-    user_id: int = Form(...),
+    auth: dict = Depends(webapp_user),
     ticket_id: int = Form(...),
     caption: str = Form(""),
     file: UploadFile = File(...),
@@ -2490,6 +2626,7 @@ if MULTIPART_AVAILABLE:
       появляется и локальная копия, и file_id — как и для вложений,
       пришедших из чата.
       """
+      user_id = session_user_id(auth)
       try:
           user = get_user(user_id)
           if not user or user.get('is_banned'):
@@ -2589,7 +2726,8 @@ if MULTIPART_AVAILABLE:
 
 
 @app.post("/api/support/send")
-async def api_support_send(req: SupportMessageSendRequest):
+async def api_support_send(req: SupportMessageSendRequest, auth: dict = Depends(webapp_user)):
+    req.user_id = session_user_id(auth)
     try:
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
@@ -2731,12 +2869,13 @@ def _trial_state(user_id: int) -> dict:
 
 
 @app.get("/api/catalog")
-async def api_catalog(user_id: int):
+async def api_catalog(auth: dict = Depends(webapp_user)):
     """
     Каталог для экрана покупки: локации, тарифы и наборы устройств —
     структурой, а не готовым HTML. Разметку собирает клиент, поэтому
     вид можно менять, не трогая сервер.
     """
+    user_id = session_user_id(auth)
     import re as _re
     try:
         user = get_user(user_id)
@@ -2866,8 +3005,9 @@ async def api_catalog(user_id: int):
 
 
 @app.get("/api/profile-stats")
-async def api_profile_stats(user_id: int):
+async def api_profile_stats(auth: dict = Depends(webapp_user)):
     """Показатели кабинета: баланс, рефералы, оплаченные месяцы."""
+    user_id = session_user_id(auth)
     try:
         user = get_user(user_id)
         if not user or user.get('is_banned'):
@@ -2931,14 +3071,15 @@ async def api_profile_stats(user_id: int):
 
 
 @app.get("/api/trial/status")
-async def api_trial_status(user_id: int):
-    state = _trial_state(user_id)
+async def api_trial_status(auth: dict = Depends(webapp_user)):
+    state = _trial_state(session_user_id(auth))
     return {"ok": True, **state}
 
 
 @app.post("/api/trial/activate")
-async def api_trial_activate(req: TrialRequest):
+async def api_trial_activate(req: TrialRequest, auth: dict = Depends(webapp_user)):
     """Выдаёт пробную подписку — одной кнопкой, без выбора сервера."""
+    req.user_id = session_user_id(auth)
     from shop_bot.data_manager.database import set_trial_used
     from shop_bot.data_manager import remnawave_repository as rw_repo
     import re as _re
@@ -3027,7 +3168,8 @@ async def api_trial_activate(req: TrialRequest):
 
 
 @app.get("/api/user-status")
-async def api_user_status(user_id: int):
+async def api_user_status(auth: dict = Depends(webapp_user)):
+    user_id = session_user_id(auth)
     try:
         user = get_user(user_id)
         if not user or user.get('is_banned'):
@@ -3070,28 +3212,14 @@ async def dynamic_route(request: Request, path_param: str):
         if path_param.startswith("token="):
             token = path_param.split("=")[1]
             from shop_bot.data_manager import database
-            user = database.get_user_by_auth_token(token)
+            user = database.get_user_by_auth_token(token) if len(token) >= 16 else None
             if user:
-                webapp_settings = get_webapp_settings()
                 if user.get('is_banned'):
-                    return _render_banned_page(webapp_settings)
-                return await _render_main_page(user['telegram_id'])
-            else:
-                 # Token not valid or expired -> Render Login Page
-                 p = os.path.join(os.path.dirname(__file__), "login.html")
-                 if os.path.exists(p):
-                     with open(p, "r", encoding="utf-8") as f:
-                         content = f.read()
-                     
-                     webapp_settings = get_webapp_settings()
-                     context = {
-                        "webapp_logo": webapp_settings.get("webapp_logo") or "",
-                        "webapp_icon": webapp_settings.get("webapp_icon") or ""
-                     }
-                     content = _process_template_placeholders(content, 0, webapp_settings, context)
-                     return HTMLResponse(content=content)
-                 else:
-                     return HTMLResponse(content="<h1>Login page not found</h1>", status_code=404)
+                    return _render_banned_page(get_webapp_settings())
+                response = await _render_main_page(user['telegram_id'])
+                _set_auth_cookie(response, token)
+                return response
+            return _render_login_page()
         
         # Pass through to 404 naturally or handle other dynamic routes
         return HTMLResponse(content="<h1>404 Not Found</h1>", status_code=404)

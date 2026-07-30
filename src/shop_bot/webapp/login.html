@@ -807,9 +807,12 @@ document.addEventListener('DOMContentLoaded', function(){
       const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
       if(!user || !user.id) return false;
 
+      /* сервер обязан проверить подпись Telegram: без initData войти нельзя,
+         иначе кабинет открывался бы по одному только чужому ID */
       const initData = tg.initData;
-      if(initData && initData.length > 0 && await authViaEndpoint('/api/auth/token', { init_data: initData })) return true;
-      return await authViaEndpoint('/api/auth/telegram-direct', { user_id: user.id });
+      if(!initData || !initData.length) return false;
+      if(await authViaEndpoint('/api/auth/token', { init_data: initData })) return true;
+      return await authViaEndpoint('/api/auth/telegram-direct', { user_id: user.id, init_data: initData });
     }catch(e){ return false; }
   }
 
