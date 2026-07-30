@@ -5,13 +5,15 @@
     <meta charset="utf-8" />
     <!-- ===== МАСШТАБ СТРАНИЦЫ ===== -->
     <!-- Управление начальным зумом сайта через viewport -->
-    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport" />
     <!-- ===== Конец блока масштабирования ===== -->
     <title>{% block title %}Панель управления Ботом{% endblock %}</title>
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32x32.png') }}" />
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon-16x16.png') }}" />
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon-32x32.png') }}" />
-    <meta name="theme-color" content="#d7abff" />
+    <!-- цвет системной панели браузера: поверхность, а не акцент —
+         иначе верх экрана на телефоне светится сиреневым -->
+    <meta name="theme-color" content="#191a1f" id="meta-theme-color" />
     <meta name="csrf-token" content="{{ csrf_token() }}" />
 
 
@@ -84,6 +86,15 @@
 
         :root {
             --site-scale: 0.85;
+        }
+
+        /* На телефоне уменьшение до 85% давало корневой шрифт 12.75px: текст
+           мелкий, а области нажатия сжимались до 35px вместо комфортных 44.
+           Ужимать интерфейс имеет смысл только там, где экран широкий. */
+        @media (max-width: 1023px) {
+            :root {
+                --site-scale: 1;
+            }
         }
 
         .demo-username-blur {
@@ -335,6 +346,77 @@
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        /* 100vh на телефоне больше видимой области экрана, поэтому низ страницы
+           недостижим, пока браузер не свернёт адресную строку. dvh считает по
+           реально видимой части, vh оставлен запасом для старых браузеров. */
+        .h-dvh {
+            height: 100vh;
+            height: 100dvh;
+        }
+
+        /* закрытая панель уезжает трансформом, но остаётся в потоке: её ссылки
+           ловят тапы у левого края и попадают в обход по Tab, а браузер при
+           фокусе внутри затягивает её обратно в кадр */
+        @media (max-width: 1023px) {
+            #main-sidebar[inert] {
+                pointer-events: none;
+            }
+
+            /* вырезы и домашняя полоска телефона */
+            .mobile-topbar {
+                padding-top: calc(0.75rem + env(safe-area-inset-top));
+            }
+
+            #main-sidebar {
+                padding-top: env(safe-area-inset-top);
+                padding-bottom: env(safe-area-inset-bottom);
+            }
+
+            /* пальцем в 30-пиксельную иконку не попасть: поднимаем цели в панели
+               до комфортных размеров, но только на телефоне — на десктопе
+               плотная раскладка осмысленна */
+            #main-sidebar nav a,
+            #main-sidebar nav button {
+                min-height: 44px;
+            }
+
+            /* в двух столбцах заголовкам плиток не хватает ширины и они
+               обрезались многоточием: «ПОЛЬЗОВАТЕЛ…», «CRYPTOB…». Пусть лучше
+               переносятся — высота карточки это выдерживает */
+            /* свайп по широкой таблице не должен срабатывать как жест
+               «назад» у края экрана */
+            main .overflow-x-auto,
+            main .overflow-auto {
+                overscroll-behavior-x: contain;
+            }
+
+            #dash-stats p.truncate {
+                white-space: normal;
+                overflow: visible;
+                overflow-wrap: anywhere;
+                letter-spacing: 0.1em;
+            }
+
+            #main-sidebar .sidebar-brand-link,
+            #main-sidebar .sidebar-header-actions button,
+            #main-sidebar .sidebar-actions-grid a,
+            #main-sidebar .sidebar-actions-grid button,
+            #main-sidebar .sidebar-bottom-grid a,
+            #main-sidebar .sidebar-bottom-grid button {
+                min-width: 40px;
+                min-height: 40px;
+            }
+
+            main {
+                padding-bottom: calc(2.5rem + env(safe-area-inset-bottom));
+                padding-left: max(1rem, env(safe-area-inset-left));
+                padding-right: max(1rem, env(safe-area-inset-right));
+                /* инерционный скролл внутри контейнера, иначе на iOS он рывками */
+                -webkit-overflow-scrolling: touch;
+                overscroll-behavior-y: contain;
+            }
+        }
+
         #main-sidebar {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -541,7 +623,7 @@
     {% endmacro %}
 
     {% if settings.dashboard_layout == 'sidebar' %}
-    <div class="flex h-screen w-full">
+    <div class="flex h-dvh w-full">
         {% else %}
         <div class="relative flex min-h-screen w-full flex-col">
             {% endif %}
@@ -582,7 +664,7 @@
                                 <span class="material-symbols-outlined text-[20px]">edit</span>
                             </button>
                             <button type="button" onclick="toggleSidebar()"
-                                class="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/5 transition-all">
+                                class="lg:hidden w-11 h-11 rounded-xl flex items-center justify-center text-white/60 active:bg-white/10 active:scale-95 transition-all">
                                 <span class="material-symbols-outlined text-[24px]">close</span>
                             </button>
                         </div>
@@ -820,22 +902,29 @@
             {% endif %}
 
             <div
-                class="flex-1 flex flex-col {% if settings.dashboard_layout == 'sidebar' %}h-screen overflow-hidden{% endif %} bg-[#191a1f] dark:bg-black transition-colors duration-300">
+                class="flex-1 flex flex-col {% if settings.dashboard_layout == 'sidebar' %}h-dvh overflow-hidden{% endif %} bg-[#191a1f] dark:bg-black transition-colors duration-300">
 
                 {% if settings.dashboard_layout == 'sidebar' %}
+                {# на телефоне шапка была только с бургером и логотипом: где ты
+                   находишься, приходилось угадывать по содержимому #}
+                {% set section_titles = {
+                'dashboard_page': 'Главная', 'users_page': 'Пользователи',
+                'admin_keys_page': 'Ключи', 'support_list_page': 'Поддержка',
+                'support_media_page': 'Вложения', 'button_constructor_page': 'Конструктор кнопок',
+                'settings_page': 'Настройки', 'monitor_page': 'Мониторинг', 'node_page': 'Ноды'
+                } %}
                 <header
-                    class="w-full border-b border-white/5 p-3 lg:hidden sticky top-0 z-40 bg-[#191a1f]/90 dark:bg-black/90 backdrop-blur-md transition-colors duration-300">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            <button type="button" onclick="toggleSidebar()"
-                                class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all">
-                                <span class="material-symbols-outlined text-2xl">menu</span>
-                            </button>
-                            <div class="flex items-center gap-2">
-                                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo"
-                                    class="h-8 w-auto object-contain" onerror="this.style.display='none'" />
-                            </div>
-                        </div>
+                    class="mobile-topbar w-full border-b border-white/5 px-3 py-3 lg:hidden sticky top-0 z-40 bg-[#191a1f]/95 dark:bg-black/95 backdrop-blur-md transition-colors duration-300">
+                    <div class="flex items-center gap-3">
+                        <button type="button" id="sidebar-burger" onclick="toggleSidebar()"
+                            aria-label="Меню" aria-controls="main-sidebar" aria-expanded="false"
+                            class="w-11 h-11 shrink-0 rounded-xl bg-white/5 flex items-center justify-center text-white/70 active:bg-white/15 active:scale-95 transition-all">
+                            <span class="material-symbols-outlined text-2xl">menu</span>
+                        </button>
+                        <img src="{{ url_for('static', filename='img/logo.png') }}" alt=""
+                            class="h-7 w-auto shrink-0 object-contain" onerror="this.style.display='none'" />
+                        <span class="min-w-0 flex-1 truncate text-[15px] font-bold text-white">{{
+                            section_titles.get(request.endpoint, brand_title or 'Панель') }}</span>
                     </div>
                 </header>
                 {% else %}
@@ -1957,22 +2046,80 @@
                 }
             }
 
-            function toggleSidebar() {
+            /* Закрытая панель уезжает трансформом, но из потока не исчезает:
+               её 26 ссылок и кнопок ловят тапы у левого края экрана и остаются
+               в обходе по Tab, а браузер при фокусе внутри затягивает её в кадр —
+               отсюда и «панель иногда пробивает». Гасим её через inert.
+
+               Класс overflow-hidden на body раньше снимался при закрытии и больше
+               не возвращался: документ начинал скроллиться целиком поверх
+               внутреннего скролла main. На этом классе держится вся раскладка,
+               поэтому его не трогаем вообще. */
+            const SIDEBAR_MOBILE_MAX = 1023;
+
+            function isMobileViewport() {
+                return window.innerWidth <= SIDEBAR_MOBILE_MAX;
+            }
+
+            function setSidebar(open) {
                 const sidebar = document.getElementById('main-sidebar');
                 const overlay = document.getElementById('sidebar-overlay');
                 if (!sidebar || !overlay) return;
 
-                sidebar.classList.toggle('-translate-x-full');
+                sidebar.classList.toggle('-translate-x-full', !open);
+                overlay.classList.toggle('hidden', !open);
+                overlay.classList.toggle('opacity-100', open);
 
-                if (sidebar.classList.contains('-translate-x-full')) {
-                    overlay.classList.add('hidden');
-                    setTimeout(() => overlay.classList.remove('opacity-100'), 10);
-                    document.body.classList.remove('overflow-hidden');
+                const hidden = !open && isMobileViewport();
+                sidebar.toggleAttribute('inert', hidden);
+                sidebar.setAttribute('aria-hidden', String(hidden));
+
+                const burger = document.getElementById('sidebar-burger');
+                if (burger) burger.setAttribute('aria-expanded', String(open));
+            }
+
+            function toggleSidebar() {
+                const sidebar = document.getElementById('main-sidebar');
+                if (!sidebar) return;
+                setSidebar(sidebar.classList.contains('-translate-x-full'));
+            }
+
+            function syncSidebarForViewport() {
+                const sidebar = document.getElementById('main-sidebar');
+                if (!sidebar) return;
+                if (isMobileViewport()) {
+                    /* при переходе с десктопа панель обязана закрыться, иначе
+                       остаётся раскрытой без затемнения и перекрывает контент */
+                    setSidebar(false);
                 } else {
-                    overlay.classList.remove('hidden');
-                    setTimeout(() => overlay.classList.add('opacity-100'), 10);
+                    sidebar.removeAttribute('inert');
+                    sidebar.setAttribute('aria-hidden', 'false');
+                    const overlay = document.getElementById('sidebar-overlay');
+                    if (overlay) overlay.classList.add('hidden');
                 }
             }
+
+            syncSidebarForViewport();
+            let sidebarResizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(sidebarResizeTimer);
+                sidebarResizeTimer = setTimeout(syncSidebarForViewport, 150);
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape') return;
+                const sidebar = document.getElementById('main-sidebar');
+                if (sidebar && isMobileViewport() && !sidebar.classList.contains('-translate-x-full')) {
+                    setSidebar(false);
+                }
+            });
+
+            /* тап по пункту меню на телефоне: если это текущая страница, перехода
+               не будет и панель осталась бы висеть открытой */
+            document.addEventListener('click', (e) => {
+                const link = e.target.closest('#main-sidebar nav a');
+                if (link && isMobileViewport()) setSidebar(false);
+            });
 
             function toggleAccordion(btn) {
                 const content = btn.nextElementSibling;
