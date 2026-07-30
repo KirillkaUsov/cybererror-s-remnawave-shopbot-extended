@@ -1641,7 +1641,7 @@
                     const pinBadge = document.getElementById('udm-pinned-badge');
                     if (pinBadge) {
                         pinBadge.classList.toggle('hidden', !data.user.is_pinned);
-                        pinBadge.style.color = '#7cc59b';
+                        pinBadge.style.color = '#d7abff';
                     }
 
                     const pinText = document.getElementById('udm-action-pin-text');
@@ -1649,7 +1649,7 @@
                     if (pinText) pinText.textContent = data.user.is_pinned ? 'Открепить' : 'Закрепить';
                     if (pinIcon) {
                         if (data.user.is_pinned) {
-                            pinIcon.style.color = '#7cc59b';
+                            pinIcon.style.color = '#d7abff';
                             pinIcon.classList.add('rotate-45');
                         } else {
                             pinIcon.style.color = '';
@@ -1663,7 +1663,7 @@
                     if (banIcon) {
                         if (data.user.is_banned) {
                             banIcon.textContent = 'check_circle';
-                            banIcon.style.color = '#7cc59b';
+                            banIcon.style.color = '#d7abff';
                             banIcon.classList.remove('group-hover:text-red-500');
                             banIcon.classList.add('group-hover:text-green-500');
                         } else {
@@ -2063,12 +2063,12 @@
 
                             if (pinBadge) {
                                 pinBadge.classList.toggle('hidden', !isPinnedNow);
-                                pinBadge.style.color = '#7cc59b';
+                                pinBadge.style.color = '#d7abff';
                             }
                             if (pinText) pinText.textContent = isPinnedNow ? 'Открепить' : 'Закрепить';
                             if (pinIcon) {
                                 if (isPinnedNow) {
-                                    pinIcon.style.color = '#7cc59b';
+                                    pinIcon.style.color = '#d7abff';
                                     pinIcon.classList.add('rotate-45');
                                 } else {
                                     pinIcon.style.color = '';
@@ -2108,7 +2108,7 @@
                         if (banIcon) {
                             if (isBannedNow) {
                                 banIcon.textContent = 'check_circle';
-                                banIcon.style.color = '#7cc59b';
+                                banIcon.style.color = '#d7abff';
                                 banIcon.classList.remove('group-hover:text-red-500');
                                 banIcon.classList.add('group-hover:text-green-500');
                             } else {
