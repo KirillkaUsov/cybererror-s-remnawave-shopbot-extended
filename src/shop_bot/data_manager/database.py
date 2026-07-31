@@ -1061,10 +1061,29 @@ def get_wheel_spin(spin_id: int) -> dict | None:
     return _fetch_row("SELECT * FROM wheel_spins WHERE spin_id = ?", (spin_id,))
 
 
-def get_user_wheel_history(user_id: int, limit: int = 20) -> list[dict]:
-    return _fetch_list(
-        "SELECT * FROM wheel_spins WHERE user_id = ? ORDER BY spin_id DESC LIMIT ?",
-        (user_id, limit), "Не удалось получить историю призов")
+_WHEEL_WON = ("SELECT {what} FROM wheel_spins WHERE user_id = ? "
+              "AND COALESCE(prize_type, 'nothing') != 'nothing' AND COALESCE(amount, 0) > 0")
+
+
+def get_user_wheel_prizes(user_id: int, limit: int | None = None, pending_only: bool = False) -> list[dict]:
+    """Прокруты, в которых что-то выиграно: пустой сектор — не приз.
+
+    limit=None отдаёт всё. Невыданные призы обрезать нельзя: пока приз не
+    виден в списке, его не заберут, а срок у него идёт.
+    """
+    sql = _WHEEL_WON.format(what="*")
+    sql += " AND status = 'pending'" if pending_only else " AND status != 'pending'"
+    sql += " ORDER BY spin_id DESC"
+    params = [user_id]
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(int(limit))
+    return _fetch_list(sql, tuple(params), "Не удалось получить призы пользователя")
+
+
+def count_user_wheel_prizes(user_id: int) -> int:
+    row = _fetch_row(_WHEEL_WON.format(what="COUNT(*) AS n"), (user_id,))
+    return int((row or {}).get("n") or 0)
 
 
 def expire_wheel_prizes(now_iso: str) -> int:

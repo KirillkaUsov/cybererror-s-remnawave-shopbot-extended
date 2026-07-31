@@ -222,22 +222,23 @@ def plain_detail(detail: str | None) -> str:
     return _TAG_RE.sub("", (detail or "").replace("<br>", "\n")).strip()
 
 
-def history(user_id: int, limit: int = 20) -> list[dict]:
+def history(user_id: int, limit: int = 50) -> list[dict]:
     """История призов: что забрано, что ждёт и что сгорело.
 
     Пустые сектора сюда не попадают: «Мимо» — это не приз, а в списке
     выигрышей они только мешают искать настоящие. В журнале прокрутов у
     администратора они остаются.
+
+    limit ограничивает только забранное и сгоревшее. Невыданные призы
+    показываем все до единого: по ним нужно действие, и обрезанный список
+    означал бы приз, о котором человек узнаёт, только когда тот сгорит.
     """
     now = _now()
     database.expire_wheel_prizes(now.strftime(TIME_FORMAT))
-    rows = database.get_user_wheel_history(user_id, limit * 3) or []
+    rows = (database.get_user_wheel_prizes(user_id, pending_only=True) or []) \
+        + (database.get_user_wheel_prizes(user_id, limit=limit) or [])
     out = []
     for row in rows:
-        if (row.get("prize_type") or PRIZE_NOTHING) == PRIZE_NOTHING or float(row.get("amount") or 0) <= 0:
-            continue
-        if len(out) >= limit:
-            break
         created = _parse(row.get("created_at"))
         out.append({
             "spin_id": row.get("spin_id"),
@@ -278,6 +279,9 @@ def state(user_id: int) -> dict:
         "notify": database.get_wheel_notify(user_id),
         "prize_ttl_days": prize_ttl_days(),
         "pending": waiting,
+        # только счётчик: сам список нужен на отдельном экране, а тянуть его
+        # ради одной кнопки на каждый показ колеса незачем
+        "prizes_won": database.count_user_wheel_prizes(user_id),
         "keys": user_keys(user_id) if waiting else [],
         "prizes": [
             {"label": p.get("label"), "prize_type": p.get("prize_type"),
