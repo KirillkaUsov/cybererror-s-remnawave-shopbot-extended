@@ -200,6 +200,86 @@ WHEEL_ICONS = {
     'promo_fixed': '🏷', 'nothing': '🎲',
 }
 WHEEL_RULE = "━━━━━━━━━━━━━━━━━"
+# Сколько строк невыданных призов помещаем на экран колеса: у постоянного
+# игрока их набирается два-три десятка, и построчный список выталкивал
+# шансы и способы получить билеты за предел сообщения.
+PENDING_LINES = 8
+
+def wheel_pending_groups(pending: list) -> list[dict]:
+    """Одинаковые призы с одним сроком — одной строкой.
+
+    spin_id оставляем от самого раннего прокрута: у него ближе срок, значит
+    забирать нужно именно его.
+    """
+    groups: dict[tuple, dict] = {}
+    for prize in pending:                       # приходят от свежих к старым
+        key = (str(prize.get('label')), prize.get('expires_text') or '')
+        group = groups.setdefault(key, {'label': prize.get('label'),
+                                        'expires_text': prize.get('expires_text') or '',
+                                        'count': 0, 'spin_id': prize.get('spin_id')})
+        group['count'] += 1
+        group['spin_id'] = prize.get('spin_id')
+    # сверху то, что сгорит раньше: у старого прокрута и срок ближе
+    return sorted(groups.values(), key=lambda g: int(g['spin_id'] or 0))
+
+def _pending_line(group: dict) -> str:
+    count = f" × {group['count']}" if group['count'] > 1 else ""
+    when = f"забрать до {group['expires_text']}" if group['expires_text'] else "срок не ограничен"
+    return f"🎁 {html.quote(str(group['label']))}{count} — <i>{when}</i>"
+
+# ===== ЭКРАН «МОИ ПРИЗЫ» =====
+# Купон выдаётся один раз, и его код живёт только в истории: без этого
+# экрана забытый код означал потерянный приз.
+PRIZE_LIMIT_CHARS = 3400
+HISTORY_PENDING_LINES = 15
+
+def _prize_line(prize: dict) -> str:
+    icon = WHEEL_ICONS.get(prize.get('prize_type'), '🎁')
+    if prize['status'] == 'pending':
+        when = f"забрать до {prize['expires_text']}" if prize['expires_text'] else "ждёт получения"
+    elif prize['status'] == 'expired':
+        when = f"сгорел {prize['expires_text'] or prize['date_text']}"
+    else:
+        when = f"получен {prize['date_text']}" if prize['date_text'] else "получен"
+    line = f"{icon} <b>{html.quote(str(prize['label']))}</b> — <i>{when}</i>"
+    if prize.get('promo_code'):
+        line += f"\n<code>{html.quote(str(prize['promo_code']))}</code>"
+    return line
+
+def _wheel_history_text(user_id: int) -> str:
+    items = fortune_wheel.history(user_id)
+    if not items:
+        return ("🎁 <b>Мои призы</b>\n\n"
+                "<blockquote>Пока пусто. Крутите колесо — всё, что выпадет, окажется здесь.</blockquote>")
+    waiting = [p for p in items if p['status'] == 'pending']
+    past = [p for p in items if p['status'] != 'pending']
+    parts = ["🎁 <b>Мои призы</b>"]
+
+    # Невыданные — группами: их бывает три десятка одинаковых, и построчно
+    # они вытесняли из сообщения как раз то, ради чего сюда заходят — коды.
+    # Групп тоже может накопиться много: сроки у призов разные.
+    if waiting:
+        groups = wheel_pending_groups(waiting)
+        rows = [_pending_line(g) for g in groups[:HISTORY_PENDING_LINES]]
+        hidden = sum(g['count'] for g in groups[HISTORY_PENDING_LINES:])
+        if hidden:
+            rows.append(f"<i>…и ещё {hidden} "
+                        f"{keyboards.get_declension(hidden, ['приз', 'приза', 'призов'])}</i>")
+        parts.append(f"{WHEEL_RULE}\n<b>Ждут получения</b>\n" + "\n".join(rows)
+                     + "\n<i>Забрать их можно кнопкой «Забрать приз» на экране колеса.</i>")
+
+    if past:
+        lines, used = [], sum(len(p) for p in parts)
+        for prize in past:
+            line = _prize_line(prize)
+            if used + len(line) > PRIZE_LIMIT_CHARS:   # в сообщение больше не влезет
+                lines.append(f"<i>…и ещё {len(past) - len(lines)} в истории</i>")
+                break
+            lines.append(line)
+            used += len(line) + 1
+        parts.append(f"{WHEEL_RULE}\n<b>Уже получено</b>\n" + "\n".join(lines))
+    return "\n\n".join(parts)
+# ===== Конец экрана «Мои призы» =====
 
 def _wheel_text(st: dict, note: str | None = None) -> str:
     if not st['enabled'] or st['reason'] in ('disabled', 'no_prizes'):
@@ -220,8 +300,11 @@ def _wheel_text(st: dict, note: str | None = None) -> str:
     parts.append("\n".join(status))
 
     if st['pending']:
-        rows = [f"🎁 {html.quote(str(p['label']))} — <i>забрать до {p['expires_text']}</i>"
-                for p in st['pending']]
+        groups = wheel_pending_groups(st['pending'])
+        rows = [_pending_line(g) for g in groups[:PENDING_LINES]]
+        hidden = sum(g['count'] for g in groups[PENDING_LINES:])
+        if hidden:
+            rows.append(f"<i>…и ещё {hidden} {keyboards.get_declension(hidden, ['приз', 'приза', 'призов'])}</i>")
         tail = ("<i>Нажмите «Забрать приз» и выберите подписку.</i>" if st['keys']
                 else "<i>Оформите подписку — и дни лягут на неё.</i>")
         parts.append(f"{WHEEL_RULE}\n<b>Заберите свои призы</b>\n" + "\n".join(rows) + "\n" + tail)
@@ -1963,6 +2046,16 @@ def get_user_router() -> Router:
         await _render_wheel(callback.message, callback.from_user.id)
     # ===== Конец функции wheel_open_handler =====
 
+    # ===== ИСТОРИЯ ПРИЗОВ =====
+    @user_router.callback_query(F.data == "wheel_history")
+    @anti_spam
+    @registration_required
+    async def wheel_history_handler(callback: types.CallbackQuery):
+        await callback.answer()
+        await smart_edit_message(callback.message, _wheel_history_text(callback.from_user.id),
+                                 keyboards.create_wheel_history_keyboard(), get_setting("wheel_image"))
+    # ===== Конец функции wheel_history_handler =====
+
     # ===== ПОКУПКА БИЛЕТА =====
     @user_router.callback_query(F.data == "wheel_buy")
     @anti_spam
@@ -2008,11 +2101,13 @@ def get_user_router() -> Router:
         pending, keys = st['pending'], st['keys']
         if not pending or not keys:
             return await _render_wheel(callback.message, uid)
-        # Один приз — спрашиваем сразу про подписку, лишний экран ни к чему
-        if len(pending) == 1:
-            return await _ask_for_key(callback.message, uid, pending[0], keys)
+        # Выбирать не из чего, когда призы одинаковые: сразу спрашиваем подписку
+        groups = wheel_pending_groups(pending)
+        if len(groups) == 1:
+            oldest = next(p for p in pending if p['spin_id'] == groups[0]['spin_id'])
+            return await _ask_for_key(callback.message, uid, oldest, keys)
         await smart_edit_message(callback.message, "🎁 <b>Какой приз забираем?</b>",
-                                 keyboards.create_wheel_prizes_keyboard(pending),
+                                 keyboards.create_wheel_prizes_keyboard(groups),
                                  get_setting("wheel_image"))
 
     @user_router.callback_query(F.data.startswith("wheel_prize_"))

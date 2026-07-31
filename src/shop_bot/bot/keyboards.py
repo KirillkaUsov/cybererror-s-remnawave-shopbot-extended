@@ -1198,6 +1198,13 @@ def create_wheel_keyboard(st: dict) -> InlineKeyboardMarkup:
         builder.button(text=f"🎟 Купить билет — {_price_label(price)}", callback_data="wheel_buy")
         rows.append(1)
 
+    # Выигранное нужно где-то смотреть: код купона выдаётся один раз и
+    # больше нигде в боте не показывается
+    won = int(st.get('prizes_won') or 0)
+    if won:
+        builder.button(text=f"🎁 Мои призы ({won})", callback_data="wheel_history")
+        rows.append(1)
+
     builder.button(text=("🔔 Напоминания: вкл" if st.get('notify') else "🔕 Напоминания: выкл"),
                    callback_data="wheel_notify_toggle")
     builder.button(text=_setting_button_text("btn_back_to_menu", "⬅️ Назад в меню"),
@@ -1205,13 +1212,26 @@ def create_wheel_keyboard(st: dict) -> InlineKeyboardMarkup:
     builder.adjust(*(rows + [1, 1]))
     return builder.as_markup()
 
-def create_wheel_prizes_keyboard(pending: list) -> InlineKeyboardMarkup:
-    """Какой из невыданных призов забираем — когда их накопилось несколько."""
+WHEEL_PRIZE_BUTTONS = 30
+
+def create_wheel_prizes_keyboard(groups: list) -> InlineKeyboardMarkup:
+    """Какой из невыданных призов забираем — когда их накопилось несколько.
+
+    На вход идут группы одинаковых призов: два десятка кнопок «1 день · до
+    14.08.2026» подряд выбирать не из чего.
+    """
     builder = InlineKeyboardBuilder()
-    for prize in pending:
-        builder.button(text=f"🎁 {prize.get('label')} · до {prize.get('expires_text') or '—'}",
-                       callback_data=f"wheel_prize_{prize.get('spin_id')}")
+    for group in groups[:WHEEL_PRIZE_BUTTONS]:      # больше сотни кнопок Telegram не отдаст
+        count = f" × {group.get('count')}" if int(group.get('count') or 1) > 1 else ""
+        builder.button(text=f"🎁 {group.get('label')}{count} · до {group.get('expires_text') or '—'}",
+                       callback_data=f"wheel_prize_{group.get('spin_id')}")
     builder.button(text="⬅️ Назад", callback_data="wheel_open")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def create_wheel_history_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬅️ К колесу", callback_data="wheel_open")
     builder.adjust(1)
     return builder.as_markup()
 
