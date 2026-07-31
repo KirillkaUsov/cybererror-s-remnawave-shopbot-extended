@@ -222,9 +222,9 @@ def _wheel_text(st: dict, note: str | None = None) -> str:
     if st['pending']:
         rows = [f"🎁 {html.quote(str(p['label']))} — <i>забрать до {p['expires_text']}</i>"
                 for p in st['pending']]
-        tail = ("<i>Выберите подписку, к которой добавить дни.</i>" if st['keys']
+        tail = ("<i>Нажмите «Забрать приз» и выберите подписку.</i>" if st['keys']
                 else "<i>Оформите подписку — и дни лягут на неё.</i>")
-        parts.append(f"{WHEEL_RULE}\n<b>Неполученные призы</b>\n" + "\n".join(rows) + "\n" + tail)
+        parts.append(f"{WHEEL_RULE}\n<b>Заберите свои призы</b>\n" + "\n".join(rows) + "\n" + tail)
 
     # Шансы показываем честно: колесо, где неизвестно что и с какой
     # вероятностью выпадает, доверия не вызывает

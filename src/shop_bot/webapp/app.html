@@ -109,9 +109,27 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
    transform (даже нулевой), а он делает её точкой отсчёта для панели
    оплаты с position:fixed — та уезжала бы под экран. Движение берут на
    себя карточки внутри. */
-.view.is-active{display:block;animation:view-in .24s ease both}
+.view.is-active{display:block;animation:view-in .2s ease both}
 @keyframes view-in{from{opacity:0}to{opacity:1}}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Содержимое экрана подъезжает снизу двумя-тремя ступенями. Раньше экран
+   просто проявлялся целиком, и переход читался как мигание.
+   Заливка именно backwards: с both на элементе навсегда остаётся transform
+   (пусть и единичный), а он делает его точкой отсчёта для всего, что внутри
+   с position:fixed. */
+.view.is-active > *{animation:view-rise .34s var(--ease) backwards}
+.view.is-active > *:nth-child(2){animation-delay:.045s}
+.view.is-active > *:nth-child(n+3){animation-delay:.08s}
+@keyframes view-rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+/* в каталоге внутри колонки живёт панель оплаты с position:fixed — transform
+   у её предка стал бы для неё точкой отсчёта, поэтому здесь только прозрачность */
+#view-catalog.is-active > .buy-grid{animation-name:view-in;animation-duration:.28s}
+
+/* мягкая подмена содержимого на месте: список перерисовывается, а не
+   переключается рывком */
+.swap-in{animation:swap-in .24s var(--ease) backwards}
+@keyframes swap-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 
 /* списки проявляются лесенкой — только там, где содержимое перерисовывается
    редко, иначе анимация повторялась бы на каждый клик */
@@ -318,6 +336,14 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .prize-row__main span{display:block;font-size:12px;color:var(--dim);margin-top:2px}
 .prize-row--expired .prize-row__main b,.prize-row--muted .prize-row__main b{color:var(--faint)}
 .prize-row--muted .reel__icon{opacity:.45}
+/* код выигранного купона: пунктир намекает, что это не поле, а кнопка */
+.prize-code{display:inline-flex;align-items:center;gap:8px;margin-top:7px;padding:5px 10px;border-radius:var(--r-sm);
+  border:1px dashed var(--accent-line);background:var(--accent-soft);color:var(--accent);
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.04em;
+  transition:border-color .14s var(--ease),background .14s var(--ease),transform .12s var(--ease)}
+.prize-code:active{transform:scale(.98)}
+.prize-code .icon{color:var(--dim);flex:0 0 auto}
+.prize-code.is-copied{border-style:solid;color:var(--ok);border-color:var(--ok-line);background:var(--ok-soft)}
 .pill--muted{border-color:var(--line);background:rgba(236,238,242,.04);color:var(--faint)}
 .wheel-keys{display:grid;gap:8px;margin-top:4px}
 .wheel-key{display:flex;align-items:center;gap:10px;padding:12px 13px;border-radius:var(--r-md);
@@ -503,14 +529,20 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .tab:active .icon{transform:scale(.9)}
 
 /* ---------- modals ---------- */
-.modal{position:fixed;inset:0;z-index:100;background:rgba(6,7,9,.72);display:none;align-items:flex-end;justify-content:center}
-.modal.is-open{display:flex;animation:fade .18s ease both}
-.modal.is-open .sheet{animation:sheet-up .3s var(--ease) both}
-/* закрытие проигрывается назад — окно не должно исчезать рывком */
-.modal.is-closing{animation:fade .17s ease reverse both}
-.modal.is-closing .sheet{animation:sheet-up .17s ease reverse both}
+/* Окно выезжает снизу целиком, как лист в нативных приложениях: раньше оно
+   сдвигалось на 26 px и одновременно проявлялось — на глаз это читалось как
+   подёргивание, а не как движение. Кривая тормозит в конце, поэтому лист
+   «прилипает» к краю, а не останавливается резко. */
+.modal{position:fixed;inset:0;z-index:100;background:rgba(6,7,9,.66);display:none;align-items:flex-end;justify-content:center;
+  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+.modal.is-open{display:flex;animation:fade .2s ease both}
+.modal.is-open .sheet{animation:sheet-up .36s cubic-bezier(.32,.72,0,1) both}
+/* закрытие короче открытия: ждать ухода окна раздражает сильнее, чем его приход */
+.modal.is-closing{animation:fade .2s ease reverse both}
+.modal.is-closing .sheet{animation:sheet-down .2s cubic-bezier(.4,0,1,1) both}
 @keyframes fade{from{opacity:0}to{opacity:1}}
-@keyframes sheet-up{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@keyframes sheet-up{from{transform:translateY(100%)}to{transform:none}}
+@keyframes sheet-down{from{transform:none}to{transform:translateY(100%)}}
 .sheet{width:min(100%,520px);max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--line-2);border-bottom:0;border-radius:var(--r-xl) var(--r-xl) 0 0;background:var(--surface-2);padding:10px 18px calc(20px + var(--safe-b))}
 .sheet__handle{width:38px;height:4px;border-radius:8px;background:var(--surface-3);margin:2px auto 18px}
 .sheet h2{font-size:18px;margin:0 0 6px}
@@ -686,9 +718,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   .sheet--compact{width:min(100%,420px)}
   .sheet__handle{display:none}
   /* по центру экрана уместнее не «выезд снизу», а короткое приближение */
-  .modal.is-open .sheet{animation:sheet-in .24s var(--ease) both}
-  .modal.is-closing .sheet{animation:sheet-in .16s ease reverse both}
-  @keyframes sheet-in{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+  .modal.is-open .sheet{animation:sheet-in .26s cubic-bezier(.22,1,.36,1) both}
+  .modal.is-closing .sheet{animation:sheet-out .18s ease-in both}
+  @keyframes sheet-in{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+  @keyframes sheet-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(6px) scale(.985)}}
   .toast{bottom:26px}
 }
 
@@ -1049,7 +1082,7 @@ const state = {
   host: null, plan: null, tier: null, method: null,
   /* заказ на докупку устройств: живёт отдельно от каталога, тарифа в нём нет */
   addon: null,
-  wheel: null, wheelPrizes: null, prizeKeys: [],
+  wheel: null, wheelPrizes: null, prizeKeys: [], prizePending: [], wheelChoice: null,
   methods: [], balance: 0, useBalance: false, topupMethod: null,
   promoPreview: null,
   pendingPaymentId: null, pendingPaymentKind: 'order',
@@ -1061,6 +1094,15 @@ let paymentPollTimer = null;
 
 const $ = id => document.getElementById(id);
 const toggle = (id, hidden) => $(id).classList.toggle('is-hidden', !!hidden);
+/* Подмена содержимого блока с коротким проявлением. Без неё скелетон
+   сменяется данными мгновенным скачком — самое заметное «дёрганье» в
+   разделах, которые грузятся по сети. */
+function swapIn(el, html){
+  if(html !== undefined) el.innerHTML = html;
+  el.classList.remove('swap-in');
+  void el.offsetWidth;   /* без принудительного пересчёта анимация не перезапустится */
+  el.classList.add('swap-in');
+}
 function esc(v){ return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 /* строка, безопасно вставляемая как JS-аргумент внутрь HTML-атрибута */
 function arg(v){ return esc(JSON.stringify(v)); }
@@ -1171,18 +1213,25 @@ function toast(text, isError){
 /* окно снимаем не сразу: сначала проигрывается закрытие, поэтому держим
    таймер на каждое окно и сбрасываем его, если открыли повторно */
 const modalTimers = {};
+/* столько же длится анимация закрытия в CSS — если снять окно раньше, оно
+   исчезнет посреди движения */
+const MODAL_CLOSE_MS = 200;
 function openModal(id){
   const m = $(id);
   clearTimeout(modalTimers[id]);
   m.classList.remove('is-closing');
-  m.classList.add('is-open');
+  /* повторное открытие уже открытого окна не должно проигрывать выезд заново */
+  if(!m.classList.contains('is-open')){
+    m.classList.add('is-open');
+    haptic();
+  }
 }
 function closeModal(id){
   const m = $(id);
   if(m.classList.contains('is-open') && !m.classList.contains('is-closing')){
     m.classList.add('is-closing');
     clearTimeout(modalTimers[id]);
-    modalTimers[id] = setTimeout(() => m.classList.remove('is-open','is-closing'), 180);
+    modalTimers[id] = setTimeout(() => m.classList.remove('is-open','is-closing'), MODAL_CLOSE_MS);
   }
   /* закрыли подтверждение мимо кнопки «Подтвердить» — значит отказ */
   if(id === 'confirmModal' && confirmResolve){
@@ -1223,12 +1272,19 @@ function buildNav(){
 function setActiveNav(name){
   document.querySelectorAll('[data-nav]').forEach(el => el.classList.toggle('is-active', el.dataset.nav === name));
 }
+/* Где человек остановился на каждом экране. Каталог сюда не попадает: он
+   открывается на конкретное действие, и начинать его с середины страницы
+   было бы странно. */
+const scrollMemory = {};
+const SCROLL_FORGET = ['catalog'];
 function showScreen(name){
   haptic();
+  const prev = currentScreen;
+  const scroller = $('scroller');
+  if(prev !== name) scrollMemory[prev] = scroller.scrollTop;
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('is-active', v.id === 'view-' + name));
   setActiveNav(name);
-  $('scroller').scrollTop = 0;
-  const prev = currentScreen;
+  if(prev !== name) scroller.scrollTop = SCROLL_FORGET.includes(name) ? 0 : (scrollMemory[name] || 0);
   currentScreen = name;
   if(name !== 'support'){ stopTicketPoll(); setChatMode(false); }
   if(name === 'profile') loadProfile();
@@ -1490,6 +1546,7 @@ async function loadPrizes(){
     toggle('prizesCard', !items.length);
     if(!items.length) return;
     state.prizeKeys = d.keys || [];
+    state.prizePending = d.pending || [];
     /* Показываем только верх списка: у постоянного игрока призов набирается
        столько, что карточка занимала весь кабинет. Остальное — под
        раскрывашкой с собственным скроллом. */
@@ -1503,7 +1560,7 @@ async function loadPrizes(){
 }
 const PRIZE_STATUS = {
   done:    {cls:'ok',    text:'получен'},
-  pending: {cls:'warn',  text:'ждёт'},
+  pending: {cls:'warn',  text:'заберите'},
   expired: {cls:'muted', text:'сгорел'},
 };
 function prizeRowHtml(p){
@@ -1514,19 +1571,33 @@ function prizeRowHtml(p){
      «забрать до» в пустоту */
   const until = p.expires_text ? ` до ${esc(p.expires_text)}` : '';
   const note = p.status === 'pending'
-    ? (canTake ? `забрать${until || ' в любое время'}` : `ждёт подписку${until}`)
+    ? (canTake ? `можно забрать${until || ' в любое время'}` : `нужна подписка, забрать${until}`)
     : (p.status === 'expired' ? `срок вышел${until}` : esc(p.date_text));
   return `<div class="prize-row prize-row--${st.cls}">
     <span class="reel__icon">${face.icon}</span>
-    <span class="prize-row__main"><b>${esc(p.label)}</b><span>${note}</span></span>
+    <span class="prize-row__main"><b>${esc(p.label)}</b><span>${note}</span>${prizeCodeHtml(p)}</span>
     ${canTake
       ? `<button class="btn btn--primary btn--sm" onclick="openPrizeClaim(${Number(p.spin_id)})">Забрать</button>`
       : `<span class="pill pill--${st.cls === 'ok' ? 'ok' : (st.cls === 'warn' ? 'warn' : 'muted')}">${st.text}</span>`}
   </div>`;
 }
+/* Выигранный купон выдаётся один раз, и его код нигде больше не хранится:
+   без этой строки забытый код означал потерянный приз. */
+function prizeCodeHtml(p){
+  if(!p.promo_code) return '';
+  return `<button class="prize-code" onclick="copyPrizeCode(this,${arg(p.promo_code)})" title="Скопировать код">
+    <span class="prize-code__value">${esc(p.promo_code)}</span>
+    <svg class="icon icon--sm"><use href="#ic-copy"/></svg>
+  </button>`;
+}
+function copyPrizeCode(btn, code){ copyText(code, 'Код скопирован', 'Код недоступен', btn); }
 /* забрать приз из кабинета: тот же выбор подписки, что и сразу после прокрута */
 function openPrizeClaim(spinId){
-  const prize = (state.wheel && (state.wheel.pending || []).find(x => Number(x.spin_id) === Number(spinId)));
+  /* приз ищем и в списке кабинета: колесо в этот заход могли не открывать,
+     и тогда сюда попадала безымянная заглушка без срока */
+  const same = x => Number(x.spin_id) === Number(spinId);
+  const prize = (state.prizePending || []).find(same)
+             || (state.wheel && (state.wheel.pending || []).find(same));
   openModal('wheelModal');
   renderWheelChoice(prize || { label: 'Выигранные дни', spin_id: spinId, expires_text: '' },
                     state.prizeKeys || []);
@@ -1636,8 +1707,10 @@ function wheelChips(d){
   const chips = [];
   if(d.tickets) chips.push(`<span class="wheel-chip">🎟 Билетов <b>${d.tickets}</b></span>`);
   /* неполученные призы больше не блокируют прокрут, но и потеряться не
-     должны — показываем их как отдельную метку со сроком */
-  if((d.pending || []).length) chips.push(`<span class="wheel-chip wheel-chip--ready">🎁 Ждут вас <b>${d.pending.length}</b></span>`);
+     должны. Надпись прямо говорит, что от человека требуется действие:
+     «ждут вас» читалось как что-то, что происходит само. */
+  const waiting = (d.pending || []).length;
+  if(waiting) chips.push(`<span class="wheel-chip wheel-chip--ready">🎁 Заберите <b>${waiting}</b> ${plural(waiting,'приз','приза','призов')}</span>`);
   chips.push(d.wait_seconds > 0
     ? `<span class="wheel-chip">⏳ Бесплатный ход через <b>${esc(d.wait_text || '')}</b></span>`
     : '<span class="wheel-chip wheel-chip--ready">✅ Бесплатный ход готов</span>');
@@ -1660,9 +1733,9 @@ function renderWheel(d, resultHtml){
     : (d.note || 'Колесо выключено');
   /* Шансы и способы добыть билет уехали в отдельный лист: вместе с ними
      колесо не помещалось на экран и его приходилось листать. */
-  $('wheelBody').innerHTML = wheelChips(d)
+  swapIn($('wheelBody'), wheelChips(d)
     + reelHtml(prizes)
-    + `<div class="wheel-result" id="wheelResult">${resultHtml || 'Нажмите «Крутить» — что выпало, увидите здесь.'}</div>`;
+    + `<div class="wheel-result" id="wheelResult">${resultHtml || 'Нажмите «Крутить» — что выпало, увидите здесь.'}</div>`);
 
   const spin = $('wheelSpinBtn');
   toggle('wheelSpinBtn', !d.can_spin);
@@ -1686,16 +1759,36 @@ function openWheelInfo(){
 }
 /* выбор подписки для выигранных дней */
 function renderWheelChoice(prize, keys){
+  state.wheelChoice = prize;
   $('wheelSub').textContent = 'К какой подписке добавить выигранные дни';
   const until = prize.expires_text ? `Забрать можно до ${esc(prize.expires_text)}.` : '';
-  $('wheelBody').innerHTML = `<div class="wheel-result wheel-result--win"><b>🎁 ${esc(prize.label)}</b>${until}</div>
+  swapIn($('wheelBody'), `<div class="wheel-result wheel-result--win"><b>🎁 ${esc(prize.label)}</b>${until}</div>
     <div class="wheel-keys">${(keys || []).map(k => `
       <button class="wheel-key" onclick="claimWheelDays(${Number(k.key_id)},${Number(prize.spin_id) || 0})">
         <span class="wheel-card__icon">🔑</span>
         <span class="wheel-key__main"><b>${esc(k.host_name || 'Подписка')}</b><span>действует до ${esc(k.expiry_text || '—')}</span></span>
         <svg class="icon icon--sm" style="color:var(--faint)"><use href="#ic-chevron-right"/></svg>
-      </button>`).join('')}</div>`;
+      </button>`).join('')}</div>
+    <button class="btn btn--ghost btn--block" style="margin-top:10px" onclick="wheelChooseLater()">Решить позже</button>`);
   toggle('wheelActions', true);
+}
+/* Выбор подписки — не тупик: раньше отсюда вели только «забрать сейчас» и
+   «закрыть окно». Приз никуда не денется, он лежит в кабинете со своим
+   сроком, поэтому возвращаемся к колесу и крутим дальше. */
+async function wheelChooseLater(){
+  const prize = state.wheelChoice;
+  state.wheelChoice = null;
+  const note = prize
+    ? `<b>🎁 ${esc(prize.label)}</b>Приз ждёт в кабинете${prize.expires_text ? ` — заберите до ${esc(prize.expires_text)}` : ''}.`
+    : '';
+  try{
+    const d = await api('/api/wheel/state');
+    state.wheel = d;
+    renderWheel(d, note);
+    if(note) $('wheelResult').classList.add('wheel-result--win');
+    refreshWheelButton(d);
+  }catch(e){ return openWheel(); }
+  loadPrizes();
 }
 async function claimWheelDays(keyId, spinId){
   try{
@@ -1812,10 +1905,18 @@ async function loadCatalog(){
   if(!d.ok) throw new Error(d.error || 'Каталог недоступен');
   state.catalog = d.hosts || [];
 }
+/* Пока каталог едет по сети, у выбора локации и устройств нет даже высоты:
+   без заглушек экран собирался по частям и подпрыгивал на каждом ответе. */
+function catalogSkeleton(){
+  $('hostSelector').innerHTML = '<span class="chip skeleton" style="width:118px;min-height:38px"></span>'.repeat(2);
+  $('deviceSelector').innerHTML = '<div class="card skeleton" style="min-height:64px;flex:1"></div>';
+  $('planSelector').innerHTML = '<div class="card skeleton" style="min-height:104px"></div>';
+}
 async function openCatalog(action){
   state.action = action;
   state.addon = null;
   state.promoPreview = null;
+  if(!state.catalog.length) catalogSkeleton();
   showScreen('catalog');
   $('catalogTitle').textContent = action === 'renew' ? 'Продление' : 'Покупка';
   toggle('renewSelector', action !== 'renew');
@@ -2405,15 +2506,23 @@ function resetSupportView(){
   state.support.current = null;
   applySupportPanes();
 }
-function closeTicketThread(){ resetSupportView(); loadSupportHistory(); updateBackButton(); }
+function closeTicketThread(){
+  resetSupportView();
+  swapIn($('supportListView'));
+  loadSupportHistory();
+  updateBackButton();
+}
 async function loadSupportHistory(){
   const root = $('supportHistory');
-  root.innerHTML = '<div class="card skeleton"></div>';
+  /* скелетон — только пока показывать нечего. Раньше он выскакивал при
+     каждом заходе в раздел, и уже загруженный список мигал впустую */
+  if(!state.support.tickets.length) root.innerHTML = '<div class="card skeleton"></div>';
   try{
     const d = await api('/api/support/history', { method:'POST', headers: JSON_H, body: JSON.stringify({ user_id: USER_ID }) });
     if(!d.ok) throw new Error(d.error || 'Обращения недоступны');
+    const first = !state.support.tickets.length;
     state.support.tickets = d.tickets || [];
-    renderSupportList(true);
+    renderSupportList(first);
   }catch(e){
     root.innerHTML = errorCard('Не удалось загрузить обращения', e.message, 'loadSupportHistory()');
   }
@@ -2471,6 +2580,7 @@ async function openTicket(id){
   $('threadMessages').innerHTML = '<div class="card skeleton"></div>';
   state.support.current = { ticket_id: id, subject: '', status: 'open', messages: [] };
   applySupportPanes();
+  swapIn($('supportThreadView'));   /* на телефоне переписка занимает весь экран */
   renderSupportList();
   updateBackButton();
   await refreshThread(true);

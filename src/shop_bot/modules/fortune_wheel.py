@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
@@ -41,6 +42,17 @@ PRIZE_PROMO_PERCENT = "promo_percent"
 PRIZE_PROMO_FIXED = "promo_fixed"
 PRIZE_NOTHING = "nothing"
 PRIZE_TYPES = (PRIZE_DAYS, PRIZE_BALANCE, PRIZE_PROMO_PERCENT, PRIZE_PROMO_FIXED, PRIZE_NOTHING)
+
+# Откуда взялся или куда делся билет. В журнале хранится код, а показывать
+# админу «purchase_bonus» смысла нет.
+REASON_TEXT = {
+    "spin": "потрачен на прокрут",
+    "purchase": "куплен за баланс",
+    "purchase_bonus": "за покупку подписки",
+    "referral_bonus": "за приглашённого друга",
+    "admin": "выдан вручную",
+    "refund": "возврат за несостоявшийся приз",
+}
 
 # Причины отказа. Текст видит человек, поэтому лежит рядом с кодом.
 DECLINE_TEXT = {
@@ -189,6 +201,27 @@ def pending_prizes(user_id: int) -> list[dict]:
     return out
 
 
+# Текст выигрыша пишется сразу с разметкой для Telegram. Мини-апп и панель
+# рисуют его по-своему, поэтому код купона и чистый текст достаём отдельно.
+_CODE_RE = re.compile(r"<code>([^<]{3,64})</code>")
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def promo_code(detail: str | None) -> str:
+    """Код выигранного купона. Пусто — если приз был не купоном.
+
+    Купон выдаётся один раз, и его код живёт только в этом тексте: пока его
+    неоткуда было прочитать, забытый код означал потерянный приз.
+    """
+    found = _CODE_RE.search(detail or "")
+    return found.group(1).strip() if found else ""
+
+
+def plain_detail(detail: str | None) -> str:
+    """Тот же текст без разметки."""
+    return _TAG_RE.sub("", (detail or "").replace("<br>", "\n")).strip()
+
+
 def history(user_id: int, limit: int = 20) -> list[dict]:
     """История призов: что забрано, что ждёт и что сгорело.
 
@@ -213,6 +246,8 @@ def history(user_id: int, limit: int = 20) -> list[dict]:
             "amount": float(row.get("amount") or 0),
             "status": row.get("status") or "done",
             "detail": row.get("detail") or "",
+            "detail_text": plain_detail(row.get("detail")),
+            "promo_code": promo_code(row.get("detail")),
             "date_text": created.strftime("%d.%m.%Y") if created else "",
             "expires_text": (_parse(row.get("expires_at")) or created or now).strftime("%d.%m.%Y")
                             if row.get("expires_at") else "",
