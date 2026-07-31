@@ -596,10 +596,13 @@
         } catch (e) { showToast('danger', 'Ошибка сети'); }
     }
 
-    function confirmDeleteAllTickets() {
-        if (confirm('Вы уверены, что хотите удалить ВСЕ чаты поддержки? Это действие необратимо.')) {
-            document.getElementById('deleteAllTicketsForm').submit();
-        }
+    async function confirmDeleteAllTickets() {
+        const ok = await showCustomConfirm({
+            title: 'Удалить все обращения?',
+            text: 'Вся переписка поддержки и вложения к ней будут удалены. Восстановить их будет нечем.',
+            okText: 'Удалить всё'
+        });
+        if (ok) document.getElementById('deleteAllTicketsForm').submit();
     }
 
     // Функция переключения меню (универсальная)

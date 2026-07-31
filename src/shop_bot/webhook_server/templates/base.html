@@ -569,6 +569,274 @@
             scrollbar-width: thin !important;
             scrollbar-color: rgba(215, 171, 255, 0.2) rgba(255, 255, 255, 0.02) !important;
         }
+        /* ===== СВОИ ЭЛЕМЕНТЫ УПРАВЛЕНИЯ =====
+           Браузер рисует галочки, списки и счётчики по своим правилам: в
+           Chrome, Firefox и Safari они выглядят по-разному и ни один не
+           попадает в палитру панели. Ниже — их замена. */
+
+        /* Галочка */
+        .ui-check {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 1.15rem;
+            height: 1.15rem;
+            flex: 0 0 auto;
+            border-radius: 0.4rem;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(0, 0, 0, 0.35);
+            cursor: pointer;
+            position: relative;
+            transition: border-color .15s ease, background .15s ease;
+        }
+
+        .ui-check:hover {
+            border-color: rgba(215, 171, 255, 0.5);
+        }
+
+        .ui-check:checked {
+            background: #d7abff;
+            border-color: #d7abff;
+        }
+
+        .ui-check:checked::after {
+            content: '';
+            position: absolute;
+            left: 0.36rem;
+            top: 0.14rem;
+            width: 0.3rem;
+            height: 0.6rem;
+            border: solid #14151a;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        .ui-check:indeterminate {
+            background: rgba(215, 171, 255, 0.35);
+            border-color: #d7abff;
+        }
+
+        .ui-check:indeterminate::after {
+            content: '';
+            position: absolute;
+            left: 0.22rem;
+            top: 0.48rem;
+            width: 0.6rem;
+            height: 0;
+            border-top: 2px solid #fff;
+        }
+
+        .ui-check:focus-visible {
+            outline: 2px solid rgba(215, 171, 255, 0.6);
+            outline-offset: 2px;
+        }
+
+        .ui-check:disabled {
+            opacity: .4;
+            cursor: not-allowed;
+        }
+
+        /* Переключатель */
+        .ui-switch {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 2.6rem;
+            height: 1.45rem;
+            flex: 0 0 auto;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            position: relative;
+            cursor: pointer;
+            transition: background .18s ease, border-color .18s ease;
+        }
+
+        .ui-switch::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0.16rem;
+            width: 1.05rem;
+            height: 1.05rem;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.75);
+            transform: translateY(-50%);
+            transition: left .18s cubic-bezier(.4, 0, .2, 1), background .18s ease;
+        }
+
+        .ui-switch:checked {
+            background: rgba(215, 171, 255, 0.85);
+            border-color: rgba(215, 171, 255, 0.9);
+        }
+
+        .ui-switch:checked::after {
+            left: calc(100% - 1.21rem);
+            background: #14151a;
+        }
+
+        .ui-switch:focus-visible {
+            outline: 2px solid rgba(215, 171, 255, 0.6);
+            outline-offset: 2px;
+        }
+
+        /* Числовое поле со своими шагами вместо браузерных стрелок */
+        .ui-stepper {
+            display: inline-flex;
+            align-items: stretch;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.75rem;
+            background: rgba(0, 0, 0, 0.4);
+            overflow: hidden;
+        }
+
+        .ui-stepper:focus-within {
+            border-color: rgba(215, 171, 255, 0.5);
+        }
+
+        .ui-stepper input {
+            border: 0 !important;
+            background: transparent !important;
+            text-align: center;
+            min-width: 2.5rem;
+            padding: 0.5rem 0.15rem;
+            color: #fff;
+            font-size: .85rem;
+            outline: none;
+        }
+
+        .ui-stepper input::-webkit-outer-spin-button,
+        .ui-stepper input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .ui-stepper input[type=number] {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+
+        .ui-stepper button {
+            width: 1.9rem;
+            color: rgba(255, 255, 255, 0.45);
+            font-size: 1rem;
+            line-height: 1;
+            transition: background .15s ease, color .15s ease;
+        }
+
+        .ui-stepper button:hover {
+            background: rgba(215, 171, 255, 0.12);
+            color: #d7abff;
+        }
+
+        /* Выпадающий список */
+        .ui-select {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .ui-select > select {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+            width: 0;
+            height: 0;
+        }
+
+        .ui-select__button {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: .5rem;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .ui-select__button::after {
+            content: 'expand_more';
+            font-family: 'Material Symbols Outlined';
+            font-size: 1.05rem;
+            line-height: 1;
+            opacity: .45;
+            flex: 0 0 auto;
+            transition: transform .18s ease;
+        }
+
+        .ui-select.is-open .ui-select__button::after {
+            transform: rotate(180deg);
+        }
+
+        .ui-select__value {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .ui-select__list {
+            position: fixed;
+            z-index: 120;
+            display: none;
+            max-height: 15rem;
+            overflow-y: auto;
+            padding: .3rem;
+            border-radius: .85rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(20, 21, 26, 0.98);
+            backdrop-filter: blur(12px);
+            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, .6);
+        }
+
+        .ui-select.is-open .ui-select__list {
+            display: block;
+        }
+
+        .ui-select__option {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: .5rem .7rem;
+            border-radius: .6rem;
+            font-size: .85rem;
+            color: rgba(255, 255, 255, .75);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .ui-select__option:hover {
+            background: rgba(255, 255, 255, .06);
+            color: #fff;
+        }
+
+        .ui-select__option[aria-selected="true"] {
+            background: rgba(215, 171, 255, .14);
+            color: #d7abff;
+            font-weight: 700;
+        }
+
+        .ui-select__option[data-disabled="1"] {
+            opacity: .35;
+            cursor: not-allowed;
+        }
+
+        /* Выбор файла */
+        input[type="file"]::-webkit-file-upload-button,
+        input[type="file"]::file-selector-button {
+            margin-right: .75rem;
+            padding: .4rem .9rem;
+            border: 1px solid rgba(215, 171, 255, .25);
+            border-radius: .6rem;
+            background: rgba(215, 171, 255, .1);
+            color: #d7abff;
+            font-weight: 700;
+            font-size: .8rem;
+            cursor: pointer;
+            transition: background .15s ease;
+        }
+
+        input[type="file"]::-webkit-file-upload-button:hover,
+        input[type="file"]::file-selector-button:hover {
+            background: rgba(215, 171, 255, .18);
+        }
     </style>
     {% block head %}{% endblock %}
 </head>
@@ -1269,29 +1537,6 @@
         </div>
 
         <!-- Global Custom Confirmation Modal -->
-        <div id="custom-confirm-modal" class="modal-overlay">
-            <div class="modal-content p-6 max-w-md text-center">
-                <div
-                    class="w-16 h-16 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-500 mx-auto mb-4 border border-red-500/10 shadow-[0_0_30px_rgba(239,68,68,0.15)]">
-                    <span class="material-symbols-outlined text-3xl">warning</span>
-                </div>
-                <h3 id="confirm-modal-title" class="text-xl font-bold text-white mb-2">Вы уверены?</h3>
-                <p id="confirm-modal-text" class="text-white/60 text-sm leading-relaxed mb-8">Это действие необратимо.
-                    Пожалуйста, подтвердите выполнение.</p>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <button type="button" onclick="closeConfirmModal(false)"
-                        class="px-5 py-3 rounded-xl bg-white/5 text-white font-bold hover:bg-white/10 transition-all border border-white/5">
-                        Отмена
-                    </button>
-                    <button type="button" onclick="closeConfirmModal(true)"
-                        class="px-5 py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 shadow-lg shadow-red-500/20 transition-all">
-                        Да, выполнить
-                    </button>
-                </div>
-            </div>
-        </div>
-
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
         <script id="flash-messages" type="application/json">{{ messages|tojson }}</script>
@@ -1523,27 +1768,8 @@
             };
             // ===== Конец функции apiRequest =====
 
-            // ===== ДИАЛОГ ПОДТВЕРЖДЕНИЯ (MODAL) =====
-            let confirmResolver = null;
-            window.showCustomConfirm = function (message, title = 'Вы уверены?') {
-                return new Promise((resolve) => {
-                    const modal = document.getElementById('custom-confirm-modal');
-                    const titleEl = document.getElementById('confirm-modal-title');
-                    const textEl = document.getElementById('confirm-modal-text');
-                    if (titleEl) titleEl.textContent = title;
-                    if (textEl) textEl.textContent = message;
-                    modal.classList.add('open');
-                    confirmResolver = resolve;
-                });
-            }
-            window.closeConfirmModal = function (result) {
-                const modal = document.getElementById('custom-confirm-modal');
-                modal.classList.remove('open');
-                if (confirmResolver) confirmResolver(result);
-                confirmResolver = null;
-            }
-
-
+            // ===== ДИАЛОГ ПОДТВЕРЖДЕНИЯ =====
+            // showCustomConfirm живёт ниже, рядом с остальными диалогами
             window.showConfirmModal = async function (titleOrMessage, messageOrCallback, callback) {
                 let title = 'Подтверждение';
                 let message = '';
@@ -1616,6 +1842,24 @@
                     }
                 }
             });
+
+            // Подтверждение на самой кнопке: работает и в ajax-формах, куда
+            // общий перехватчик submit намеренно не лезет
+            document.addEventListener('click', async (e) => {
+                const btn = e.target.closest('[data-confirm-title]');
+                if (!btn || btn.__confirmed) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const ok = await showCustomConfirm({
+                    title: btn.getAttribute('data-confirm-title'),
+                    text: btn.getAttribute('data-confirm-text') || '',
+                    okText: btn.getAttribute('data-confirm-ok') || 'Да, выполнить'
+                });
+                if (!ok) return;
+                btn.__confirmed = true;
+                btn.click();
+                btn.__confirmed = false;
+            }, true);
             // ===== Конец блока подтверждения =====
 
             // ===== КАСТОМНЫЙ SELECT =====
@@ -2141,6 +2385,238 @@
             }
         </script>
 
+        <script>
+            /* ===== СВОИ ЭЛЕМЕНТЫ УПРАВЛЕНИЯ =====
+               Нативные select, checkbox и стрелки числовых полей браузер
+               рисует сам, и в трёх браузерах они выглядят по-разному. Здесь
+               они подменяются разметкой панели; исходный <select> остаётся
+               в DOM и остаётся источником значения — формы и обработчики
+               change продолжают работать как прежде. */
+            (function () {
+                const UI = window.UI = {};
+
+                /* --- выпадающий список --- */
+                function closeAllSelects(except) {
+                    document.querySelectorAll('.ui-select.is-open').forEach(el => {
+                        if (el !== except) el.classList.remove('is-open');
+                    });
+                }
+
+                function placeList(wrap) {
+                    const list = wrap.querySelector('.ui-select__list');
+                    const btn = wrap.querySelector('.ui-select__button');
+                    if (!list || !btn) return;
+                    const r = btn.getBoundingClientRect();
+                    const below = window.innerHeight - r.bottom;
+                    list.style.minWidth = r.width + 'px';
+                    list.style.left = Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)) + 'px';
+                    /* места снизу нет — раскрываем вверх, иначе список уезжает за экран */
+                    if (below < 180 && r.top > below) {
+                        list.style.top = 'auto';
+                        list.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+                        list.style.maxHeight = Math.max(120, r.top - 16) + 'px';
+                    } else {
+                        list.style.bottom = 'auto';
+                        list.style.top = (r.bottom + 6) + 'px';
+                        list.style.maxHeight = Math.max(120, below - 16) + 'px';
+                    }
+                }
+
+                function syncSelect(wrap) {
+                    const sel = wrap.querySelector('select');
+                    const list = wrap.querySelector('.ui-select__list');
+                    const value = wrap.querySelector('.ui-select__value');
+                    if (!sel || !list) return;
+                    list.innerHTML = '';
+                    let current = null;
+                    Array.from(sel.options).forEach(opt => {
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        b.className = 'ui-select__option';
+                        b.textContent = opt.textContent;
+                        b.dataset.value = opt.value;
+                        if (opt.disabled) b.dataset.disabled = '1';
+                        if (opt.selected) { b.setAttribute('aria-selected', 'true'); current = opt; }
+                        b.addEventListener('click', () => {
+                            if (opt.disabled) return;
+                            sel.value = opt.value;
+                            wrap.classList.remove('is-open');
+                            syncSelect(wrap);
+                            sel.dispatchEvent(new Event('input', { bubbles: true }));
+                            sel.dispatchEvent(new Event('change', { bubbles: true }));
+                        });
+                        list.appendChild(b);
+                    });
+                    if (value) value.textContent = current ? current.textContent.trim() : (sel.options[0]?.textContent || '');
+                }
+
+                function enhanceSelect(sel) {
+                    if (sel.dataset.uiReady || sel.multiple || sel.size > 1 || sel.hasAttribute('data-no-ui')) return;
+                    /* у части страниц свой soft-select со скрытым <select> —
+                       второй оболочки там не нужно */
+                    if (sel.closest('.soft-select') ||
+                        (sel.id && document.querySelector('.soft-select[data-target="' + sel.id + '"]'))) return;
+                    sel.dataset.uiReady = '1';
+                    const wrap = document.createElement('div');
+                    wrap.className = 'ui-select';
+                    /* оформление берём с самого select: у полей в панели
+                       разные размеры и отступы, и подменять их вслепую нельзя */
+                    const cls = sel.getAttribute('class') || '';
+                    sel.parentNode.insertBefore(wrap, sel);
+                    wrap.appendChild(sel);
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'ui-select__button ' + cls;
+                    btn.innerHTML = '<span class="ui-select__value"></span>';
+                    if (sel.disabled) btn.disabled = true;
+                    const list = document.createElement('div');
+                    list.className = 'ui-select__list';
+                    wrap.appendChild(btn);
+                    wrap.appendChild(list);
+                    btn.addEventListener('click', e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const open = wrap.classList.contains('is-open');
+                        closeAllSelects();
+                        if (!open) { wrap.classList.add('is-open'); placeList(wrap); }
+                    });
+                    /* значение могли поменять из кода — держим подпись в курсе */
+                    sel.addEventListener('change', () => syncSelect(wrap));
+                    new MutationObserver(() => syncSelect(wrap)).observe(sel, { childList: true, subtree: true });
+                    syncSelect(wrap);
+                }
+
+                /* --- числовое поле --- */
+                function enhanceStepper(input) {
+                    if (input.dataset.uiReady || input.hasAttribute('data-no-ui')) return;
+                    input.dataset.uiReady = '1';
+                    const wrap = document.createElement('div');
+                    wrap.className = 'ui-stepper ' + (input.dataset.stepperClass || '');
+                    input.parentNode.insertBefore(wrap, input);
+                    const mk = (sign, label) => {
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        b.tabIndex = -1;
+                        b.textContent = label;
+                        b.addEventListener('click', () => {
+                            const step = Number(input.step) || 1;
+                            const next = (Number(input.value) || 0) + sign * step;
+                            const min = input.min === '' ? -Infinity : Number(input.min);
+                            const max = input.max === '' ? Infinity : Number(input.max);
+                            input.value = Math.min(max, Math.max(min, next));
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                        });
+                        return b;
+                    };
+                    wrap.appendChild(mk(-1, '\u2212'));
+                    wrap.appendChild(input);
+                    wrap.appendChild(mk(1, '+'));
+                }
+
+                UI.enhance = function (root) {
+                    root = root || document;
+                    root.querySelectorAll('select').forEach(enhanceSelect);
+                    root.querySelectorAll('input[type=number][data-stepper]').forEach(enhanceStepper);
+                };
+
+                document.addEventListener('click', () => closeAllSelects());
+                window.addEventListener('resize', () => closeAllSelects());
+                window.addEventListener('scroll', () => closeAllSelects(), true);
+                document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAllSelects(); });
+
+                document.addEventListener('DOMContentLoaded', () => {
+                    UI.enhance();
+                    /* половина таблиц панели рисуется скриптами уже после
+                       загрузки — иначе новые строки остались бы с родными
+                       браузерными списками */
+                    new MutationObserver(records => {
+                        for (const r of records) {
+                            for (const n of r.addedNodes) {
+                                if (n.nodeType !== 1) continue;
+                                if (n.tagName === 'SELECT') enhanceSelect(n);
+                                else UI.enhance(n);
+                            }
+                        }
+                    }).observe(document.body, { childList: true, subtree: true });
+                });
+            })();
+
+            /* ===== ДИАЛОГИ ВМЕСТО confirm/alert/prompt ===== */
+            (function () {
+                function build(opts) {
+                    const tone = opts.tone || 'danger';
+                    const colors = {
+                        danger: ['bg-red-500/10 text-red-500 border-red-500/10', 'bg-red-500 hover:bg-red-600 text-white', 'warning'],
+                        primary: ['bg-primary/10 text-primary border-primary/10', 'bg-primary hover:bg-primary/90 text-background-dark', 'help'],
+                        info: ['bg-white/5 text-white/70 border-white/10', 'bg-primary hover:bg-primary/90 text-background-dark', 'info']
+                    }[tone] || [];
+                    const overlay = document.createElement('div');
+                    overlay.className = 'modal-overlay open';
+                    overlay.innerHTML =
+                        '<div class="modal-content p-6 max-w-md">' +
+                        '<div class="w-14 h-14 rounded-2xl border flex items-center justify-center mx-auto mb-4 ' + colors[0] + '">' +
+                        '<span class="material-symbols-outlined text-3xl">' + (opts.icon || colors[2]) + '</span></div>' +
+                        '<h3 class="text-lg font-bold text-white mb-2 text-center"></h3>' +
+                        '<p class="text-white/60 text-sm leading-relaxed mb-6 text-center whitespace-pre-line"></p>' +
+                        (opts.input ? '<input class="ui-dialog-input w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm mb-6 focus:border-primary focus:outline-none">' : '') +
+                        '<div class="grid ' + (opts.alert ? 'grid-cols-1' : 'grid-cols-2') + ' gap-3">' +
+                        (opts.alert ? '' : '<button type="button" data-act="cancel" class="px-5 py-3 rounded-xl bg-white/5 text-white font-bold hover:bg-white/10 transition-all border border-white/5"></button>') +
+                        '<button type="button" data-act="ok" class="px-5 py-3 rounded-xl font-bold transition-all ' + colors[1] + '"></button>' +
+                        '</div></div>';
+                    overlay.querySelector('h3').textContent = opts.title || 'Вы уверены?';
+                    overlay.querySelector('p').textContent = opts.text || '';
+                    overlay.querySelector('[data-act="ok"]').textContent = opts.okText || (opts.alert ? 'Понятно' : 'Да, выполнить');
+                    const cancel = overlay.querySelector('[data-act="cancel"]');
+                    if (cancel) cancel.textContent = opts.cancelText || 'Отмена';
+                    return overlay;
+                }
+
+                function open(opts) {
+                    return new Promise(resolve => {
+                        const overlay = build(opts);
+                        document.body.appendChild(overlay);
+                        const input = overlay.querySelector('.ui-dialog-input');
+                        if (input) {
+                            input.value = opts.value || '';
+                            input.placeholder = opts.placeholder || '';
+                            setTimeout(() => input.focus(), 50);
+                        }
+                        const done = value => {
+                            overlay.remove();
+                            document.removeEventListener('keydown', onKey);
+                            resolve(value);
+                        };
+                        const onKey = e => {
+                            if (e.key === 'Escape') done(opts.input ? null : false);
+                            if (e.key === 'Enter' && opts.input) done(input.value);
+                        };
+                        overlay.querySelector('[data-act="ok"]').addEventListener('click',
+                            () => done(opts.input ? input.value : true));
+                        const cancel = overlay.querySelector('[data-act="cancel"]');
+                        if (cancel) cancel.addEventListener('click', () => done(opts.input ? null : false));
+                        overlay.addEventListener('click', e => {
+                            if (e.target === overlay) done(opts.input ? null : false);
+                        });
+                        document.addEventListener('keydown', onKey);
+                    });
+                }
+
+                window.uiDialog = open;
+                /* Старая сигнатура (message, title) сохраняется: ею уже
+                   пользуются несколько страниц */
+                window.showCustomConfirm = function (messageOrOpts, title) {
+                    if (messageOrOpts && typeof messageOrOpts === 'object') return open(messageOrOpts);
+                    return open({ text: messageOrOpts, title: title || 'Вы уверены?' });
+                };
+                window.showAlert = function (text, title, tone) {
+                    return open({ text: text, title: title || 'Готово', tone: tone || 'info', alert: true });
+                };
+                window.showPrompt = function (opts) {
+                    return open(Object.assign({ input: true, tone: 'primary', okText: 'Сохранить' }, opts || {}));
+                };
+            })();
+        </script>
         {% block scripts %}{% endblock %}
 </body>
 

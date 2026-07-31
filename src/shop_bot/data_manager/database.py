@@ -847,6 +847,10 @@ def _ensure_wheel_tables(cursor: sqlite3.Cursor) -> None:
     # Невыданный приз живёт ограниченное время: иначе они копятся годами,
     # а магазин остаётся должен по каждому.
     _ensure_table_column(cursor, "wheel_spins", "expires_at", "TIMESTAMP")
+    # Шанс сектора на момент прокрута. Веса правят на ходу, и без этого
+    # снимка нельзя проверить, честно ли колесо: сравнивать выпадения
+    # с сегодняшней настройкой бессмысленно.
+    _ensure_table_column(cursor, "wheel_spins", "chance", "REAL")
 
     # Движение билетов ведём отдельно: по одному лишь остатку не разобрать,
     # откуда он взялся и на что ушёл.
@@ -1080,14 +1084,69 @@ def complete_wheel_spin(spin_id: int, key_id: int | None, detail: str | None) ->
 
 
 def log_wheel_spin_full(user_id: int, prize: dict, key_id: int | None, status: str,
-                        detail: str | None, source: str, expires_at: str | None = None) -> int | None:
+                        detail: str | None, source: str, expires_at: str | None = None,
+                        chance: float | None = None) -> int | None:
     cursor = _exec(
-        "INSERT INTO wheel_spins (user_id, prize_id, label, prize_type, amount, key_id, status, detail, source, expires_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO wheel_spins (user_id, prize_id, label, prize_type, amount, key_id, status, detail, source, expires_at, chance) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (user_id, prize.get("prize_id"), prize.get("label"), prize.get("prize_type"),
-         float(prize.get("amount") or 0), key_id, status, detail, source, expires_at),
+         float(prize.get("amount") or 0), key_id, status, detail, source, expires_at, chance),
         "Не удалось записать прокрут колеса")
     return cursor.lastrowid if cursor else None
+
+
+def get_wheel_fairness(limit_days: int | None = None) -> list[dict]:
+    """Сколько раз сектор выпал против того, сколько должен был.
+
+    Веса меняют на ходу, поэтому «ожидалось» считается не по нынешней
+    настройке, а по шансу, записанному в момент каждого прокрута. Без этого
+    любая правка секторов задним числом делала статистику бессмысленной.
+    """
+    where = "WHERE chance IS NOT NULL"
+    params: tuple = ()
+    if limit_days:
+        where += " AND created_at >= datetime('now', ?)"
+        params = (f"-{int(limit_days)} days",)
+    return _fetch_list(
+        "SELECT prize_id, label, prize_type, COUNT(*) AS hits, "
+        "       SUM(chance) / 100.0 AS expected, AVG(chance) AS avg_chance "
+        f"FROM wheel_spins {where} GROUP BY prize_id, label ORDER BY hits DESC",
+        params, "Не удалось посчитать честность колеса")
+
+
+def count_wheel_spins(limit_days: int | None = None, with_chance: bool = True) -> int:
+    where = "WHERE chance IS NOT NULL" if with_chance else "WHERE 1=1"
+    params: tuple = ()
+    if limit_days:
+        where += " AND created_at >= datetime('now', ?)"
+        params = (f"-{int(limit_days)} days",)
+    row = _fetch_row(f"SELECT COUNT(*) AS c FROM wheel_spins {where}", params, "")
+    return int((row or {}).get("c") or 0)
+
+
+def get_user_wheel_summary(user_id: int) -> dict:
+    """Всё про рулетку одного пользователя — для карточки в панели."""
+    row = _fetch_row(
+        "SELECT COUNT(*) AS spins, MIN(created_at) AS first_spin, MAX(created_at) AS last_spin, "
+        "COALESCE(SUM(CASE WHEN prize_type='days' THEN amount ELSE 0 END), 0) AS days_won, "
+        "COALESCE(SUM(CASE WHEN prize_type='balance' THEN amount ELSE 0 END), 0) AS rub_won, "
+        "COALESCE(SUM(CASE WHEN prize_type='nothing' OR amount<=0 THEN 1 ELSE 0 END), 0) AS misses, "
+        "COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END), 0) AS pending "
+        "FROM wheel_spins WHERE user_id = ?",
+        (user_id,), f"Не удалось собрать сводку колеса для {user_id}")
+    return dict(row) if row else {}
+
+
+def get_user_wheel_spins(user_id: int, limit: int = 20) -> list[dict]:
+    return _fetch_list(
+        "SELECT * FROM wheel_spins WHERE user_id = ? ORDER BY spin_id DESC LIMIT ?",
+        (user_id, limit), f"Не удалось получить прокруты пользователя {user_id}")
+
+
+def get_user_ticket_log(user_id: int, limit: int = 20) -> list[dict]:
+    return _fetch_list(
+        "SELECT * FROM wheel_ticket_log WHERE user_id = ? ORDER BY entry_id DESC LIMIT ?",
+        (user_id, limit), f"Не удалось получить журнал билетов {user_id}")
 
 
 def get_wheel_notify_candidates(ready_before: str, quiet_since: str) -> list[dict]:
@@ -3940,9 +3999,9 @@ def get_matching_user_ids(q: str | None = None) -> list[int]:
         q_like = f"%{q.strip()}%"
         rows = _fetch_list(
             "SELECT telegram_id FROM users "
-            "WHERE (username LIKE ?) OR (CAST(telegram_id AS TEXT) LIKE ?) "
+            "WHERE (username LIKE ?) OR (CAST(telegram_id AS TEXT) LIKE ?) OR (auth_email LIKE ?) "
             "ORDER BY telegram_id",
-            (q_like, q_like),
+            (q_like, q_like, q_like),
             "Не удалось получить ID пользователей по фильтру"
         )
     else:
@@ -4294,23 +4353,16 @@ def get_users_paginated(page: int = 1, per_page: int = 30, q: str | None = None)
     if q:
         q_like = f"%{q.strip()}%"
         
-        count_query = """
-            SELECT COUNT(*)
-            FROM users
-            WHERE (username LIKE ?)
-               OR (CAST(telegram_id AS TEXT) LIKE ?)
-        """
-        total = _fetch_val(count_query, (q_like, q_like), 0, "Не удалось подсчитать пользователей с фильтром") or 0
-
-        data_query = """
-            SELECT *
-            FROM users
-            WHERE (username LIKE ?)
-               OR (CAST(telegram_id AS TEXT) LIKE ?)
-            ORDER BY is_pinned DESC, registration_date DESC
-            LIMIT ? OFFSET ?
-        """
-        users = _fetch_list(data_query, (q_like, q_like, per_page, offset), "Не удалось получить страницу пользователей с фильтром")
+        # Веб-аккаунты часто не имеют username вовсе — без поиска по почте
+        # найти такого человека в панели было нечем
+        where = ("WHERE (username LIKE ?) OR (CAST(telegram_id AS TEXT) LIKE ?) "
+                 "OR (auth_email LIKE ?)")
+        args = (q_like, q_like, q_like)
+        total = _fetch_val(f"SELECT COUNT(*) FROM users {where}", args, 0,
+                           "Не удалось подсчитать пользователей с фильтром") or 0
+        users = _fetch_list(
+            f"SELECT * FROM users {where} ORDER BY is_pinned DESC, registration_date DESC LIMIT ? OFFSET ?",
+            args + (per_page, offset), "Не удалось получить страницу пользователей с фильтром")
     else:
         total = _fetch_val("SELECT COUNT(*) FROM users", (), 0, "Не удалось подсчитать пользователей") or 0
         

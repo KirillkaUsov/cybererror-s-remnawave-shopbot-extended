@@ -256,7 +256,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <button type="submit"
                 class="w-full p-4 text-left text-xs font-bold text-red-500 hover:bg-white/5 flex items-center gap-2"
-                onclick="return confirm('Удалить?')">
+                data-confirm-title="Удалить обращение?" data-confirm-text="Переписка и вложения будут удалены.">
                 <span class="material-symbols-outlined text-sm">delete_forever</span> УДАЛИТЬ
             </button>
         </form>
@@ -350,7 +350,7 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                         <button type="submit"
                             class="w-full p-4 text-left text-xs font-bold text-red-500 hover:bg-white/5 flex items-center gap-2"
-                            onclick="return confirm('Удалить?')">
+                            data-confirm-title="Удалить обращение?" data-confirm-text="Переписка и вложения будут удалены.">
                             <span class="material-symbols-outlined text-sm">delete_forever</span> УДАЛИТЬ
                         </button>
                     </form>
@@ -476,31 +476,51 @@
     }
 
     // ===== ЗАГРУЗКА СООБЩЕНИЙ =====
+    let lastChatHtml = null;
     const loadMessages = async (forceScroll = false) => {
         try {
             const res = await fetch(window.location.pathname + '?partial=true');
-            if (res.ok) {
-                const html = await res.text();
-                const mBox = document.getElementById('m-chat-box');
-                const dBox = document.getElementById('d-chat-box');
+            if (!res.ok) return;
+            const html = await res.text();
 
-                const wasAtBottom = forceScroll ||
-                    (mBox && (mBox.scrollHeight - mBox.scrollTop <= mBox.clientHeight + 100)) ||
-                    (dBox && (dBox.scrollHeight - dBox.scrollTop <= dBox.clientHeight + 100)) ||
-                    !mBox.querySelector('.message-row');
-
-                if (mBox) mBox.innerHTML = html;
-                if (dBox) dBox.innerHTML = html;
-
-                // Разметка заменилась целиком — поднимаем плееры заново
-                if (window.initMediaPlayers) {
-                    if (mBox) window.initMediaPlayers(mBox);
-                    if (dBox) window.initMediaPlayers(dBox);
-                }
-
-                if (wasAtBottom) scrollChat();
-                else document.querySelectorAll('.msg-rel-time').forEach(el => el.textContent = formatMessageRelativeTime(el.dataset.timestamp));
+            /* Переписка не изменилась — не трогаем разметку вовсе. Замена
+               innerHTML сбрасывает прокрутку и перезагружает картинки, а
+               опрос идёт каждые 10 секунд. */
+            if (html === lastChatHtml && !forceScroll) {
+                document.querySelectorAll('.msg-rel-time').forEach(
+                    el => el.textContent = formatMessageRelativeTime(el.dataset.timestamp));
+                return;
             }
+            lastChatHtml = html;
+
+            /* Считаем положение только по видимому окну: скрытое (мобильное
+               или десктопное — одно из двух всегда display:none) имеет
+               нулевую высоту и всегда выглядит «пролистанным до конца».
+               Из-за этого чат прыгал вниз каждые 10 секунд и не давал
+               читать историю. */
+            const boxes = ['m-chat-box', 'd-chat-box']
+                .map(id => document.getElementById(id))
+                .filter(Boolean);
+            const before = boxes.map(box => ({
+                box,
+                visible: box.clientHeight > 0,
+                empty: !box.querySelector('.message-row'),
+                top: box.scrollTop,
+                atBottom: box.scrollHeight - box.scrollTop <= box.clientHeight + 60
+            }));
+
+            boxes.forEach(box => { box.innerHTML = html; });
+
+            // Разметка заменилась целиком — поднимаем плееры заново
+            if (window.initMediaPlayers) boxes.forEach(box => window.initMediaPlayers(box));
+
+            before.forEach(s => {
+                if (forceScroll || s.empty || (s.visible && s.atBottom)) s.box.scrollTop = s.box.scrollHeight;
+                else if (s.visible) s.box.scrollTop = s.top;
+                else s.box.scrollTop = s.box.scrollHeight;
+            });
+            document.querySelectorAll('.msg-rel-time').forEach(
+                el => el.textContent = formatMessageRelativeTime(el.dataset.timestamp));
         } catch (e) { }
     };
 

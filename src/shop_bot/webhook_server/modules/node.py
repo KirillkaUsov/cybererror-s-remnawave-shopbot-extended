@@ -21,6 +21,17 @@ def clean_ansi(text):
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|\x1B\(B|\x1B\][0-2];[^\x07]*\x07')
     return ansi_escape.sub('', text)
 
+def _as_float(value, default: float = 0.0) -> float:
+    """Число из вывода сервера. Мониторинг не должен падать из-за строки.
+
+    Чистка от мусорных символов оставляет огрызки вроде «.» или «1.2.3»,
+    на которых float() бросает ValueError и весь ответ уходит в 500.
+    """
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
 def get_msk_time() -> datetime:
     return datetime.now(timezone(timedelta(hours=3)))
 
@@ -361,10 +372,9 @@ def register_node_routes(app, login_required, get_common_template_data):
                         logger.error(f"Ошибка формата данных для {name}: получено {len(parts)} из 8 частей")
                         return jsonify({'ok': False, 'error': 'Неполные данные о системе'}), 500
                     uptime_parts = parts[0].strip().split()
-                    uptime_seconds = float(uptime_parts[0]) if (uptime_parts and uptime_parts[0]) else 0
-                    cpu_str = parts[1].strip().replace(',', '.')
-                    cpu_str = re.sub(r'[^0-9.]', '', cpu_str)
-                    cpu_usage = float(cpu_str) if (cpu_str and cpu_str != '') else 0.0
+                    uptime_seconds = _as_float(uptime_parts[0] if uptime_parts else None)
+                    cpu_str = re.sub(r'[^0-9.]', '', parts[1].strip().replace(',', '.'))
+                    cpu_usage = _as_float(cpu_str)
                     cpu_cores = int(parts[2].strip()) if parts[2].strip().isdigit() else 1
                     ram_str = parts[3].strip().split()
                     ram_used, ram_total = (int(ram_str[0]), int(ram_str[1])) if len(ram_str) >= 2 else (0, 0)
