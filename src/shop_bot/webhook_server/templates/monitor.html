@@ -883,14 +883,13 @@
                 });
             }
 
-            document.getElementById('clear-metrics')?.addEventListener('click', () => {
-                if (window.showConfirmModal) {
-                    showConfirmModal('Вы уверены, что хотите удалить все старые замеры из БД?\n\nЭто действие необратимо и освободит память, но не повлияет на текущую статистику.', async () => {
-                        await performClearMetrics();
-                    });
-                } else if (confirm('Вы уверены, что хотите удалить все старые замеры из БД?\n\nЭто действие необратимо и освободит память, но не повлияет на текущую статистику.')) {
-                    performClearMetrics();
-                }
+            document.getElementById('clear-metrics')?.addEventListener('click', async () => {
+                const ok = await showCustomConfirm({
+                    title: 'Удалить старые замеры?',
+                    text: 'Освободит память в базе. Текущая статистика не изменится, но графики за прошлые периоды пропадут.',
+                    okText: 'Удалить замеры'
+                });
+                if (ok) await performClearMetrics();
             });
 
             async function performClearMetrics() {
@@ -910,12 +909,10 @@
                     const data = await resp.json();
 
                     if (data.ok) {
-                        if (window.showToast) window.showToast('success', data.message || 'Метрики успешно очищены');
-                        else alert(data.message || 'Метрики успешно очищены');
+                        window.showToast('success', data.message || 'Метрики успешно очищены');
                         await refreshCharts();
                     } else {
-                        if (window.showToast) window.showToast('danger', data.error || 'Ошибка очистки метрик');
-                        else alert(data.error || 'Ошибка очистки метрик');
+                        window.showToast('danger', data.error || 'Ошибка очистки метрик');
                     }
                 } catch (e) {
                     console.error(e);

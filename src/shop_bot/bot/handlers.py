@@ -70,6 +70,15 @@ from shop_bot.data_manager.remnawave_repository import (
     redeem_universal_promo,
 )
 from shop_bot.data_manager.database import get_seller_user, adjust_user_balance
+# Эти четыре вызывались, но не импортировались: обработчики падали с
+# NameError — ответ поддержки из форума, перенос ключа на другой сервер и
+# запасной поиск платежа Stars просто не работали
+from shop_bot.data_manager.database import (
+    add_support_message,
+    get_latest_pending_for_user,
+    get_ticket_by_thread,
+    update_key_host_and_info,
+)
 
 from shop_bot.config import (
     get_profile_text,
@@ -166,6 +175,26 @@ def get_transaction_comment(user: types.User, action_type: str, value: any, host
 # ===== ТЕКСТ ЭКРАНА КОЛЕСА =====
 # Иконки по типу приза: строчка «1 день — 25%» без них сливается в
 # однородный список, по которому не пробежаться взглядом.
+# ===== TON CONNECT: НЕДОСТАЮЩАЯ ЧАСТЬ =====
+# Обработчики оплаты через TON Connect зовут get_usdt_rub_rate,
+# get_ton_usdt_rate и _start_ton_connect_process, которых в проекте нет
+# вовсе. Раньше это давало NameError и сообщение «Ошибка генерации ссылки»
+# без единой подсказки, что именно сломано. Пока интеграции нет, честно
+# говорим об этом в лог и отдаём отказ по уже написанной ветке.
+async def get_usdt_rub_rate():
+    logger.error("TON Connect: получение курса USDT/RUB в проекте не реализовано")
+    return None
+
+
+async def get_ton_usdt_rate():
+    logger.error("TON Connect: получение курса TON/USDT в проекте не реализовано")
+    return None
+
+
+async def _start_ton_connect_process(user_id: int, payload: dict):
+    raise RuntimeError("TON Connect в этой сборке не реализован")
+# ===== Конец заглушек TON Connect =====
+
 WHEEL_ICONS = {
     'days': '📅', 'balance': '💰', 'promo_percent': '🏷',
     'promo_fixed': '🏷', 'nothing': '🎲',
@@ -1961,28 +1990,59 @@ def get_user_router() -> Router:
     # ===== Конец функции wheel_notify_handler =====
 
     # ===== ВЫБОР ПОДПИСКИ ДЛЯ ВЫИГРАННЫХ ДНЕЙ =====
+    async def _ask_for_key(message, user_id: int, prize: dict, keys: list):
+        text = (f"🎁 <b>{html.quote(str(prize.get('label')))}</b>\n"
+                f"<i>Забрать до {prize.get('expires_text') or '—'}</i>\n\n"
+                f"К какой подписке добавить дни?")
+        await smart_edit_message(message, text,
+                                 keyboards.create_wheel_keys_keyboard(keys, prize.get('spin_id')),
+                                 get_setting("wheel_image"))
+
     @user_router.callback_query(F.data == "wheel_choose")
     @anti_spam
     @registration_required
     async def wheel_choose_handler(callback: types.CallbackQuery):
         await callback.answer()
-        st = fortune_wheel.state(callback.from_user.id)
-        if not st['pending']:
-            return await _render_wheel(callback.message, callback.from_user.id)
-        text = (f"🎁 <b>{html.quote(str(st['pending']['label']))}</b>\n\n"
-                f"К какой подписке добавить дни?")
-        await smart_edit_message(callback.message, text,
-                                 keyboards.create_wheel_keys_keyboard(st['pending']['keys']),
+        uid = callback.from_user.id
+        st = fortune_wheel.state(uid)
+        pending, keys = st['pending'], st['keys']
+        if not pending or not keys:
+            return await _render_wheel(callback.message, uid)
+        # Один приз — спрашиваем сразу про подписку, лишний экран ни к чему
+        if len(pending) == 1:
+            return await _ask_for_key(callback.message, uid, pending[0], keys)
+        await smart_edit_message(callback.message, "🎁 <b>Какой приз забираем?</b>",
+                                 keyboards.create_wheel_prizes_keyboard(pending),
                                  get_setting("wheel_image"))
+
+    @user_router.callback_query(F.data.startswith("wheel_prize_"))
+    @anti_spam
+    @registration_required
+    async def wheel_prize_handler(callback: types.CallbackQuery):
+        await callback.answer()
+        uid = callback.from_user.id
+        try: spin_id = int(callback.data.rsplit("_", 1)[1])
+        except (ValueError, IndexError): return await _render_wheel(callback.message, uid)
+        st = fortune_wheel.state(uid)
+        prize = next((p for p in st['pending'] if int(p['spin_id']) == spin_id), None)
+        if not prize or not st['keys']:
+            return await _render_wheel(callback.message, uid, note="⚠️ Этот приз уже недоступен.")
+        await _ask_for_key(callback.message, uid, prize, st['keys'])
 
     @user_router.callback_query(F.data.startswith("wheel_key_"))
     @anti_spam
     @registration_required
     async def wheel_key_handler(callback: types.CallbackQuery):
         await callback.answer("Начисляю...")
-        try: kid = int(callback.data.split("_")[2])
-        except (ValueError, IndexError): return await _render_wheel(callback.message, callback.from_user.id)
-        result = await fortune_wheel.claim_days(callback.from_user.id, kid)
+        # wheel_key_{key_id} или wheel_key_{key_id}_{spin_id}: без spin_id
+        # берётся самый свежий приз, с ним — именно выбранный
+        parts = callback.data.split("_")
+        try:
+            kid = int(parts[2])
+            spin_id = int(parts[3]) if len(parts) > 3 else None
+        except (ValueError, IndexError):
+            return await _render_wheel(callback.message, callback.from_user.id)
+        result = await fortune_wheel.claim_days(callback.from_user.id, kid, spin_id)
         if not result.get('ok'):
             return await _render_wheel(callback.message, callback.from_user.id,
                                        note=f"⚠️ {result.get('error')}")
@@ -2025,10 +2085,17 @@ def get_user_router() -> Router:
 
         label = html.quote(str(result['label']))
         if result.get('needs_choice'):
+            if not result.get('keys'):
+                # Подписки нет — приз не пропадает, а ждёт её в истории
+                return await _render_wheel(callback.message, uid, note=(
+                    f"🎉 <b>Выпало: {label}</b>\n"
+                    f"Дни ждут подписку: оформите её до {result.get('expires_text')} "
+                    f"и заберите приз здесь же."))
             text = (f"🎉 <b>Выпало: {label}</b>\n\nК какой подписке добавить дни?")
-            return await smart_edit_message(callback.message, text,
-                                            keyboards.create_wheel_keys_keyboard(result['keys']),
-                                            get_setting("wheel_image"))
+            return await smart_edit_message(
+                callback.message, text,
+                keyboards.create_wheel_keys_keyboard(result['keys'], result.get('spin_id')),
+                get_setting("wheel_image"))
         if result['won']:
             note = f"🎉 <b>Выпало: {label}</b>\n{result['detail']}".strip()
             logger.info(f"Колесо: пользователь {uid} выиграл {result['label']}")
@@ -2950,9 +3017,11 @@ def get_user_router() -> Router:
                             preset_found = True
                             break
                 if not preset_found:
-                    from shop_bot.data_manager.database import get_plan_by_id, get_setting
-                    plan = get_plan_by_id(data.get('plan_id')) if data.get('plan_id') else None
-                    months = int(plan.get('months') or 1) if plan else 1
+                    # Здесь читался несуществующий `data` — NameError валил
+                    # продление на всех локациях с наборами устройств, где
+                    # лимит ключа не совпал ни с одним набором. Тариф и срок
+                    # в этой ветке всё равно не использовались.
+                    from shop_bot.data_manager.database import get_setting
                     base_devices = int(get_setting(f"base_device_{host_name}") or "1")
                     await state.update_data(
                         tier_device_count=base_devices, tier_price=0.0, selected_tier_id=0,

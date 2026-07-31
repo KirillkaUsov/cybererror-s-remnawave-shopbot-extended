@@ -79,6 +79,10 @@ class SupportBotController:
             
             router = get_support_router()
             self._dp.include_router(router)
+            # тот же перехватчик, что и у основного бота: сбой в обработчике
+            # не должен оставлять человека без ответа
+            from shop_bot.bot_controller import BotController
+            BotController._install_error_handler(self._dp)
             
             try:
                 asyncio.run_coroutine_threadsafe(self._bot.delete_webhook(drop_pending_updates=True), self._loop).result(timeout=5)

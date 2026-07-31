@@ -411,6 +411,26 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .bubble .when{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:6px;text-align:right}
 .bubble-media{display:block;margin-top:8px;max-width:100%;border-radius:10px}
 .bubble-file{display:flex;align-items:center;gap:7px;margin-top:8px;padding:9px 11px;border-radius:10px;background:rgba(0,0,0,.24);font-size:12.5px}
+/* Голосовые и кружки приходят из Telegram — раньше в мини-аппе они
+   выглядели ссылкой «Файл», хотя это запись голоса и видео. */
+.voice{display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px 11px;border-radius:12px;background:rgba(0,0,0,.24);min-width:190px}
+.voice__btn{flex:0 0 auto;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:#14151a}
+.voice__btn .icon{width:15px;height:15px}
+.voice__body{flex:1;min-width:0}
+.voice__rail{position:relative;height:4px;border-radius:2px;background:rgba(255,255,255,.16);cursor:pointer}
+.voice__fill{position:absolute;inset:0 auto 0 0;width:0;border-radius:2px;background:var(--accent)}
+.voice__time{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:5px}
+.circle{position:relative;width:160px;height:160px;margin-top:8px;border-radius:50%;overflow:hidden;background:#000}
+.circle video{width:100%;height:100%;object-fit:cover}
+.circle__btn{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.35);color:#fff}
+.circle__btn .icon{width:34px;height:34px}
+.circle.is-playing .circle__btn{opacity:0}
+/* запись голосового или кружка прямо в мини-аппе */
+.rec{display:flex;align-items:center;gap:10px;flex:1;padding:9px 13px;border-radius:var(--r-md);border:1px solid var(--accent-line);background:var(--accent-soft);font-size:13px}
+.rec__dot{width:9px;height:9px;border-radius:50%;background:#e5484d;animation:recPulse 1s infinite}
+@keyframes recPulse{0%,100%{opacity:1}50%{opacity:.25}}
+.rec__time{font-family:var(--mono);font-size:12.5px;margin-left:auto}
+.rec-preview{width:118px;height:118px;border-radius:50%;object-fit:cover;background:#000}
 
 .composer{display:flex;gap:9px;align-items:flex-end;padding:10px var(--pad);margin:0 calc(var(--pad) * -1);border-top:1px solid var(--line);background:var(--bg-elev)}
 .composer textarea{flex:1;resize:none;max-height:104px;min-height:44px;border:1px solid var(--line);border-radius:var(--r-md);background:rgba(0,0,0,.24);color:var(--text);padding:11px 14px;outline:none;font-size:14px}
@@ -717,6 +737,11 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 <symbol id="ic-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
 <symbol id="ic-wallet" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1.2"/></symbol>
 <symbol id="ic-tag" viewBox="0 0 24 24"><path d="M4 11V5a1 1 0 0 1 1-1h6l9 9-7 7-9-9Z"/><circle cx="8.5" cy="8.5" r="1.2"/></symbol>
+<symbol id="ic-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></symbol>
+<symbol id="ic-circle-cam" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M10 9.2l5 2.8-5 2.8z"/></symbol>
+<symbol id="ic-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></symbol>
+<symbol id="ic-pause" viewBox="0 0 24 24"><path d="M9 5v14"/><path d="M15 5v14"/></symbol>
+<symbol id="ic-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
 </defs>
 </svg>
 
@@ -833,9 +858,21 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
               <div class="composer" id="threadComposer">
                 <button class="icon-btn is-hidden" id="attachBtn" onclick="triggerAttach()" title="Прикрепить файл"><svg class="icon"><use href="#ic-paperclip"/></svg></button>
                 <input type="file" id="attachInput" class="is-hidden" onchange="handleAttachChange(event)">
+                <button class="icon-btn is-hidden" id="voiceBtn" onclick="startRecording('voice')" title="Записать голосовое"><svg class="icon"><use href="#ic-mic"/></svg></button>
+                <button class="icon-btn is-hidden" id="circleBtn" onclick="startRecording('video_note')" title="Записать кружок"><svg class="icon"><use href="#ic-circle-cam"/></svg></button>
                 <textarea id="messageInput" placeholder="Сообщение…" rows="1" oninput="autoGrow(this)"></textarea>
                 <button class="btn btn--primary btn--icon" onclick="sendSupportMessage()" title="Отправить"><svg class="icon"><use href="#ic-send"/></svg></button>
               </div>
+              <div class="composer is-hidden" id="threadRecorder">
+                <button class="icon-btn" onclick="cancelRecording()" title="Отменить"><svg class="icon"><use href="#ic-x"/></svg></button>
+                <div class="rec">
+                  <span class="rec__dot"></span>
+                  <span id="recLabel">Записываю голосовое…</span>
+                  <span class="rec__time" id="recTime">0:00</span>
+                </div>
+                <button class="btn btn--primary btn--icon" onclick="finishRecording()" title="Отправить запись"><svg class="icon"><use href="#ic-send"/></svg></button>
+              </div>
+              <video id="recPreview" class="rec-preview is-hidden" playsinline muted style="margin:8px auto 0"></video>
               <div class="thread-closed is-hidden" id="threadClosed">Обращение закрыто. Остался вопрос — откройте новое.</div>
             </div>
           </div>
@@ -2455,7 +2492,71 @@ function mediaHtml(a){
   const url = esc(a.url);
   if(a.kind === 'photo') return `<img class="bubble-media" src="${url}" loading="lazy" alt="">`;
   if(a.kind === 'video') return `<video class="bubble-media" src="${url}" controls></video>`;
+  if(a.kind === 'video_note') return `<div class="circle" data-circle>
+      <video src="${url}" playsinline preload="metadata"></video>
+      <button class="circle__btn" type="button"><svg class="icon"><use href="#ic-play"/></svg></button>
+    </div>`;
+  if(a.kind === 'voice' || a.kind === 'audio') return `<div class="voice" data-voice>
+      <button class="voice__btn" type="button"><svg class="icon"><use href="#ic-play"/></svg></button>
+      <div class="voice__body">
+        <div class="voice__rail"><div class="voice__fill"></div></div>
+        <div class="voice__time">0:00</div>
+      </div>
+      <audio src="${url}" preload="metadata"></audio>
+    </div>`;
   return `<a class="bubble-file" href="${url}" target="_blank" rel="noopener"><svg class="icon icon--xs"><use href="#ic-paperclip"/></svg>${esc(a.name||'Файл')}</a>`;
+}
+/* Служебная пометка «[Фото]» нужна в списке обращений, где вложение не
+   показать. В самой переписке картинка висит рядом, и подпись только
+   дублирует то, что видно. */
+const MEDIA_LABEL_RE = /^\[(Фото|Видео|Голосовое|Кружок|Аудио|Документ:[^\]]*)\]\s*/;
+function messageBody(content, hasMedia){
+  const text = (content || '').trim();
+  return hasMedia ? text.replace(MEDIA_LABEL_RE, '').trim() : text;
+}
+function fmtClock(sec){
+  sec = Math.max(0, Math.round(sec || 0));
+  return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+}
+/* Плееры поднимаем после отрисовки: разметку ленты перезаписываем целиком */
+function initPlayers(root){
+  root.querySelectorAll('[data-voice]').forEach(box => {
+    if(box.dataset.ready) return; box.dataset.ready = '1';
+    const audio = box.querySelector('audio'), btn = box.querySelector('.voice__btn');
+    const fill = box.querySelector('.voice__fill'), time = box.querySelector('.voice__time');
+    const rail = box.querySelector('.voice__rail');
+    const icon = on => btn.innerHTML = `<svg class="icon"><use href="#ic-${on ? 'pause' : 'play'}"/></svg>`;
+    audio.addEventListener('loadedmetadata', () => { if(isFinite(audio.duration)) time.textContent = fmtClock(audio.duration); });
+    audio.addEventListener('timeupdate', () => {
+      if(!isFinite(audio.duration) || !audio.duration) return;
+      fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
+      time.textContent = fmtClock(audio.currentTime);
+    });
+    audio.addEventListener('ended', () => { icon(false); fill.style.width = '0'; time.textContent = fmtClock(audio.duration); });
+    audio.addEventListener('pause', () => icon(false));
+    audio.addEventListener('play', () => icon(true));
+    btn.addEventListener('click', () => {
+      /* одновременно звучать должна одна запись */
+      root.querySelectorAll('audio, video').forEach(el => { if(el !== audio) el.pause(); });
+      audio.paused ? audio.play() : audio.pause();
+    });
+    rail.addEventListener('click', e => {
+      if(!isFinite(audio.duration) || !audio.duration) return;
+      const r = rail.getBoundingClientRect();
+      audio.currentTime = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * audio.duration;
+    });
+  });
+  root.querySelectorAll('[data-circle]').forEach(box => {
+    if(box.dataset.ready) return; box.dataset.ready = '1';
+    const video = box.querySelector('video'), btn = box.querySelector('.circle__btn');
+    btn.addEventListener('click', () => {
+      root.querySelectorAll('audio, video').forEach(el => { if(el !== video) el.pause(); });
+      video.paused ? video.play() : video.pause();
+    });
+    video.addEventListener('play', () => box.classList.add('is-playing'));
+    video.addEventListener('pause', () => box.classList.remove('is-playing'));
+    video.addEventListener('ended', () => { box.classList.remove('is-playing'); video.currentTime = 0; });
+  });
 }
 function renderThread(scrollBottom){
   const t = state.support.current;
@@ -2470,11 +2571,17 @@ function renderThread(scrollBottom){
   } else {
     box.innerHTML = t.messages.map(m => {
       const mine = m.sender === 'user';
-      const media = (m.media || []).map(mediaHtml).join('');
-      return `<div class="bubble ${mine?'is-mine':'is-theirs'}">${mine?'':'<div class="who">Поддержка</div>'}${m.content?esc(m.content).replace(/\n/g,'<br>'):''}${media}<div class="when">${fmtDateTime(m.created_at)}</div></div>`;
+      const attachments = m.media || [];
+      const media = attachments.map(mediaHtml).join('');
+      const body = messageBody(m.content, attachments.length);
+      return `<div class="bubble ${mine?'is-mine':'is-theirs'}">${mine?'':'<div class="who">Поддержка</div>'}${body?esc(body).replace(/\n/g,'<br>'):''}${media}<div class="when">${fmtDateTime(m.created_at)}</div></div>`;
     }).join('');
+    initPlayers(box);
   }
-  toggle('threadComposer', !open);
+  /* лента обновляется каждые 8 секунд — начатая запись от этого не должна
+     схлопываться обратно в поле ввода */
+  toggle('threadComposer', !open || !!rec);
+  toggle('threadRecorder', !open || !rec);
   toggle('threadClosed', open);
   if(scrollBottom) scrollThreadToBottom();
 }
@@ -2502,6 +2609,9 @@ function triggerAttach(){ if(state.support.current) $('attachInput').click(); }
 async function handleAttachChange(ev){
   const file = ev.target.files[0];
   ev.target.value = '';
+  await uploadAttachment(file, '');
+}
+async function uploadAttachment(file, kindHint){
   if(!file || !state.support.current) return;
   const cfg = state.support.mediaConfig;
   if(cfg && cfg.max_mb && file.size > cfg.max_mb * 1024 * 1024) return toast('Файл больше ' + cfg.max_mb + ' МБ', true);
@@ -2509,14 +2619,15 @@ async function handleAttachChange(ev){
   fd.append('user_id', USER_ID);
   fd.append('ticket_id', state.support.current.ticket_id);
   fd.append('caption', $('messageInput').value.trim());
+  if(kindHint) fd.append('kind_hint', kindHint);
   fd.append('file', file);
-  toast('Загружаем файл…');
+  toast(kindHint === 'voice' ? 'Отправляем запись…' : kindHint === 'video_note' ? 'Отправляем кружок…' : 'Загружаем файл…');
   try{
     const r = await fetch('/api/support/upload', withAuth({ method:'POST', body: fd }));
     const d = await r.json().catch(() => ({}));
     if(!d.ok) throw new Error(d.error || 'Не удалось загрузить файл');
     $('messageInput').value = ''; autoGrow($('messageInput'));
-    toast('Файл отправлен');
+    toast('Отправлено');
     await refreshThread(true);
   }catch(e){ toast(e.message, true); }
 }
@@ -2524,8 +2635,97 @@ async function loadSupportMediaConfig(){
   try{
     const d = await fetch('/api/support/media-config').then(r => r.json());
     state.support.mediaConfig = d;
-    if(d.ok && d.enabled){ toggle('attachBtn', false); $('attachInput').setAttribute('accept', d.accept || ''); }
+    if(d.ok && d.enabled){
+      toggle('attachBtn', false);
+      $('attachInput').setAttribute('accept', d.accept || '');
+      /* Запись доступна не везде: в HTTP-контексте и в старых вебвью
+         getUserMedia отсутствует — тогда кнопок просто нет. */
+      if(navigator.mediaDevices && window.MediaRecorder){
+        toggle('voiceBtn', false);
+        toggle('circleBtn', false);
+      }
+    }
   }catch(e){}
+}
+
+/* ===== запись голосового и кружка =====
+   Браузер пишет в webm/opus, Telegram для «настоящего» голосового ждёт
+   ogg/opus. Просим ogg, если браузер умеет; сервер в любом случае
+   пробует отправить голосовым, а при отказе — обычным файлом. */
+const REC_MAX_SEC = 120;
+let rec = null;
+function pickMime(kind){
+  const list = kind === 'voice'
+    ? ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+    : ['video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  return list.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+}
+async function startRecording(kind){
+  if(rec || !state.support.current) return;
+  const voice = kind === 'voice';
+  let stream;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia(voice
+      ? { audio: true }
+      : { audio: true, video: { width: 480, height: 480, facingMode: 'user' } });
+  }catch(e){
+    return toast(voice ? 'Нет доступа к микрофону' : 'Нет доступа к камере', true);
+  }
+  const mime = pickMime(kind);
+  let recorder;
+  try{ recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); }
+  catch(e){ stream.getTracks().forEach(t => t.stop()); return toast('Браузер не умеет записывать', true); }
+
+  const chunks = [];
+  recorder.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+  rec = { kind, stream, recorder, chunks, started: Date.now(), timer: null, cancelled: false };
+
+  if(!voice){
+    const pv = $('recPreview');
+    pv.srcObject = stream; pv.play().catch(() => {});
+    toggle('recPreview', false);
+  }
+  $('recLabel').textContent = voice ? 'Записываю голосовое…' : 'Записываю кружок…';
+  $('recTime').textContent = '0:00';
+  toggle('threadComposer', true);
+  toggle('threadRecorder', false);
+  rec.timer = setInterval(() => {
+    const sec = (Date.now() - rec.started) / 1000;
+    $('recTime').textContent = fmtClock(sec);
+    if(sec >= REC_MAX_SEC) finishRecording();
+  }, 250);
+  recorder.start();
+}
+function stopRecorder(){
+  if(!rec) return;
+  clearInterval(rec.timer);
+  try{ rec.recorder.stop(); }catch(e){}
+  rec.stream.getTracks().forEach(t => t.stop());
+  const pv = $('recPreview');
+  pv.srcObject = null;
+  toggle('recPreview', true);
+  toggle('threadRecorder', true);
+  toggle('threadComposer', false);
+}
+function cancelRecording(){
+  if(!rec) return;
+  rec.cancelled = true;
+  stopRecorder();
+  rec = null;
+}
+function finishRecording(){
+  if(!rec || rec.cancelled) return;
+  const current = rec;
+  current.recorder.onstop = async () => {
+    rec = null;
+    if(current.cancelled || !current.chunks.length) return;
+    const type = current.recorder.mimeType || (current.kind === 'voice' ? 'audio/webm' : 'video/webm');
+    const ext = (type.split('/')[1] || 'webm').split(';')[0].replace('x-matroska', 'mkv');
+    const blob = new Blob(current.chunks, { type });
+    const name = (current.kind === 'voice' ? 'voice.' : 'circle.') + ext;
+    await uploadAttachment(new File([blob], name, { type }), current.kind);
+  };
+  stopRecorder();
 }
 
 /* ===== boot ===== */

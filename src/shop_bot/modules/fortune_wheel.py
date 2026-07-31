@@ -405,6 +405,10 @@ async def spin(user_id: int) -> dict:
                 "tickets": again["tickets"], "error": DECLINE_TEXT.get(again["reason"] or "cooldown")}
 
     prize = pick(prizes)
+    # Шанс запоминаем сразу: завтра веса могут быть другими, и проверить
+    # честность розыгрыша по журналу будет уже нельзя
+    total_weight = sum(p["weight"] for p in prizes) or 1
+    chance = round(prize["weight"] * 100 / total_weight, 4)
     keys = user_keys(user_id)
     outcome, key, detail = await _award(user_id, prize, keys)
 
@@ -421,7 +425,7 @@ async def spin(user_id: int) -> dict:
     expires_at = ((now + timedelta(days=prize_ttl_days())).strftime(TIME_FORMAT)
                   if status == "pending" else None)
     spin_id = database.log_wheel_spin_full(user_id, prize, key.get("key_id") if key else None,
-                                           status, detail or None, source, expires_at)
+                                           status, detail or None, source, expires_at, chance)
 
     won = (prize.get("prize_type") or PRIZE_NOTHING) != PRIZE_NOTHING and float(prize.get("amount") or 0) > 0
     return {

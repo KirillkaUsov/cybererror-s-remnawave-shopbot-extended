@@ -91,8 +91,7 @@
             <thead>
                 <tr class="border-b border-white/5 bg-white/[0.02]">
                     <th class="pl-5 pr-1 py-4 w-10">
-                        <input type="checkbox" id="users-select-all"
-                            class="w-4 h-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary/40 focus:ring-offset-0 cursor-pointer"
+                        <input type="checkbox" id="users-select-all" class="ui-check"
                             title="Выбрать всех на странице">
                     </th>
                     <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-widest text-white/40">Telegram ID</th>
@@ -532,6 +531,10 @@
                                         <span
                                             class="text-white/40 text-sm font-mono bg-black/30 px-2 py-0.5 rounded select-all"
                                             id="udm-telegram-id"></span>
+                                        <span id="udm-account-kind"
+                                            class="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider"></span>
+                                        <span id="udm-account-email"
+                                            class="hidden text-white/40 text-[11px] font-mono bg-black/30 px-2 py-0.5 rounded select-all"></span>
                                         <div class="flex items-center gap-2">
                                             <div class="px-1.5 py-0.5 rounded bg-white/5 text-white/40 text-[10px] uppercase font-bold tracking-wider"
                                                 title="Дата регистрации">
@@ -873,7 +876,7 @@
                 </div>
 
                 <div class="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-2 backdrop-blur-sm">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
                         <button type="button" data-udm-tab="subscriptions"
                             class="udm-tab-btn group rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:bg-white/10 hover:border-white/20"
                             aria-selected="true">
@@ -920,6 +923,22 @@
                                     </div>
                                 </div>
                                 <span id="udm-tab-count-balance" class="rounded-lg bg-white/5 px-2.5 py-1 text-[10px] font-black text-white/60">0</span>
+                            </div>
+                        </button>
+                        <button type="button" data-udm-tab="wheel"
+                            class="udm-tab-btn group rounded-xl border border-white/10 bg-transparent px-4 py-3 text-left transition-all hover:bg-white/10 hover:border-white/20"
+                            aria-selected="false">
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <div class="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
+                                        <span class="material-symbols-outlined text-lg">casino</span>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <div class="text-[11px] font-bold uppercase tracking-wider text-white">Рулетка</div>
+                                        <div class="text-[10px] text-white/35">Билеты, прокруты и призы</div>
+                                    </div>
+                                </div>
+                                <span id="udm-tab-count-wheel" class="rounded-lg bg-white/5 px-2.5 py-1 text-[10px] font-black text-white/60">0</span>
                             </div>
                         </button>
                     </div>
@@ -1015,6 +1034,68 @@
                             </div>
                         </div>
                     </div>
+
+                    <div id="udm-panel-wheel" class="udm-tab-panel hidden">
+                        <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden shadow-inner">
+                            <div class="p-5 border-b border-white/10 flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                                    <span class="material-symbols-outlined text-xl">casino</span>
+                                </div>
+                                <div>
+                                    <h4 class="text-white font-bold text-sm uppercase tracking-wide">Колесо удачи</h4>
+                                    <p class="text-white/40 text-[10px] font-medium">Билеты, прокруты и выигранные призы</p>
+                                </div>
+                            </div>
+
+                            <div class="p-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                <div class="rounded-xl bg-black/20 border border-white/5 p-4">
+                                    <div class="text-white/40 text-[10px] uppercase tracking-widest mb-1">Билетов сейчас</div>
+                                    <div class="text-2xl font-bold text-primary" id="udm-wheel-tickets">0</div>
+                                </div>
+                                <div class="rounded-xl bg-black/20 border border-white/5 p-4">
+                                    <div class="text-white/40 text-[10px] uppercase tracking-widest mb-1">Прокрутов</div>
+                                    <div class="text-2xl font-bold text-white" id="udm-wheel-spins">0</div>
+                                    <div class="text-white/30 text-[10px] mt-0.5" id="udm-wheel-misses"></div>
+                                </div>
+                                <div class="rounded-xl bg-black/20 border border-white/5 p-4">
+                                    <div class="text-white/40 text-[10px] uppercase tracking-widest mb-1">Выиграно</div>
+                                    <div class="text-sm font-bold text-white leading-tight" id="udm-wheel-won">—</div>
+                                </div>
+                                <div class="rounded-xl bg-black/20 border border-white/5 p-4">
+                                    <div class="text-white/40 text-[10px] uppercase tracking-widest mb-1">Последний прокрут</div>
+                                    <div class="text-sm font-bold text-white leading-tight" id="udm-wheel-last">—</div>
+                                    <div class="text-white/30 text-[10px] mt-0.5" id="udm-wheel-notify"></div>
+                                </div>
+                            </div>
+
+                            <div class="px-5 pb-5 flex items-end gap-3 flex-wrap">
+                                <div>
+                                    <label class="block text-white/40 text-[10px] uppercase tracking-widest mb-1.5">Изменить билеты</label>
+                                    <input type="number" id="udm-wheel-amount" value="1" step="1" data-stepper class="w-16">
+                                </div>
+                                <button type="button" id="udm-wheel-grant"
+                                    class="px-5 py-2.5 rounded-xl bg-primary/90 hover:bg-primary text-background-dark text-xs font-bold uppercase tracking-wider transition-all">
+                                    Начислить
+                                </button>
+                                <button type="button" id="udm-wheel-take"
+                                    class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold uppercase tracking-wider transition-all">
+                                    Списать
+                                </button>
+                                <p class="text-white/25 text-[11px] basis-full">Начисление уходит человеку сообщением в бота; списание — молча.</p>
+                            </div>
+
+                            <div class="grid grid-cols-1 xl:grid-cols-2 gap-px bg-white/5 border-t border-white/10">
+                                <div class="bg-background-dark/40 p-5">
+                                    <div class="text-[10px] uppercase tracking-widest font-bold text-white/40 mb-3">Прокруты</div>
+                                    <div id="udm-wheel-history" class="space-y-2 max-h-[320px] overflow-y-auto"></div>
+                                </div>
+                                <div class="bg-background-dark/40 p-5">
+                                    <div class="text-[10px] uppercase tracking-widest font-bold text-white/40 mb-3">Движение билетов</div>
+                                    <div id="udm-wheel-tickets-log" class="space-y-2 max-h-[320px] overflow-y-auto"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1095,7 +1176,7 @@
         if (!input || !table || !tbody) return;
 
         function setUserDetailsTab(tabName) {
-            const tabs = ['subscriptions', 'payments', 'balance'];
+            const tabs = ['subscriptions', 'payments', 'balance', 'wheel'];
             tabs.forEach((tab) => {
                 const panel = document.getElementById(`udm-panel-${tab}`);
                 const button = document.querySelector(`[data-udm-tab="${tab}"]`);
@@ -1118,6 +1199,108 @@
         document.querySelectorAll('[data-udm-tab]').forEach((button) => {
             button.addEventListener('click', () => setUserDetailsTab(button.getAttribute('data-udm-tab')));
         });
+
+        /* ===== ОТКУДА ПРИШЁЛ ПОЛЬЗОВАТЕЛЬ =====
+           Веб-аккаунту выдаётся синтетический номер из диапазона 999xxxxxxx —
+           на вид он неотличим от Telegram ID, и по одному числу нельзя
+           понять, есть ли за ним живой чат. Пишем это прямо. */
+        const ACCOUNT_KIND = {
+            telegram: ['Telegram', 'bg-primary/15 text-primary', 'ID Telegram'],
+            web: ['Веб-аккаунт', 'bg-white/10 text-white/60', 'Номер в мини-аппе, не Telegram ID'],
+            both: ['Telegram + почта', 'bg-primary/15 text-primary', 'ID Telegram']
+        };
+        window.renderAccountKind = function (account, telegramId) {
+            const badge = document.getElementById('udm-account-kind');
+            const emailEl = document.getElementById('udm-account-email');
+            const idEl = document.getElementById('udm-telegram-id');
+            if (!badge) return;
+            const kind = ACCOUNT_KIND[account?.kind] || ACCOUNT_KIND.telegram;
+            badge.textContent = kind[0];
+            badge.className = 'px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ' + kind[1];
+            if (idEl) idEl.title = kind[2];
+            if (emailEl) {
+                emailEl.textContent = account?.email || '';
+                emailEl.classList.toggle('hidden', !account?.email);
+            }
+        };
+
+        /* ===== РУЛЕТКА В КАРТОЧКЕ ===== */
+        const WHEEL_REASON = {
+            spin: 'потрачен на прокрут', purchase: 'куплен за баланс',
+            purchase_bonus: 'за покупку подписки', referral_bonus: 'за приглашённого',
+            admin: 'выдан админом', refund: 'возврат за несостоявшийся приз'
+        };
+        const WHEEL_STATUS = {
+            done: ['выдан', 'text-primary'], pending: ['ждёт подписку', 'text-amber-300'],
+            expired: ['сгорел', 'text-white/30']
+        };
+        function wheelDate(value) {
+            return (value || '').replace('T', ' ').slice(0, 16) || '—';
+        }
+        function wheelEsc(value) {
+            const d = document.createElement('div');
+            d.textContent = value == null ? '' : String(value);
+            return d.innerHTML;
+        }
+        window.renderWheelSection = function (uid, wheel) {
+            wheel = wheel || {};
+            const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+            set('udm-tab-count-wheel', wheel.spins || 0);
+            set('udm-wheel-tickets', wheel.tickets || 0);
+            set('udm-wheel-spins', wheel.spins || 0);
+            set('udm-wheel-misses', wheel.spins ? `мимо: ${wheel.misses || 0}` : '');
+            const won = [];
+            if (wheel.days_won) won.push(Math.round(wheel.days_won) + ' дн.');
+            if (wheel.rub_won) won.push(Math.round(wheel.rub_won) + ' ₽');
+            if (wheel.pending) won.push(wheel.pending + ' ждёт выдачи');
+            set('udm-wheel-won', won.length ? won.join(' · ') : '—');
+            set('udm-wheel-last', wheelDate(wheel.last_spin));
+            set('udm-wheel-notify', wheel.notify === false ? 'напоминания выключены' : '');
+
+            const hist = document.getElementById('udm-wheel-history');
+            if (hist) hist.innerHTML = (wheel.history || []).length
+                ? wheel.history.map(s => {
+                    const st = WHEEL_STATUS[s.status] || WHEEL_STATUS.done;
+                    const miss = s.prize_type === 'nothing' || !s.amount;
+                    return `<div class="flex items-center justify-between gap-3 text-xs border-b border-white/5 pb-2">
+                        <div class="min-w-0">
+                            <div class="${miss ? 'text-white/35' : 'text-white'} truncate">${wheelEsc(s.label || '—')}</div>
+                            <div class="text-white/25 text-[10px]">${wheelDate(s.created_at)} · ${s.source === 'ticket' ? 'по билету' : 'бесплатный'}${s.chance != null ? ' · шанс ' + Number(s.chance).toFixed(1) + '%' : ''}</div>
+                        </div>
+                        <span class="${miss ? 'text-white/25' : st[1]} text-[10px] uppercase font-bold shrink-0">${miss ? 'мимо' : st[0]}</span>
+                    </div>`;
+                }).join('')
+                : '<div class="text-white/30 text-xs">Ещё ни разу не крутил.</div>';
+
+            const log = document.getElementById('udm-wheel-tickets-log');
+            if (log) log.innerHTML = (wheel.tickets_log || []).length
+                ? wheel.tickets_log.map(t => `<div class="flex items-center justify-between gap-3 text-xs border-b border-white/5 pb-2">
+                        <div class="min-w-0">
+                            <div class="text-white/70 truncate">${wheelEsc(WHEEL_REASON[t.reason] || t.reason || '—')}</div>
+                            <div class="text-white/25 text-[10px]">${wheelDate(t.created_at)}${t.note ? ' · ' + wheelEsc(t.note) : ''}</div>
+                        </div>
+                        <span class="${t.delta > 0 ? 'text-primary' : 'text-white/40'} font-bold shrink-0">${t.delta > 0 ? '+' : ''}${t.delta}</span>
+                    </div>`).join('')
+                : '<div class="text-white/30 text-xs">Билеты не начислялись.</div>';
+
+            const amountEl = document.getElementById('udm-wheel-amount');
+            const send = async (sign) => {
+                const value = Math.abs(parseInt(amountEl.value, 10) || 0) * sign;
+                if (!value) return showToast('warning', 'Укажите количество билетов');
+                const fd = new FormData();
+                fd.append('csrf_token', window.getCsrfToken());
+                fd.append('amount', value);
+                try {
+                    const resp = await fetch(`/users/${uid}/wheel/tickets`, { method: 'POST', body: fd, credentials: 'same-origin' });
+                    const data = await resp.json();
+                    if (!data.ok) return showToast('danger', data.error || 'Не удалось');
+                    showToast('success', data.message);
+                    set('udm-wheel-tickets', data.tickets);
+                } catch (e) { showToast('danger', 'Нет связи с сервером'); }
+            };
+            document.getElementById('udm-wheel-grant').onclick = () => send(1);
+            document.getElementById('udm-wheel-take').onclick = () => send(-1);
+        };
 
         setUserDetailsTab('subscriptions');
 
@@ -1620,7 +1803,10 @@
 
                     document.getElementById('udm-telegram-id').textContent = data.user.telegram_id || 'N/A';
                     document.getElementById('udm-username').textContent =
-                        data.user.username ? '@' + data.user.username : 'Безымянный пользователь';
+                        data.user.username ? '@' + data.user.username
+                            : (data.account?.email || 'Безымянный пользователь');
+                    renderAccountKind(data.account, data.user.telegram_id);
+                    renderWheelSection(uid, data.wheel);
                     document.getElementById('udm-registration').textContent = data.user.registration_date || 'N/A';
                     document.getElementById('udm-total-spent').textContent = (data.user.total_spent || 0).toFixed(2) + ' ₽';
                     document.getElementById('udm-total-months').textContent = (data.user.total_months || 0) + ' мес.';

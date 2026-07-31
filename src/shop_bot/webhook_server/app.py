@@ -39,6 +39,7 @@ def get_msk_time():
 # ---------------------------------
 
 from shop_bot.modules import remnawave_api
+from shop_bot.modules import support_text
 from shop_bot.bot import handlers
 from shop_bot.bot import keyboards
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -334,11 +335,7 @@ def create_webhook_app(bot_controller_instance):
         """
         if not media:
             return text or ''
-        import re as _re
-        return _re.sub(
-            r'^\[(Фото|Видео|Голосовое|Кружок|Документ:[^\]]*)\]\s*',
-            '', text or ''
-        ).strip()
+        return support_text.strip_label(text)
 
 
     @flask_app.template_filter('strip_bom')
@@ -1012,7 +1009,7 @@ def create_webhook_app(bot_controller_instance):
 
         Возвращает (username, status), где status:
           'ok'      — Telegram ответил, имя взято (может быть None);
-          'absent'  — пользователь недоступен/не найден, считаем безымянным;
+          'absent'  — пользователь недоступен/не найден, имя трогать НЕ нужно;
           'error'   — временный сбой, имя трогать НЕ нужно.
         """
         try:
@@ -1023,11 +1020,20 @@ def create_webhook_app(bot_controller_instance):
                 future = asyncio.run_coroutine_threadsafe(bot.get_chat(user_id), loop)
                 chat = future.result(timeout=20)
             else:
-                # бот не поднят в отдельном цикле — крайний случай
-                logger.warning("EVENT_LOOP не запущен, использую резервный asyncio.run")
-                chat = asyncio.run(bot.get_chat(user_id))
+                # Резервного пути нет: сессия бота живёт в его цикле, и
+                # asyncio.run() ломается на aiohttp — молча стереть имя
+                # хуже, чем честно сказать, что обновить не вышло
+                logger.warning("EVENT_LOOP не запущен — имя из Telegram не обновляем")
+                return None, 'error'
 
-            return getattr(chat, 'username', None), 'ok'
+            # У половины пользователей @username нет вовсе. Бот при
+            # регистрации кладёт в это поле отображаемое имя — здесь
+            # поступаем так же, иначе обновление затирает живое имя пустотой.
+            name = getattr(chat, 'username', None)
+            if not name:
+                parts = [getattr(chat, 'first_name', None), getattr(chat, 'last_name', None)]
+                name = " ".join(p for p in parts if p) or None
+            return name, 'ok'
         except Exception as e:
             text = str(e).lower()
             # пользователь не начинал диалог, удалил аккаунт, заблокировал бота
@@ -1106,6 +1112,14 @@ def create_webhook_app(bot_controller_instance):
             username, status = _fetch_telegram_username(bot, user_id, loop)
             if status == 'error':
                 return jsonify({"ok": False, "error": "Telegram не ответил, попробуйте позже"}), 502
+            if status == 'absent':
+                # Пользователь не начинал диалог или заблокировал бота. Имя,
+                # записанное при регистрации, остаётся верным — стирать его
+                # не за что.
+                label = rw_repo.format_username((user or {}).get('username'))
+                return jsonify({"ok": True, "changed": False, "status": status,
+                                "username": (user or {}).get('username'), "label": label, "synced": 0,
+                                "message": f"Telegram не отдаёт профиль, оставили как было: {label}"})
 
             result = rw_repo.set_username(user_id, username, source='telegram')
             label = rw_repo.format_username(result.get('current'))
@@ -1155,7 +1169,10 @@ def create_webhook_app(bot_controller_instance):
                     errors += 1
                     continue
                 if status == 'absent':
+                    # Профиль недоступен — это не повод обнулить имя, которое
+                    # мы уже знаем. Раньше здесь стиралось всё подряд.
                     absent += 1
+                    continue
 
                 result = rw_repo.set_username(uid, username, source='telegram')
                 if result.get('changed'):
@@ -1179,6 +1196,8 @@ def create_webhook_app(bot_controller_instance):
             message = f"Обработано {len(user_ids)}, обновлено {changed}"
             if synced:
                 message += f", описаний в Remnawave: {synced}"
+            if absent:
+                message += f", профиль недоступен (имя оставили): {absent}"
             if errors:
                 message += f", не ответил Telegram: {errors}"
 
@@ -1384,6 +1403,60 @@ def create_webhook_app(bot_controller_instance):
             logger.error(f"Ошибка снятия кулдауна {user_id}: {e}", exc_info=True)
             return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
 
+
+    @flask_app.route('/users/<int:user_id>/wheel/tickets', methods=['POST'])
+    @login_required
+    def user_wheel_tickets_route(user_id: int):
+        """Выдать или забрать билеты колеса у конкретного человека.
+
+        То же самое есть в разделе «Колесо удачи» по @username, но искать
+        там человека, карточка которого уже открыта, — лишняя работа.
+        """
+        db = rw_repo.database
+        try:
+            user = get_user(user_id)
+            if not user:
+                return jsonify({"ok": False, "error": "Пользователь не найден"}), 404
+            try:
+                amount = int(request.form.get('amount') or (request.get_json(silent=True) or {}).get('amount') or 0)
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "Количество должно быть числом"}), 400
+            if amount == 0:
+                return jsonify({"ok": False, "error": "Количество не может быть нулём"}), 400
+
+            have = db.get_wheel_tickets(user_id)
+            if amount < 0 and have + amount < 0:
+                return jsonify({"ok": False, "error": f"У пользователя всего {have} билет(ов)"}), 400
+            if not db.add_wheel_tickets(user_id, amount, 'admin', 'выдано из карточки пользователя'):
+                return jsonify({"ok": False, "error": "Не удалось изменить билеты"}), 500
+
+            left = db.get_wheel_tickets(user_id)
+            logger.info(f"Колесо: админ изменил билеты пользователя {user_id} на {amount:+d}, стало {left}")
+            if amount > 0:
+                _notify_user_tickets_granted(user_id, amount, left)
+            return jsonify({"ok": True, "tickets": left,
+                            "message": f"Билеты изменены на {amount:+d}, стало {left}"})
+        except Exception as e:
+            logger.error(f"Ошибка выдачи билетов {user_id}: {e}", exc_info=True)
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+    def _notify_user_tickets_granted(user_id: int, amount: int, left: int) -> None:
+        """Человек должен узнать о билетах сразу, а не найти их случайно."""
+        try:
+            bot = _bot_controller.get_bot_instance()
+            loop = current_app.config.get('EVENT_LOOP')
+            if not (bot and loop and loop.is_running()):
+                return
+            if not rw_repo.database.is_telegram_account(user_id):
+                return
+            word = 'билет' if amount % 10 == 1 and amount % 100 != 11 else \
+                   'билета' if 2 <= amount % 10 <= 4 and not 12 <= amount % 100 <= 14 else 'билетов'
+            text = (f"🎟 Вам начислено <b>{amount}</b> {word} для колеса удачи.\n"
+                    f"Всего билетов: <b>{left}</b>.")
+            asyncio.run_coroutine_threadsafe(
+                bot.send_message(int(user_id), text, parse_mode='HTML'), loop)
+        except Exception as e:
+            logger.warning(f"Не удалось сообщить {user_id} о билетах: {e}")
 
     @flask_app.route('/users/<int:user_id>/delete', methods=['POST'])
     @login_required
@@ -1919,8 +1992,54 @@ def create_webhook_app(bot_controller_instance):
                 logger.error(f"Failed to get subscriptions for user {user_id}: {e}")
 
             
+            # Рулетка: билеты, прокруты и невыданные призы
+            wheel = {}
+            try:
+                summary = rw_repo.database.get_user_wheel_summary(user_id) or {}
+                wheel = {
+                    "tickets": rw_repo.database.get_wheel_tickets(user_id),
+                    "spins": int(summary.get('spins') or 0),
+                    "misses": int(summary.get('misses') or 0),
+                    "pending": int(summary.get('pending') or 0),
+                    "days_won": float(summary.get('days_won') or 0),
+                    "rub_won": float(summary.get('rub_won') or 0),
+                    "first_spin": summary.get('first_spin'),
+                    "last_spin": summary.get('last_spin'),
+                    "notify": rw_repo.database.get_wheel_notify(user_id),
+                    "history": [{
+                        "spin_id": s.get('spin_id'),
+                        "label": s.get('label'),
+                        "prize_type": s.get('prize_type'),
+                        "amount": float(s.get('amount') or 0),
+                        "status": s.get('status') or 'done',
+                        "source": s.get('source') or 'free',
+                        "chance": s.get('chance'),
+                        "created_at": s.get('created_at'),
+                    } for s in (rw_repo.database.get_user_wheel_spins(user_id, 15) or [])],
+                    "tickets_log": [{
+                        "delta": int(t.get('delta') or 0),
+                        "reason": t.get('reason'),
+                        "note": t.get('note'),
+                        "created_at": t.get('created_at'),
+                    } for t in (rw_repo.database.get_user_ticket_log(user_id, 15) or [])],
+                }
+            except Exception as e:
+                logger.warning(f"Карточка {user_id}: не удалось собрать данные колеса: {e}")
+
+            # Откуда пришёл человек. Веб-аккаунтам выдаётся синтетический id
+            # в диапазоне 999xxxxxxx — по виду он неотличим от телеграмного,
+            # поэтому источник показываем явно.
+            tg_linked = rw_repo.database.is_telegram_account(user)
+            has_email = bool((user.get('auth_email') or '').strip())
             result = {
                 "ok": True,
+                "account": {
+                    "tg_linked": tg_linked,
+                    "has_email": has_email,
+                    "email": user.get('auth_email') or None,
+                    "kind": ("both" if tg_linked and has_email else "telegram" if tg_linked else "web"),
+                },
+                "wheel": wheel,
                 "user": {
                     "telegram_id": user.get('telegram_id'),
                     "username": user.get('username'),
@@ -3048,7 +3167,7 @@ def create_webhook_app(bot_controller_instance):
 
             kind = media_store.kind_for_ext(ext)
             caption = (request.form.get('message') or '').strip()
-            label = {"photo": "[Фото]", "video": "[Видео]"}.get(kind, f"[Документ: {upload.filename}]")
+            label = support_text.label_for(kind, upload.filename)
             content = f"{label} {caption}".strip()
 
             message_row_id = add_support_message(ticket_id, sender='admin', content=content)

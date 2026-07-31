@@ -1663,53 +1663,63 @@
                 </div>
 
                 <div class="bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
-                    <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
-                        <h4 class="text-white/90 font-bold text-sm tracking-tight">Сектора колеса</h4>
-                        <span class="text-white/30 text-[11px]">Шанс сектора = его вес ÷ сумму весов</span>
+                    <div class="flex items-start justify-between mb-1 gap-3 flex-wrap">
+                        <div>
+                            <h4 class="text-white/90 font-bold text-sm tracking-tight">Сектора колеса</h4>
+                            <p class="text-white/30 text-[11px] mt-1">Шанс сектора — его вес, делённый на сумму весов включённых секторов.
+                                Держите сумму равной 100, и вес будет читаться как проценты.</p>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <div class="text-white/30 text-[10px] uppercase tracking-widest">Сумма весов</div>
+                            <div id="wheel-weight-total" class="text-lg font-bold text-white">—</div>
+                        </div>
                     </div>
 
-                    <div class="overflow-x-auto">
-                        <table class="w-full min-w-[640px] text-sm">
+                    <div class="overflow-x-auto -mx-2 px-2">
+                        <table class="w-full min-w-[680px] text-sm">
                             <thead>
                                 <tr class="text-white/30 text-[10px] uppercase tracking-widest text-left">
+                                    <th class="pb-3 pr-3 w-14">Вкл</th>
                                     <th class="pb-3 pr-3">Название</th>
-                                    <th class="pb-3 pr-3">Тип</th>
-                                    <th class="pb-3 pr-3">Размер</th>
-                                    <th class="pb-3 pr-3">Вес</th>
-                                    <th class="pb-3 pr-3">Шанс</th>
-                                    <th class="pb-3"></th>
+                                    <th class="pb-3 pr-3 w-36">Тип</th>
+                                    <th class="pb-3 pr-3 w-32">Размер</th>
+                                    <th class="pb-3 pr-3 w-32">Вес</th>
+                                    <th class="pb-3 pr-3 w-20 text-right">Шанс</th>
+                                    <th class="pb-3 w-8"></th>
                                 </tr>
                             </thead>
                             <tbody id="wheel-prizes-body">
                                 {% set total_weight = wheel.prizes | selectattr('is_active') | sum(attribute='weight') or 1 %}
                                 {% for prize in wheel.prizes %}
-                                <tr class="border-t border-white/5" data-prize="{{ prize.prize_id }}">
+                                <tr class="border-t border-white/5 align-middle" data-prize="{{ prize.prize_id }}">
+                                    <td class="py-2 pr-3">
+                                        <input type="checkbox" data-field="is_active" class="ui-switch"
+                                            {{ 'checked' if prize.is_active else '' }} title="Участвует в розыгрыше">
+                                    </td>
                                     <td class="py-2 pr-3"><input value="{{ prize.label }}" data-field="label"
                                         class="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none"></td>
                                     <td class="py-2 pr-3">
                                         <select data-field="prize_type" class="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none">
-                                            <option value="days" {{ 'selected' if prize.prize_type == 'days' else '' }}>Дни</option>
-                                            <option value="balance" {{ 'selected' if prize.prize_type == 'balance' else '' }}>Баланс</option>
-                                            <option value="promo_percent" {{ 'selected' if prize.prize_type == 'promo_percent' else '' }}>Купон, %</option>
-                                            <option value="promo_fixed" {{ 'selected' if prize.prize_type == 'promo_fixed' else '' }}>Купон, ₽</option>
+                                            <option value="days" {{ 'selected' if prize.prize_type == 'days' else '' }}>Дни к подписке</option>
+                                            <option value="balance" {{ 'selected' if prize.prize_type == 'balance' else '' }}>Деньги на баланс</option>
+                                            <option value="promo_percent" {{ 'selected' if prize.prize_type == 'promo_percent' else '' }}>Купон на скидку, %</option>
+                                            <option value="promo_fixed" {{ 'selected' if prize.prize_type == 'promo_fixed' else '' }}>Купон на скидку, ₽</option>
                                             <option value="nothing" {{ 'selected' if prize.prize_type == 'nothing' else '' }}>Пусто</option>
                                         </select>
                                     </td>
-                                    <td class="py-2 pr-3"><input type="number" step="1" min="0" value="{{ prize.amount | int }}" data-field="amount"
-                                        class="w-24 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none"></td>
-                                    <td class="py-2 pr-3"><input type="number" step="1" min="1" value="{{ prize.weight }}" data-field="weight"
-                                        class="w-20 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none"></td>
-                                    <td class="py-2 pr-3 text-white/50 text-xs" data-chance>{{ '%.1f' | format(prize.weight * 100 / total_weight) if prize.is_active else '—' }}%</td>
-                                    <td class="py-2 text-right whitespace-nowrap">
-                                        <label class="inline-flex items-center gap-2 mr-3 text-white/40 text-[11px]">
-                                            <input type="checkbox" data-field="is_active" {{ 'checked' if prize.is_active else '' }}
-                                                class="accent-primary w-4 h-4"> вкл
-                                        </label>
-                                        <button type="button" onclick="wheelSavePrize({{ prize.prize_id }})"
-                                            class="text-primary hover:text-white transition-colors" title="Сохранить">
-                                            <span class="material-symbols-outlined text-lg align-middle">save</span></button>
+                                    <td class="py-2 pr-3">
+                                        <div class="flex items-center gap-1.5">
+                                            <input type="number" step="1" min="0" value="{{ prize.amount | int }}" data-field="amount" data-stepper
+                                                class="w-16">
+                                            <span class="text-white/30 text-[11px]" data-unit></span>
+                                        </div>
+                                    </td>
+                                    <td class="py-2 pr-3"><input type="number" step="1" min="1" value="{{ prize.weight }}" data-field="weight" data-stepper
+                                        class="w-14"></td>
+                                    <td class="py-2 pr-3 text-right"><span class="text-white/70 text-xs font-bold tabular-nums" data-chance>—</span></td>
+                                    <td class="py-2 text-right">
                                         <button type="button" onclick="wheelDeletePrize({{ prize.prize_id }})"
-                                            class="text-white/30 hover:text-red-400 transition-colors ml-2" title="Удалить">
+                                            class="text-white/25 hover:text-red-400 transition-colors" title="Удалить сектор">
                                             <span class="material-symbols-outlined text-lg align-middle">delete</span></button>
                                     </td>
                                 </tr>
@@ -1718,25 +1728,79 @@
                         </table>
                     </div>
 
-                    <div class="border-t border-white/5 mt-4 pt-4 grid grid-cols-1 sm:grid-cols-5 gap-3">
-                        <input id="wheel-new-label" placeholder="Название сектора"
-                            class="sm:col-span-2 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
-                        <select id="wheel-new-type" class="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
-                            <option value="days">Дни</option>
-                            <option value="balance">Баланс</option>
-                            <option value="promo_percent">Купон, %</option>
-                            <option value="promo_fixed">Купон, ₽</option>
-                            <option value="nothing">Пусто</option>
-                        </select>
-                        <input id="wheel-new-amount" type="number" min="0" placeholder="Размер"
-                            class="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
-                        <input id="wheel-new-weight" type="number" min="1" value="10" placeholder="Вес"
-                            class="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
-                        <button type="button" onclick="wheelAddPrize()"
-                            class="sm:col-span-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-sm rounded-xl px-6 py-3 transition-all flex items-center justify-center gap-2">
-                            <span class="material-symbols-outlined text-lg">add</span> Добавить сектор
+                    <div class="flex items-center justify-between gap-3 flex-wrap border-t border-white/5 mt-4 pt-4">
+                        <p id="wheel-prizes-hint" class="text-white/30 text-[11px]">Изменения сохраняются кнопкой справа.</p>
+                        <button type="button" id="wheel-prizes-save"
+                            class="bg-primary/90 hover:bg-primary text-background-dark font-bold text-sm rounded-xl px-6 py-3 transition-all flex items-center gap-2 disabled:opacity-40">
+                            <span class="material-symbols-outlined text-lg">save</span> Сохранить сектора
                         </button>
                     </div>
+
+                    <div class="border-t border-white/5 mt-4 pt-4">
+                        <div class="text-white/30 text-[10px] uppercase tracking-widest mb-3">Новый сектор</div>
+                        <div class="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                            <input id="wheel-new-label" placeholder="Название сектора"
+                                class="sm:col-span-2 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
+                            <select id="wheel-new-type" class="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
+                                <option value="days">Дни к подписке</option>
+                                <option value="balance">Деньги на баланс</option>
+                                <option value="promo_percent">Купон на скидку, %</option>
+                                <option value="promo_fixed">Купон на скидку, ₽</option>
+                                <option value="nothing">Пусто</option>
+                            </select>
+                            <input id="wheel-new-amount" type="number" min="0" placeholder="Размер"
+                                class="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
+                            <input id="wheel-new-weight" type="number" min="1" value="10" placeholder="Вес"
+                                class="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-primary focus:outline-none">
+                            <button type="button" onclick="wheelAddPrize()"
+                                class="sm:col-span-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-sm rounded-xl px-6 py-3 transition-all flex items-center justify-center gap-2">
+                                <span class="material-symbols-outlined text-lg">add</span> Добавить сектор
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
+                    <div class="flex items-start justify-between mb-4 gap-3 flex-wrap">
+                        <div>
+                            <h4 class="text-white/90 font-bold text-sm tracking-tight">Выпадения против шансов</h4>
+                            <p class="text-white/30 text-[11px] mt-1">«Ожидалось» считается по шансу, записанному в момент каждого
+                                прокрута, а не по нынешним весам — иначе правка секторов задним числом искажала бы картину.</p>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <div class="text-white/30 text-[10px] uppercase tracking-widest">Прокрутов в счёте</div>
+                            <div class="text-lg font-bold text-white">{{ wheel.measured }}</div>
+                        </div>
+                    </div>
+                    {% if wheel.fairness %}
+                    <div class="overflow-x-auto -mx-2 px-2">
+                        <table class="w-full min-w-[420px] text-sm">
+                            <thead>
+                                <tr class="text-white/30 text-[10px] uppercase tracking-widest text-left">
+                                    <th class="pb-3 pr-3">Сектор</th>
+                                    <th class="pb-3 pr-3 text-right">Шанс</th>
+                                    <th class="pb-3 pr-3 text-right">Ожидалось</th>
+                                    <th class="pb-3 text-right">Выпало</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in wheel.fairness %}
+                                <tr class="border-t border-white/5">
+                                    <td class="py-2 pr-3 text-white/80">{{ row.label }}</td>
+                                    <td class="py-2 pr-3 text-right text-white/40 tabular-nums">{{ '%.1f' | format(row.avg_chance or 0) }}%</td>
+                                    <td class="py-2 pr-3 text-right text-white/40 tabular-nums">{{ '%.1f' | format(row.expected or 0) }}</td>
+                                    <td class="py-2 text-right font-bold tabular-nums {{ 'text-white' if (row.hits - (row.expected or 0)) | abs <= 2 * ((row.expected or 0.5) ** 0.5) else 'text-amber-300' }}">{{ row.hits }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-white/25 text-[11px] mt-3">Янтарным подсвечены расхождения больше двух стандартных отклонений — на
+                        малом числе прокрутов такое случается и без всякой поломки.</p>
+                    {% else %}
+                    <p class="text-white/40 text-sm">Шансы начали записываться недавно — сравнивать пока не с чем.
+                        {% if wheel.unmeasured %}Прокрутов до этого: {{ wheel.unmeasured }}.{% endif %}</p>
+                    {% endif %}
                 </div>
             </div>
 
@@ -2431,8 +2495,7 @@
                 <div class="flex items-center gap-3 p-3 bg-white/[0.03] rounded-lg border border-white/[0.06] cursor-pointer hover:border-cyan-500/30 transition-all"
                     onclick="toggleSchedulerCheckbox()">
                     <div class="relative flex items-center">
-                        <input type="checkbox" id="schedulerEnabled"
-                            class="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-white/20 transition-all checked:border-cyan-400 checked:bg-cyan-500 hover:border-cyan-500/40" />
+                        <input type="checkbox" id="schedulerEnabled" class="ui-check peer h-5 w-5" />
                         <span
                             class="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-background-dark opacity-0 peer-checked:opacity-100">
                             <span class="material-symbols-outlined text-sm font-bold">check</span>
@@ -2530,8 +2593,7 @@
 
     <div class="flex items-center gap-3 p-3 bg-white/5 rounded-lg border border-white/5 cursor-pointer hover:border-white/20 transition-all"
         onclick="document.getElementById('schedulerEnabled').click()">
-        <input type="checkbox" id="schedulerEnabled"
-            class="w-5 h-5 rounded border-gray-600 text-blue-500 focus:ring-blue-500 bg-gray-700">
+        <input type="checkbox" id="schedulerEnabled" class="ui-check w-5 h-5">
         <div>
             <div class="font-medium text-white text-sm">Включить автоматическую перезагрузку</div>
             <div class="text-xs text-gray-400">Сервер будет перезагружаться по указанному расписанию</div>
@@ -5654,15 +5716,49 @@
     function rows() { return Array.from(document.querySelectorAll('#wheel-prizes-body tr[data-prize]')); }
     function field(row, name) { return row.querySelector('[data-field="' + name + '"]'); }
 
+    const UNITS = { days: 'дн.', balance: '\u20BD', promo_percent: '%', promo_fixed: '\u20BD', nothing: '' };
+
     function refreshChances() {
         const active = rows().filter(r => field(r, 'is_active').checked);
         const total = active.reduce((sum, r) => sum + (Number(field(r, 'weight').value) || 0), 0);
+        const totalEl = document.getElementById('wheel-weight-total');
+        if (totalEl) {
+            totalEl.textContent = total || '\u2014';
+            /* сумма 100 удобна тем, что вес читается как процент */
+            totalEl.className = 'text-lg font-bold ' + (total === 100 ? 'text-primary' : 'text-white');
+        }
         rows().forEach(r => {
+            const on = field(r, 'is_active').checked;
+            r.style.opacity = on ? '' : '0.45';
+            const type = field(r, 'prize_type').value;
+            const unit = r.querySelector('[data-unit]');
+            if (unit) unit.textContent = UNITS[type] || '';
+            /* у пустого сектора размера нет — поле только сбивает с толку */
+            const amount = field(r, 'amount');
+            amount.disabled = type === 'nothing';
+            amount.closest('.ui-stepper')?.classList.toggle('opacity-40', type === 'nothing');
             const cell = r.querySelector('[data-chance]');
             if (!cell) return;
-            if (!field(r, 'is_active').checked || !total) { cell.textContent = '\u2014'; return; }
+            if (!on || !total) { cell.textContent = '\u2014'; return; }
             cell.textContent = ((Number(field(r, 'weight').value) || 0) * 100 / total).toFixed(1) + '%';
         });
+    }
+
+    let dirty = false;
+    function markDirty() {
+        if (dirty) return;
+        dirty = true;
+        const hint = document.getElementById('wheel-prizes-hint');
+        const btn = document.getElementById('wheel-prizes-save');
+        if (hint) { hint.textContent = 'Есть несохранённые изменения.'; hint.className = 'text-amber-300 text-[11px]'; }
+        if (btn) btn.classList.add('ring-2', 'ring-primary/50');
+    }
+    function markClean() {
+        dirty = false;
+        const hint = document.getElementById('wheel-prizes-hint');
+        const btn = document.getElementById('wheel-prizes-save');
+        if (hint) { hint.textContent = 'Изменения сохраняются кнопкой справа.'; hint.className = 'text-white/30 text-[11px]'; }
+        if (btn) btn.classList.remove('ring-2', 'ring-primary/50');
     }
 
     function body(extra) {
@@ -5682,24 +5778,48 @@
         return false;
     }
 
-    window.wheelSavePrize = async function (prizeId) {
-        const row = document.querySelector('#wheel-prizes-body tr[data-prize="' + prizeId + '"]');
-        if (!row) return;
-        const ok = await post('/other/wheel/prize/' + prizeId + '/edit', body({
-            label: field(row, 'label').value.trim(),
-            prize_type: field(row, 'prize_type').value,
-            amount: field(row, 'amount').value || 0,
-            weight: field(row, 'weight').value || 1,
-            is_active: field(row, 'is_active').checked,
-        }), 'Сектор обновлён');
-        if (ok) refreshChances();
+    /* Сохраняем всю таблицу разом. Раньше у каждой строки была своя
+       кнопка-иконка, а большая «Сохранить» рядом относилась только к
+       настройкам — снятая галочка выглядела сохранённой, но после
+       перезагрузки возвращалась. */
+    window.wheelSavePrizes = async function () {
+        const btn = document.getElementById('wheel-prizes-save');
+        const prizes = rows().map(r => ({
+            prize_id: Number(r.dataset.prize),
+            label: field(r, 'label').value.trim(),
+            prize_type: field(r, 'prize_type').value,
+            amount: field(r, 'amount').value || 0,
+            weight: field(r, 'weight').value || 1,
+            is_active: field(r, 'is_active').checked,
+        }));
+        const empty = prizes.find(p => !p.label);
+        if (empty) { window.showToast('warning', 'У сектора нет названия'); return; }
+        btn.disabled = true;
+        try {
+            const resp = await fetch('/other/wheel/prizes/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.getCsrfToken() },
+                body: JSON.stringify({ prizes })
+            });
+            const data = await resp.json();
+            if (data.ok) { window.showToast('success', data.message); markClean(); }
+            else window.showToast('danger', data.error || 'Не удалось сохранить');
+        } catch (e) { window.showToast('danger', 'Нет связи с сервером'); }
+        btn.disabled = false;
     };
 
     window.wheelDeletePrize = async function (prizeId) {
-        if (!confirm('Удалить сектор?')) return;
-        const ok = await post('/other/wheel/prize/' + prizeId + '/delete', body({}), 'Сектор удалён');
-        if (ok) {
-            const row = document.querySelector('#wheel-prizes-body tr[data-prize="' + prizeId + '"]');
+        const row = document.querySelector('#wheel-prizes-body tr[data-prize="' + prizeId + '"]');
+        const name = row ? field(row, 'label').value.trim() : '';
+        const ok = await window.showCustomConfirm({
+            title: 'Удалить сектор?',
+            text: name ? '«' + name + '» исчезнет из колеса. Прошлые выигрыши по нему останутся в журнале.'
+                       : 'Прошлые выигрыши по нему останутся в журнале.',
+            okText: 'Удалить'
+        });
+        if (!ok) return;
+        const done = await post('/other/wheel/prize/' + prizeId + '/delete', body({}), 'Сектор удалён');
+        if (done) {
             if (row) row.remove();
             refreshChances();
         }
@@ -5747,8 +5867,16 @@
                 saveBtn.disabled = false;
             });
         }
-        document.querySelectorAll('#wheel-prizes-body [data-field="weight"], #wheel-prizes-body [data-field="is_active"]')
-            .forEach(el => el.addEventListener('input', refreshChances));
+        document.getElementById('wheel-prizes-save')?.addEventListener('click', window.wheelSavePrizes);
+        document.querySelectorAll('#wheel-prizes-body [data-field]').forEach(el => {
+            el.addEventListener('input', () => { refreshChances(); markDirty(); });
+            el.addEventListener('change', () => { refreshChances(); markDirty(); });
+        });
+        window.addEventListener('beforeunload', e => {
+            if (!dirty) return;
+            e.preventDefault();
+            e.returnValue = '';
+        });
         refreshChances();
     });
 })();

@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest
+from shop_bot.modules import support_text
 
 from shop_bot.data_manager.remnawave_repository import (
     get_setting,
@@ -110,19 +111,26 @@ def get_support_router() -> Router:
         except Exception:
             pass
 
+    def _media_kind(message: types.Message) -> str | None:
+        """Что приложено к сообщению — одним словом, как в support_media."""
+        for attr in ("photo", "video", "voice", "video_note", "audio", "document"):
+            if getattr(message, attr, None):
+                return attr
+        return None
+
     def _extract_content(message: types.Message) -> str:
+        """Текст сообщения со служебной пометкой о вложении.
+
+        Пометка нужна там, где само вложение показать нельзя: в списке
+        обращений, в уведомлении админу, в поиске. Там, где картинка висит
+        рядом, её убирают на показе — правило общее, из support_text.
+        """
         text = (message.text or message.caption or "").strip()
-        if message.photo: return f"[Фото] {text}".strip()
-        if message.video: return f"[Видео] {text}".strip()
-        if message.voice: return f"[Голосовое] {text}".strip()
-        if message.video_note: return "[Кружок]"
-        if message.audio:
-            name = getattr(message.audio, "file_name", None) or "аудио"
-            return f"[Документ: {name}] {text}".strip()
-        if message.document:
-            name = getattr(message.document, "file_name", None) or "файл"
-            return f"[Документ: {name}] {text}".strip()
-        return text
+        kind = _media_kind(message)
+        if not kind:
+            return text
+        name = getattr(getattr(message, kind, None), "file_name", None)
+        return f"{support_text.label_for(kind, name or 'файл')} {text}".strip()
 
     def _support_contact_markup() -> types.InlineKeyboardMarkup | None:
         support = (get_setting("support_bot_username") or get_setting("support_user") or "").strip()
@@ -312,20 +320,22 @@ def get_support_router() -> Router:
             await event.answer(text, reply_markup=reply_markup)
 
     async def _send_ticket_confirmation(message: types.Message, ticket_id: int, subject: str, content_text: str, created_new: bool):
+        # Темы может не быть, а сообщение может состоять из одного вложения:
+        # html.quote(None) роняет обработчик, а пустая цитата выглядит сбоем
+        body = support_text.strip_label(content_text)
+        quote = f"<blockquote>{html.quote(body)}</blockquote>\n\n" if body else ""
         if created_new:
             text = (
                 f"✅ <b>Обращение #{ticket_id} создано!</b>\n\n"
-                f"📝 <b>Сообщения:</b>\n"
-                f"💬 <b>Тема:</b> <i>{html.quote(subject)}</i>\n"
-                f"<blockquote>{html.quote(content_text)}</blockquote>\n\n"
+                f"💬 <b>Тема:</b> <i>{html.quote(subject or 'без темы')}</i>\n"
+                f"{quote}"
                 f"💌 Ожидайте ответа поддержки. Мы скоро свяжемся с вами."
             )
         else:
             text = (
                 f"✅ <b>Сообщение добавлено в ваш открытый тикет</b>\n\n"
                 f"📝 <b>ID тикета:</b> <code>#{ticket_id}</code>\n\n"
-                f"✉️ Сообщения:\n"
-                f"<blockquote>{html.quote(content_text)}</blockquote>\n\n"
+                f"{quote}"
                 f"💌 Ожидайте ответа поддержки. Мы скоро свяжемся с вами."
             )
         try:
@@ -374,46 +384,51 @@ def get_support_router() -> Router:
 
     async def _notify_admins(bot: Bot, message: types.Message, ticket_id: int, subject: str = None, created_new: bool = False):
         username_display = _get_username_display(message.from_user, message.from_user.id)
-        message_content = message.text or message.caption or ("[Фото]" if message.photo else "[Видео]" if message.video else "")
-        notification_text = _build_notification_text(ticket_id, message.from_user.id, username_display, subject, message_content, created_new)
-        
-        
-        for aid in get_admin_ids():
-            try:
-                if message.text or (message.caption and not created_new):
-                    send_method = bot.send_photo if created_new else bot.send_message
-                    
-                    photo_to_send = NEW_TICKET_PHOTO_URL
-                    if created_new and message.photo:
-                        photo_to_send = message.photo[-1].file_id
+        notification_text = _build_notification_text(ticket_id, message.from_user.id, username_display,
+                                                     subject, _extract_content(message), created_new)
+        markup = _admin_dm_reply_kb(ticket_id)
+        has_attachment = not message.text
 
-                    await send_method(
-                        chat_id=int(aid),
-                        **(({"photo": photo_to_send, "caption": notification_text} if created_new else {"text": notification_text})),
-                        reply_markup=_admin_dm_reply_kb(ticket_id)
-                    )
+        for aid in get_admin_ids():
+            chat_id = int(aid)
+            # Сначала — сам текст обращения. Он не должен зависеть от того,
+            # доедет ли вложение: у админа могут быть закрыты голосовые
+            # (VOICE_MESSAGES_FORBIDDEN), и тогда copy_message роняет
+            # уведомление целиком, а обращение остаётся незамеченным.
+            delivered = False
+            try:
+                if created_new:
+                    photo = message.photo[-1].file_id if message.photo else NEW_TICKET_PHOTO_URL
+                    await bot.send_photo(chat_id=chat_id, photo=photo,
+                                         caption=notification_text, reply_markup=markup)
                 else:
-                    if created_new:
-                        photo_to_send = NEW_TICKET_PHOTO_URL
-                        if message.photo:
-                            photo_to_send = message.photo[-1].file_id
-                            
-                        await bot.send_photo(
-                            chat_id=int(aid),
-                            photo=photo_to_send,
-                            caption=notification_text,
-                            reply_markup=_admin_dm_reply_kb(ticket_id)
-                        )
-                    else:
-                        await bot.copy_message(
-                            chat_id=int(aid),
-                            from_chat_id=message.chat.id,
-                            message_id=message.message_id,
-                            caption=notification_text,
-                            reply_markup=_admin_dm_reply_kb(ticket_id)
-                        )
+                    await bot.send_message(chat_id=chat_id, text=notification_text, reply_markup=markup)
+                delivered = True
             except Exception as e:
                 logger.warning(f"Не удалось уведомить админа {aid} о тикете {ticket_id}: {e}")
+                if created_new:
+                    # картинку-шапку мог не пропустить сам Telegram — текст важнее
+                    try:
+                        await bot.send_message(chat_id=chat_id, text=notification_text, reply_markup=markup)
+                        delivered = True
+                    except Exception as e2:
+                        logger.warning(f"Не удалось уведомить админа {aid} о тикете {ticket_id} и текстом: {e2}")
+
+            # Вложение идёт отдельным сообщением: фотографию уже показали шапкой
+            if delivered and has_attachment and not (created_new and message.photo):
+                try:
+                    await bot.copy_message(chat_id=chat_id, from_chat_id=message.chat.id,
+                                           message_id=message.message_id)
+                except Exception as e:
+                    kind = support_text.describe([_media_kind(message)]) or "вложение"
+                    logger.warning(f"Тикет {ticket_id}: админу {aid} не доставлено {kind}: {e}")
+                    try:
+                        await bot.send_message(
+                            chat_id=chat_id,
+                            text=f"📎 К обращению #{ticket_id} приложено {kind}, "
+                                 f"но Telegram не дал его переслать. Файл есть в панели.")
+                    except Exception:
+                        pass
 
     async def _notify_user_about_ban(bot: Bot, user_id: int, text: str) -> None:
         try:

@@ -153,8 +153,7 @@
                     <p class="text-white/40 text-xs mt-1">icon_custom_emoji_id — иконка в кнопке</p>
                 </div>
                 <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="is-active" checked
-                        class="w-4 h-4 bg-white/10 border-white/20 rounded text-primary focus:ring-primary/50" />
+                    <input type="checkbox" id="is-active" checked class="ui-check" />
                     <span class="text-white/70 text-sm">Активна</span>
                 </label>
                 <div class="pt-2 space-y-2">
@@ -1217,7 +1216,7 @@
         async deleteButton(buttonId) {
             const id = buttonId || (this.selectedButton ? this.selectedButton.id : null);
             if (!id) return;
-            if (!confirm('Удалить эту кнопку?')) return;
+            if (!await showCustomConfirm({ title: 'Удалить кнопку?', text: 'Она исчезнет из меню бота.', okText: 'Удалить' })) return;
 
             try {
                 const resp = await fetch(`/api/button-configs/${id}`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrfToken() } });
@@ -1313,12 +1312,13 @@
         // Обработка клика по кнопке предпросмотра
         handlePreviewClick(callbackData, url, text) {
             if (url) {
-                if (confirm(`Открыть ссылку?\n\nURL: ${url}`)) {
-                    window.open(url, '_blank');
-                }
+                showCustomConfirm({
+                    title: 'Открыть ссылку?', text: url, tone: 'primary',
+                    icon: 'open_in_new', okText: 'Открыть'
+                }).then(ok => { if (ok) window.open(url, '_blank'); });
             } else {
-                const description = this.getCallbackDescription(callbackData);
-                alert(`Действие кнопки:\n\n${description}\n\nCallback: ${callbackData || 'Не указан'}`);
+                showAlert(this.getCallbackDescription(callbackData) +
+                    '\n\nCallback: ' + (callbackData || 'не указан'), 'Действие кнопки');
             }
         }
 

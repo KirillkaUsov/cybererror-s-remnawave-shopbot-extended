@@ -1270,8 +1270,7 @@
                 <div class="flex items-center gap-3 p-3 bg-black/25 rounded-xl border border-white/[0.05] cursor-pointer hover:border-cyan-500/20 transition-all duration-200"
                     onclick="toggleSchedulerCheckbox()">
                     <div class="relative flex items-center">
-                        <input type="checkbox" id="schedulerEnabled"
-                            class="peer h-5 w-5 cursor-pointer appearance-none rounded-lg border border-white/15 transition-all duration-200 checked:border-cyan-400 checked:bg-cyan-500 hover:border-cyan-500/30" />
+                        <input type="checkbox" id="schedulerEnabled" class="ui-check peer h-5 w-5" />
                         <span
                             class="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-background-dark opacity-0 peer-checked:opacity-100">
                             <span class="material-symbols-outlined text-sm font-bold">check</span>
@@ -2490,7 +2489,7 @@
                 hostsList.innerHTML = hosts.map(h => `
                     <label class="group flex flex-col p-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.06] hover:border-primary/20 cursor-pointer transition-all duration-200">
                         <div class="flex items-start gap-2">
-                            <input type="checkbox" value="host|${h.host_name}" class="reboot-server-checkbox mt-0.5 w-4 h-4 rounded border-white/[0.1] bg-black/20 text-primary focus:ring-primary/50 focus:ring-1" onchange="updateRebootSelectedCount()">
+                            <input type="checkbox" value="host|${h.host_name}" class="reboot-server-checkbox ui-check mt-0.5" onchange="updateRebootSelectedCount()">
                             <div class="flex-1 min-w-0">
                                 <div class="text-white text-[11px] font-medium truncate group-hover:text-primary/90 transition-colors">${h.host_name}</div>
                                 <div class="text-white/30 text-[9px] truncate">${h.ssh_host || '—'}</div>
@@ -2512,7 +2511,7 @@
                 sshList.innerHTML = sshTargets.map(t => `
                     <label class="group flex flex-col p-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.06] hover:border-primary/20 cursor-pointer transition-all duration-200">
                         <div class="flex items-start gap-2">
-                            <input type="checkbox" value="ssh|${t.target_name}" class="reboot-server-checkbox mt-0.5 w-4 h-4 rounded border-white/[0.1] bg-black/20 text-primary focus:ring-primary/50 focus:ring-1" onchange="updateRebootSelectedCount()">
+                            <input type="checkbox" value="ssh|${t.target_name}" class="reboot-server-checkbox ui-check mt-0.5" onchange="updateRebootSelectedCount()">
                             <div class="flex-1 min-w-0">
                                 <div class="text-white text-[11px] font-medium truncate group-hover:text-primary/90 transition-colors">${t.target_name}</div>
                                 <div class="text-white/30 text-[9px] truncate">${t.ssh_host || '—'}</div>

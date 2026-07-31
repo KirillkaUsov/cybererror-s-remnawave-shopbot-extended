@@ -57,6 +57,33 @@ class BotController:
             self._bot = None
             self._dp = None
 
+    @staticmethod
+    def _install_error_handler(dp: Dispatcher) -> None:
+        """Ловим то, что обработчики не поймали.
+
+        Без этого любое исключение печатает в лог полный traceback aiogram,
+        а человек в чате не видит вообще ничего и жмёт кнопку снова. Отдельно
+        отделяем «query is too old»: это не поломка, а нажатие на кнопку в
+        сообщении, которое провисело больше суток.
+        """
+        from aiogram.types import ErrorEvent
+
+        @dp.errors()
+        async def on_error(event: ErrorEvent):
+            text = str(event.exception)
+            callback = getattr(event.update, "callback_query", None)
+            if "query is too old" in text or "query ID is invalid" in text:
+                logger.info("Нажата кнопка в устаревшем сообщении — пропускаем")
+                return True
+            logger.error(f"Необработанная ошибка в обработчике: {event.exception}", exc_info=True)
+            if callback:
+                try:
+                    await callback.answer("Что-то пошло не так. Попробуйте ещё раз или откройте меню заново.",
+                                          show_alert=True)
+                except Exception:
+                    pass
+            return True
+
     def start(self):
         if self._is_running or self._task:
             return {"status": "error", "message": "Бот уже запущен или запускается."}
@@ -102,6 +129,7 @@ class BotController:
             self._dp.include_router(user_router)
             self._dp.include_router(admin_router)
             self._dp.include_router(get_security_router())
+            self._install_error_handler(self._dp)
             
             try:
                 asyncio.run_coroutine_threadsafe(self._bot.delete_webhook(drop_pending_updates=True), self._loop).result(timeout=5)

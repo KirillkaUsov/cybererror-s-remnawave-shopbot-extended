@@ -47,6 +47,7 @@ from shop_bot.data_manager.database import get_seller_user, get_device_tiers, ge
 from shop_bot.modules import remnawave_api
 from shop_bot.modules import device_addon
 from shop_bot.modules import fortune_wheel
+from shop_bot.modules import support_text
 from shop_bot.config import get_purchase_success_text
 import re
 from decimal import Decimal
@@ -2701,6 +2702,7 @@ if MULTIPART_AVAILABLE:
     auth: dict = Depends(webapp_user),
     ticket_id: int = Form(...),
     caption: str = Form(""),
+    kind_hint: str = Form(""),
     file: UploadFile = File(...),
   ):
       """
@@ -2725,7 +2727,13 @@ if MULTIPART_AVAILABLE:
               return {"ok": False, "error": "Тикет не найден или закрыт"}
 
           data = await file.read()
-          ok, err, ext = media_store.validate(file.filename, file.content_type, len(data))
+          # Голосовое и кружок записывает сам браузер, формат контейнера
+          # выбирает он же — держать его в списке разрешённых расширений
+          # бессмысленно, как и для тех же вложений из Telegram
+          hint = (kind_hint or "").strip()
+          if hint not in media_store.TELEGRAM_NATIVE_KINDS:
+              hint = ""
+          ok, err, ext = media_store.validate(file.filename, file.content_type, len(data), hint or None)
           if not ok:
               return {"ok": False, "error": err}
 
@@ -2733,9 +2741,9 @@ if MULTIPART_AVAILABLE:
           if not local:
               return {"ok": False, "error": "Не удалось сохранить файл"}
 
-          kind = media_store.kind_for_ext(ext)
+          kind = hint or media_store.kind_for_ext(ext)
           text = (caption or "").strip()
-          label = {"photo": "[Фото]", "video": "[Видео]"}.get(kind, f"[Документ: {file.filename}]")
+          label = support_text.label_for(kind, file.filename)
           content = f"{label} {text}".strip()
 
           message_row_id = add_support_message(ticket_id, sender="user", content=content)
@@ -2767,24 +2775,35 @@ if MULTIPART_AVAILABLE:
                               from shop_bot.data_manager.remnawave_repository import get_admin_ids
                               targets = [dict(chat_id=int(a)) for a in get_admin_ids()]
 
+                          # Голосовое из браузера приходит в webm/opus, а
+                          # Telegram для sendVoice требует ogg/opus. Пробуем
+                          # родной способ, а если он не принят — обычным
+                          # файлом: админ всё равно должен услышать запись.
+                          ways = {
+                              "photo": [("send_photo", "photo")],
+                              "video": [("send_video", "video")],
+                              "voice": [("send_voice", "voice"), ("send_audio", "audio"),
+                                        ("send_document", "document")],
+                              "video_note": [("send_video", "video"), ("send_document", "document")],
+                              "audio": [("send_audio", "audio"), ("send_document", "document")],
+                          }.get(kind, [("send_document", "document")])
+
                           for t in targets:
-                              try:
-                                  if kind == "photo":
-                                      sent = await bot.send_photo(photo=input_file, caption=caption_text, **t)
-                                  elif kind == "video":
-                                      sent = await bot.send_video(video=input_file, caption=caption_text, **t)
-                                  else:
-                                      sent = await bot.send_document(document=input_file, caption=caption_text, **t)
-                              except Exception as e:
-                                  logger.warning(f"[WEBAPP] - Не удалось отправить вложение: {e}")
+                              for method_name, arg in ways:
+                                  try:
+                                      kwargs = dict(t)
+                                      kwargs["caption"] = caption_text
+                                      sent = await getattr(bot, method_name)(**{arg: input_file}, **kwargs)
+                                      break
+                                  except Exception as e:
+                                      logger.warning(f"[WEBAPP] - {method_name} не прошёл: {e}")
 
                           if sent:
-                              if getattr(sent, "photo", None):
-                                  file_id = sent.photo[-1].file_id
-                              elif getattr(sent, "video", None):
-                                  file_id = sent.video.file_id
-                              elif getattr(sent, "document", None):
-                                  file_id = sent.document.file_id
+                              for attr in ("photo", "video", "voice", "audio", "video_note", "document"):
+                                  value = getattr(sent, attr, None)
+                                  if value:
+                                      file_id = value[-1].file_id if isinstance(value, list) else value.file_id
+                                      break
                   finally:
                       await bot.session.close()
           except Exception as e:

@@ -170,7 +170,7 @@
                     stray: 'Удалить файлы, которых нет в базе?',
                     old: `Удалить вложения старше ${days} дней?`
                 };
-                if (!confirm(labels[mode] + '\n\nДействие необратимо.')) return;
+                if (!await showCustomConfirm({ title: labels[mode], text: 'Удалённые файлы вернуть будет неоткуда.', okText: 'Удалить' })) return;
 
                 const original = btn.innerHTML;
                 btn.disabled = true;
@@ -191,7 +191,7 @@
         document.querySelectorAll('[data-delete-media]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const id = btn.getAttribute('data-delete-media');
-                if (!confirm('Удалить это вложение?')) return;
+                if (!await showCustomConfirm({ title: 'Удалить вложение?', text: 'Файл пропадёт из переписки.', okText: 'Удалить' })) return;
                 const data = await post(`/support/media/${id}/delete`);
                 if (data.ok) {
                     showToast('success', data.message || 'Удалено');

@@ -1205,6 +1205,16 @@ def create_wheel_keyboard(st: dict) -> InlineKeyboardMarkup:
     builder.adjust(*(rows + [1, 1]))
     return builder.as_markup()
 
+def create_wheel_prizes_keyboard(pending: list) -> InlineKeyboardMarkup:
+    """Какой из невыданных призов забираем — когда их накопилось несколько."""
+    builder = InlineKeyboardBuilder()
+    for prize in pending:
+        builder.button(text=f"🎁 {prize.get('label')} · до {prize.get('expires_text') or '—'}",
+                       callback_data=f"wheel_prize_{prize.get('spin_id')}")
+    builder.button(text="⬅️ Назад", callback_data="wheel_open")
+    builder.adjust(1)
+    return builder.as_markup()
+
 def create_wheel_keys_keyboard(keys: list, spin_id: int | None = None) -> InlineKeyboardMarkup:
     """Выбор подписки, к которой добавить выигранные дни.
 
