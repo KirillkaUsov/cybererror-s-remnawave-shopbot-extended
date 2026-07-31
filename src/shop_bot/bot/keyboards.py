@@ -1226,7 +1226,9 @@ def create_wheel_keys_keyboard(keys: list, spin_id: int | None = None) -> Inline
     for key in keys:
         builder.button(text=f"{key.get('host_name') or 'Подписка'} · до {key.get('expiry_text') or '—'}",
                        callback_data=f"wheel_key_{key.get('key_id')}{suffix}")
-    builder.button(text="⬅️ Назад", callback_data="wheel_open")
+    # Не «Назад», а именно «позже»: приз не пропадает, он лежит в истории со
+    # своим сроком, и выбрать подписку можно в любой момент до него
+    builder.button(text="⏳ Решить позже", callback_data="wheel_open")
     builder.adjust(1)
     return builder.as_markup()
 

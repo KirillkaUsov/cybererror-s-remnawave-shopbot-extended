@@ -4335,8 +4335,6 @@ def get_recent_transactions(limit: int = 15) -> list[dict]:
 # Получение всех пользователей с сортировкой по дате регистрации
 def get_all_users() -> list[dict]:
     return _fetch_list("SELECT * FROM users ORDER BY registration_date DESC", (), "Не удалось получить всех пользователей")
-
-    return rows
 # ===================================
 
 
