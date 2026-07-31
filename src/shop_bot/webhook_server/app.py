@@ -486,13 +486,21 @@ def create_webhook_app(bot_controller_instance):
                 session.permanent = bool(request.form.get('remember_me'))
 
                 if bot and admin_id:
+                    # Вход с самой машины помечаем отдельно: снаружи такой
+                    # запрос прийти не может, и одинаковая тревожная шапка на
+                    # обслуживании и на чужом входе стирала разницу между ними
+                    local = security.is_local_ip(ip)
                     security.notify_admin(
                         bot, loop, admin_id,
-                        "🟢 <b>Успешный вход Web Aadmin</b>",
+                        "🛠 <b>Локальный вход в панель</b>" if local else "🟢 <b>Успешный вход Web Admin</b>",
                         {
                             **info,
-                            'msg': '<b>Выполнен вход в панель управления</b>',
-                            'footer': '<blockquote>⚠️ <b>ВНИМАНИЕ:</b> Если это были не вы, немедленно отключите бота и смените пароль через базу данных.</blockquote>'
+                            'success': True,
+                            'msg': ('<b>Вход с самого сервера</b>' if local
+                                    else '<b>Выполнен вход в панель управления</b>'),
+                            'footer': ('<blockquote>🔧 Запрос пришёл с машины бота или из локальной сети — снаружи так войти нельзя.</blockquote>'
+                                       if local
+                                       else '<blockquote>⚠️ <b>ВНИМАНИЕ:</b> Если это были не вы, немедленно отключите бота и смените пароль через базу данных.</blockquote>')
                         }
                     )
                 return redirect(url_for('dashboard_page'))
@@ -500,7 +508,8 @@ def create_webhook_app(bot_controller_instance):
                 if bot and admin_id:
                     security.notify_admin(
                         bot, loop, admin_id,
-                        "🔴 <b>Кто-то пытается войти</b> 🔴",
+                        ("🟠 <b>Неудачный вход с сервера</b>" if security.is_local_ip(ip)
+                         else "🔴 <b>Кто-то пытается войти</b> 🔴"),
                         {
                             **info,
                             'msg': '<b>Не верно введенные данные для входа.</b>',
