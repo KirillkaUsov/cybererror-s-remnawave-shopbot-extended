@@ -1045,6 +1045,8 @@
                                         'broadcast') }}
                                         {{ accordion_link(url_for('other_page') ~ '?tab=promo', 'Промо коды',
                                         'confirmation_number', 'promo') }}
+                                        {{ accordion_link(url_for('other_page') ~ '?tab=wheel', 'Колесо удачи',
+                                        'casino', 'wheel') }}
                                         {{ accordion_link(url_for('other_page') ~ '?tab=logs', 'Логи Бота', 'article',
                                         'logs') }}
                                         {% if webapp_exists %}
@@ -1347,6 +1349,13 @@
                                                 class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-white/40 hover:text-white hover:bg-white/5 transition-all">
                                                 <span class="material-symbols-outlined text-[16px]">dns</span>
                                                 <span class="text-[12px] font-semibold">Сервера</span>
+                                            </a>
+                                            <a href="{{ url_for('other_page') }}?tab=wheel"
+                                                data-base-url="{{ url_for('other_page') }}"
+                                                onclick="handleOtherPageNav(event, 'wheel')"
+                                                class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-white/40 hover:text-white hover:bg-white/5 transition-all">
+                                                <span class="material-symbols-outlined text-[16px]">casino</span>
+                                                <span class="text-[12px] font-semibold">Колесо удачи</span>
                                             </a>
                                             <a href="{{ url_for('other_page') }}?tab=logs"
                                                 data-base-url="{{ url_for('other_page') }}"

@@ -1,0 +1,14 @@
+{# Журнал движения билетов. Отдаётся ещё и в ответ на ручную выдачу, чтобы
+   список обновлялся без перезагрузки всей страницы. Ждёт две переменные:
+   tickets — строки журнала, reasons — расшифровка кодов причин. #}
+{% if tickets %}
+{% for row in tickets %}
+<div class="flex items-center justify-between gap-3 text-xs">
+    <span class="text-white/50 truncate">{{ '@' ~ row.username if row.username else row.user_id }}</span>
+    <span class="text-white/30 truncate">{{ reasons.get(row.reason, row.reason) }}</span>
+    <b class="{{ 'text-primary' if row.delta > 0 else 'text-white/40' }} whitespace-nowrap">{{ '%+d' | format(row.delta) }}</b>
+</div>
+{% endfor %}
+{% else %}
+<p class="text-white/30 text-[11px]">Билеты ещё никому не начисляли.</p>
+{% endif %}
