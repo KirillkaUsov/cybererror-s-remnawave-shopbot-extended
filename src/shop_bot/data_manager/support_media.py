@@ -80,6 +80,54 @@ def kind_for_ext(ext: str) -> str:
     return "document"
 
 
+# Тип содержимого для отдачи назад. Присланный клиентом MIME для этого не
+# годится: имя файла и Content-Type задаёт он сам, и «картинка» с типом
+# text/html вернулась бы браузеру как страница на нашем же домене. Тип
+# считаем по расширению, а всё незнакомое отдаём как поток байтов.
+SAFE_MIME = {
+    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+    "webp": "image/webp", "gif": "image/gif", "bmp": "image/bmp",
+    "mp4": "video/mp4", "mov": "video/quicktime", "m4v": "video/mp4",
+    "webm": "video/webm",
+    "ogg": "audio/ogg", "oga": "audio/ogg", "opus": "audio/ogg",
+    "mp3": "audio/mpeg", "m4a": "audio/mp4", "wav": "audio/wav",
+    "pdf": "application/pdf",
+}
+
+# Контейнеры, в которых браузер отдаёт запись с микрофона и камеры
+RECORDING_EXTS = {
+    "audio/webm": "webm", "video/webm": "webm",
+    "audio/ogg": "ogg", "audio/opus": "ogg",
+    "audio/mp4": "m4a", "video/mp4": "mp4",
+    "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav",
+}
+
+
+def safe_media_type(stored_path: str | None, file_name: str | None = None) -> tuple[str, bool]:
+    """(Content-Type, можно ли показывать прямо в браузере).
+
+    Расширение берём из имени файла на диске — его придумывали мы, а не
+    отправитель.
+    """
+    ext = ""
+    if stored_path:
+        ext = str(stored_path).rsplit(".", 1)[-1].lower() if "." in str(stored_path) else ""
+    if ext not in SAFE_MIME and file_name:
+        ext = guess_ext(file_name, None)
+    mime = SAFE_MIME.get(ext)
+    return (mime, True) if mime else ("application/octet-stream", False)
+
+
+def recording_ext(mime_type: str | None) -> str:
+    """Расширение для записи из браузера — только по типу содержимого.
+
+    Имя файла в такой загрузке приходит от клиента и доверия не заслуживает:
+    иначе «голосовое» с именем evil.html легло бы на диск как .html.
+    """
+    base = (mime_type or "").split(";")[0].strip().lower()
+    return RECORDING_EXTS.get(base, "webm")
+
+
 def validate(file_name: str | None, mime_type: str | None, size: int,
              kind: str | None = None) -> tuple[bool, str, str]:
     """

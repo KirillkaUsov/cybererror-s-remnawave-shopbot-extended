@@ -2624,7 +2624,10 @@ async def api_support_media_file(request: Request, media_id: int, auth: dict = D
         if path is None:
             return JSONResponse({"ok": False, "error": "file_missing"}, status_code=404)
 
-        media_type = row.get('mime_type') or "application/octet-stream"
+        # Тип содержимого считаем по расширению файла на диске: mime_type в
+        # базе приходит из заголовка загрузки, то есть от самого клиента, и
+        # «картинка» с типом text/html вернулась бы страницей на нашем домене
+        media_type, inline = media_store.safe_media_type(row.get('local_path'), row.get('file_name'))
 
         # Перемотка аудио и видео требует поддержки Range-запросов.
         # Не полагаемся на версию Starlette и обрабатываем диапазон сами.
@@ -2663,11 +2666,15 @@ async def api_support_media_file(request: Request, media_id: int, auth: dict = D
                         },
                     )
 
+        headers = {'Accept-Ranges': 'bytes', 'X-Content-Type-Options': 'nosniff'}
+        if not inline:
+            # незнакомый формат браузеру не показываем, только скачиваем
+            headers['Content-Disposition'] = 'attachment'
         return FileResponse(
             str(path),
             media_type=media_type,
             filename=row.get('file_name') or path.name,
-            headers={'Accept-Ranges': 'bytes'},
+            headers=headers,
         )
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка отдачи вложения {media_id}: {e}")
@@ -2736,6 +2743,11 @@ if MULTIPART_AVAILABLE:
           ok, err, ext = media_store.validate(file.filename, file.content_type, len(data), hint or None)
           if not ok:
               return {"ok": False, "error": err}
+          if hint:
+              # запись из браузера: расширение берём по типу содержимого, а
+              # не по имени файла — имя присылает клиент, и «голосовое»
+              # evil.html легло бы на диск как .html
+              ext = media_store.recording_ext(file.content_type)
 
           local = media_store.save_bytes(ticket_id, data, ext)
           if not local:
