@@ -3363,13 +3363,19 @@ def create_webhook_app(bot_controller_instance):
         if path is None:
             return jsonify({"error": "file_missing"}), 404
 
-        return send_file(
+        # Тип содержимого считаем по расширению файла на диске: mime_type в
+        # базе пришёл из заголовка загрузки, то есть от отправителя, и
+        # «картинка» с типом text/html открылась бы страницей на домене панели
+        media_type, inline = media_store.safe_media_type(row.get('local_path'), row.get('file_name'))
+        response = send_file(
             str(path),
-            mimetype=row.get('mime_type') or None,
+            mimetype=media_type,
             download_name=row.get('file_name') or path.name,
-            as_attachment=bool(request.args.get('download')),
+            as_attachment=bool(request.args.get('download')) or not inline,
             conditional=True,
         )
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
 
 
     def _attach_media_to_messages(messages: list) -> None:
