@@ -786,7 +786,11 @@
             box-shadow: 0 20px 40px -12px rgba(0, 0, 0, .6);
         }
 
-        .ui-select.is-open .ui-select__list {
+        /* Список живёт в <body>, а не внутри карточки: у карточек панели
+           стоит backdrop-filter, а он делает элемент содержащим блоком для
+           position:fixed — координаты внутри такой карточки считаются от
+           неё, и список уезжал далеко за экран. */
+        .ui-select__list.is-open {
             display: block;
         }
 
@@ -2398,12 +2402,18 @@
                 /* --- выпадающий список --- */
                 function closeAllSelects(except) {
                     document.querySelectorAll('.ui-select.is-open').forEach(el => {
-                        if (el !== except) el.classList.remove('is-open');
+                        if (el === except) return;
+                        el.classList.remove('is-open');
+                        el._uiList?.classList.remove('is-open');
+                    });
+                    // строку таблицы могли удалить, пока список был открыт
+                    document.querySelectorAll('body > .ui-select__list').forEach(list => {
+                        if (!list._uiWrap?.isConnected) list.remove();
                     });
                 }
 
                 function placeList(wrap) {
-                    const list = wrap.querySelector('.ui-select__list');
+                    const list = wrap._uiList;
                     const btn = wrap.querySelector('.ui-select__button');
                     if (!list || !btn) return;
                     const r = btn.getBoundingClientRect();
@@ -2424,7 +2434,7 @@
 
                 function syncSelect(wrap) {
                     const sel = wrap.querySelector('select');
-                    const list = wrap.querySelector('.ui-select__list');
+                    const list = wrap._uiList;
                     const value = wrap.querySelector('.ui-select__value');
                     if (!sel || !list) return;
                     list.innerHTML = '';
@@ -2440,7 +2450,7 @@
                         b.addEventListener('click', () => {
                             if (opt.disabled) return;
                             sel.value = opt.value;
-                            wrap.classList.remove('is-open');
+                            closeAllSelects();
                             syncSelect(wrap);
                             sel.dispatchEvent(new Event('input', { bubbles: true }));
                             sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2471,15 +2481,22 @@
                     if (sel.disabled) btn.disabled = true;
                     const list = document.createElement('div');
                     list.className = 'ui-select__list';
+                    list._uiWrap = wrap;
+                    wrap._uiList = list;
                     wrap.appendChild(btn);
-                    wrap.appendChild(list);
+                    document.body.appendChild(list);
                     btn.addEventListener('click', e => {
                         e.preventDefault();
                         e.stopPropagation();
                         const open = wrap.classList.contains('is-open');
                         closeAllSelects();
-                        if (!open) { wrap.classList.add('is-open'); placeList(wrap); }
+                        if (!open) {
+                            wrap.classList.add('is-open');
+                            list.classList.add('is-open');
+                            placeList(wrap);
+                        }
                     });
+                    list.addEventListener('click', e => e.stopPropagation());
                     /* значение могли поменять из кода — держим подпись в курсе */
                     sel.addEventListener('change', () => syncSelect(wrap));
                     new MutationObserver(() => syncSelect(wrap)).observe(sel, { childList: true, subtree: true });
