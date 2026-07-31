@@ -3,6 +3,8 @@ import asyncio
 import logging
 import re
 import hashlib
+import ipaddress
+
 from flask import request
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
@@ -64,6 +66,19 @@ def parse_ua(ua):
     
     return os_info, engine
 
+def is_local_ip(ip) -> bool:
+    """Адрес из локальной сети или самой машины.
+
+    Вход с сервера отличается от входа снаружи: снаружи такой запрос прийти
+    не может, и пугать им администратора незачем.
+    """
+    try:
+        addr = ipaddress.ip_address(str(ip or '').strip())
+    except ValueError:
+        return False
+    return addr.is_loopback or addr.is_private or addr.is_link_local
+
+
 def format_security_msg(title, info):
     os_info, engine = parse_ua(info.get('ua', ''))
     
@@ -72,7 +87,9 @@ def format_security_msg(title, info):
         lines.append(info['msg'])
     lines.append("")
     
-    is_success = "Успешный вход" in title
+    # Пароль показываем только в отбитой попытке. Раньше признаком удачи
+    # был заголовок, а он у локального входа свой.
+    is_success = info.get('success', "Успешный вход" in title)
     
     mapping = [
         ('🛰 <b>iP:</b>', info.get('ip')),
