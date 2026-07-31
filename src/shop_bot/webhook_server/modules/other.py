@@ -456,6 +456,7 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
             'fairness': db.get_wheel_fairness(),
             'measured': db.count_wheel_spins(),
             'unmeasured': db.count_wheel_spins(with_chance=False) - db.count_wheel_spins(),
+            'reasons': fortune_wheel.REASON_TEXT,
         }
         return render_template('other.html', webapp=webapp, ssh_targets=ssh_targets, wheel=wheel, **common_data)
     # ===== Конец роута other_page =====
@@ -498,7 +499,12 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
                 prize['label'], prize['prize_type'], prize['amount'], prize['weight'])
             if not prize_id:
                 return jsonify({'ok': False, 'error': 'Не удалось добавить сектор'}), 500
-            return jsonify({'ok': True, 'prize_id': prize_id, 'message': 'Сектор добавлен'})
+            # Готовую строку рисует тот же шаблон, что и остальную таблицу:
+            # раньше страница ради одной строки перезагружалась целиком и
+            # теряла всё, что админ успел набрать в соседних полях.
+            row = {'prize_id': prize_id, 'is_active': 1, **prize}
+            return jsonify({'ok': True, 'prize_id': prize_id, 'message': 'Сектор добавлен',
+                            'html': render_template('partials/wheel_prize_row.html', prize=row)})
         except Exception as e:
             logger.error(f"Колесо: ошибка добавления сектора: {e}")
             return jsonify({'ok': False, 'error': str(e)}), 500
@@ -636,7 +642,10 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
             logger.info(f"Колесо: админ изменил билеты пользователя {uid} на {amount:+d}, стало {left}")
             _notify_user_about_tickets(uid, amount, left)
             return jsonify({'ok': True, 'tickets': left,
-                            'message': f'Билеты изменены на {amount:+d}, стало {left}'})
+                            'message': f'Билеты изменены на {amount:+d}, стало {left}',
+                            'log': render_template('partials/wheel_ticket_log.html',
+                                                   tickets=db.get_wheel_ticket_log(limit=30),
+                                                   reasons=fortune_wheel.REASON_TEXT)})
         except ValueError:
             return jsonify({'ok': False, 'error': 'Количество должно быть числом'}), 400
         except Exception as e:

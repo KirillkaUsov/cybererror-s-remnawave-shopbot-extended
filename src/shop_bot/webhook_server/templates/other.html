@@ -1689,40 +1689,8 @@
                                 </tr>
                             </thead>
                             <tbody id="wheel-prizes-body">
-                                {% set total_weight = wheel.prizes | selectattr('is_active') | sum(attribute='weight') or 1 %}
                                 {% for prize in wheel.prizes %}
-                                <tr class="border-t border-white/5 align-middle" data-prize="{{ prize.prize_id }}">
-                                    <td class="py-2 pr-3">
-                                        <input type="checkbox" data-field="is_active" class="ui-switch"
-                                            {{ 'checked' if prize.is_active else '' }} title="Участвует в розыгрыше">
-                                    </td>
-                                    <td class="py-2 pr-3"><input value="{{ prize.label }}" data-field="label"
-                                        class="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none"></td>
-                                    <td class="py-2 pr-3">
-                                        <select data-field="prize_type" class="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none">
-                                            <option value="days" {{ 'selected' if prize.prize_type == 'days' else '' }}>Дни к подписке</option>
-                                            <option value="balance" {{ 'selected' if prize.prize_type == 'balance' else '' }}>Деньги на баланс</option>
-                                            <option value="promo_percent" {{ 'selected' if prize.prize_type == 'promo_percent' else '' }}>Купон на скидку, %</option>
-                                            <option value="promo_fixed" {{ 'selected' if prize.prize_type == 'promo_fixed' else '' }}>Купон на скидку, ₽</option>
-                                            <option value="nothing" {{ 'selected' if prize.prize_type == 'nothing' else '' }}>Пусто</option>
-                                        </select>
-                                    </td>
-                                    <td class="py-2 pr-3">
-                                        <div class="flex items-center gap-1.5">
-                                            <input type="number" step="1" min="0" value="{{ prize.amount | int }}" data-field="amount" data-stepper
-                                                class="w-16">
-                                            <span class="text-white/30 text-[11px]" data-unit></span>
-                                        </div>
-                                    </td>
-                                    <td class="py-2 pr-3"><input type="number" step="1" min="1" value="{{ prize.weight }}" data-field="weight" data-stepper
-                                        class="w-14"></td>
-                                    <td class="py-2 pr-3 text-right"><span class="text-white/70 text-xs font-bold tabular-nums" data-chance>—</span></td>
-                                    <td class="py-2 text-right">
-                                        <button type="button" onclick="wheelDeletePrize({{ prize.prize_id }})"
-                                            class="text-white/25 hover:text-red-400 transition-colors" title="Удалить сектор">
-                                            <span class="material-symbols-outlined text-lg align-middle">delete</span></button>
-                                    </td>
-                                </tr>
+                                {% include 'partials/wheel_prize_row.html' %}
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -1828,17 +1796,11 @@
                             <span class="material-symbols-outlined text-lg">confirmation_number</span> Начислить
                         </button>
                     </div>
-                    {% if wheel.tickets %}
-                    <div class="border-t border-white/5 mt-4 pt-4 space-y-2 max-h-64 overflow-y-auto pr-1">
-                        {% for row in wheel.tickets %}
-                        <div class="flex items-center justify-between gap-3 text-xs">
-                            <span class="text-white/50 truncate">{{ '@' ~ row.username if row.username else row.user_id }}</span>
-                            <span class="text-white/30 truncate">{{ row.reason }}</span>
-                            <b class="{{ 'text-primary' if row.delta > 0 else 'text-white/40' }} whitespace-nowrap">{{ '%+d' | format(row.delta) }}</b>
-                        </div>
-                        {% endfor %}
+                    <div id="wheel-tickets-log" class="border-t border-white/5 mt-4 pt-4 space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {% with tickets = wheel.tickets, reasons = wheel.reasons %}
+                        {% include 'partials/wheel_ticket_log.html' %}
+                        {% endwith %}
                     </div>
-                    {% endif %}
                 </div>
 
                 <div class="bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
@@ -3250,20 +3212,11 @@
         const hashTab = window.location.hash.substring(1);
         const savedTab = localStorage.getItem('remnawave_other_active_tab');
 
-        const activeTab = queryTab || hashTab || savedTab || 'broadcast';
-        window.switchTab(activeTab);
-
-        let initialTab = location.hash.slice(1);
-        if (!initialTab) {
-            initialTab = localStorage.getItem('remnawave_other_active_tab');
-        }
-
-        const validTabs = ['broadcast', 'promo', 'logs', 'webapp', 'remnawave'];
-        if (!validTabs.includes(initialTab)) {
-            initialTab = 'broadcast';
-        }
-
-        window.switchTab(initialTab);
+        /* Вкладку выбираем один раз. Второй проход, стоявший здесь раньше,
+           сверялся со списком, где не было ни колеса, ни серверов, и любую
+           вкладку вне списка молча подменял рассылкой: ссылка ?tab=wheel
+           открывала колесо и тут же уезжала обратно. */
+        window.switchTab(queryTab || hashTab || savedTab || 'broadcast');
 
         let uploadedMediaFilename = null;
         let buttons = [];
@@ -5768,14 +5721,16 @@
         return fd;
     }
 
+    /* Возвращает ответ сервера целиком: в нём приезжает не только «ок», но и
+       готовая разметка новой строки или обновлённого журнала. */
     async function post(url, fd, okMsg) {
         try {
             const resp = await fetch(url, { method: 'POST', body: fd });
             const data = await resp.json();
-            if (data.ok) { window.showToast('success', data.message || okMsg); return true; }
+            if (data.ok) { window.showToast('success', data.message || okMsg); return data; }
             window.showToast('danger', data.error || 'Не удалось сохранить');
         } catch (e) { window.showToast('danger', 'Нет связи с сервером'); }
-        return false;
+        return null;
     }
 
     /* Сохраняем всю таблицу разом. Раньше у каждой строки была своя
@@ -5825,27 +5780,37 @@
         }
     };
 
+    /* Новую строку рисует сервер тем же шаблоном, что и всю таблицу, —
+       страница при этом остаётся на месте вместе со всем, что админ успел
+       набрать в соседних полях. */
     window.wheelAddPrize = async function () {
         const label = document.getElementById('wheel-new-label');
         if (!label.value.trim()) { window.showToast('warning', 'Укажите название сектора'); return label.focus(); }
-        const ok = await post('/other/wheel/prize/add', body({
+        const data = await post('/other/wheel/prize/add', body({
             label: label.value.trim(),
             prize_type: document.getElementById('wheel-new-type').value,
             amount: document.getElementById('wheel-new-amount').value || 0,
             weight: document.getElementById('wheel-new-weight').value || 1,
         }), 'Сектор добавлен');
-        /* перезагружаем страницу: новую строку должен отрисовать тот же
-           шаблон, что и остальные — дублировать разметку в JS нельзя */
-        if (ok) setTimeout(() => window.location.reload(), 500);
+        if (!data || !data.html) return;
+        document.getElementById('wheel-prizes-body').insertAdjacentHTML('beforeend', data.html);
+        label.value = '';
+        document.getElementById('wheel-new-amount').value = '';
+        refreshChances();
+        const row = document.querySelector('#wheel-prizes-body tr[data-prize="' + data.prize_id + '"]');
+        if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     };
 
     window.wheelGrantTickets = async function () {
         const user = document.getElementById('wheel-grant-user');
         const amount = document.getElementById('wheel-grant-amount');
         if (!user.value.trim()) { window.showToast('warning', 'Укажите ID или @username'); return user.focus(); }
-        const ok = await post('/other/wheel/tickets/grant',
-                              body({ user: user.value.trim(), amount: amount.value || 1 }), 'Билеты начислены');
-        if (ok) setTimeout(() => window.location.reload(), 600);
+        const data = await post('/other/wheel/tickets/grant',
+                                body({ user: user.value.trim(), amount: amount.value || 1 }), 'Билеты начислены');
+        if (!data) return;
+        user.value = '';
+        const log = document.getElementById('wheel-tickets-log');
+        if (log && data.log) log.innerHTML = data.log;
     };
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -5868,10 +5833,14 @@
             });
         }
         document.getElementById('wheel-prizes-save')?.addEventListener('click', window.wheelSavePrizes);
-        document.querySelectorAll('#wheel-prizes-body [data-field]').forEach(el => {
-            el.addEventListener('input', () => { refreshChances(); markDirty(); });
-            el.addEventListener('change', () => { refreshChances(); markDirty(); });
-        });
+        /* слушаем таблицу, а не каждое поле: строки добавляются на ходу, и
+           подписка по списку доставалась бы только тем, кто был при загрузке */
+        const table = document.getElementById('wheel-prizes-body');
+        ['input', 'change'].forEach(type => table?.addEventListener(type, e => {
+            if (!e.target.closest('[data-field]')) return;
+            refreshChances();
+            markDirty();
+        }));
         window.addEventListener('beforeunload', e => {
             if (!dirty) return;
             e.preventDefault();
