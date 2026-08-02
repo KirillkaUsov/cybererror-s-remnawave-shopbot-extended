@@ -2621,7 +2621,7 @@ def get_user_router() -> Router:
             details, sub = await asyncio.gather(remnawave_api.get_key_details_from_host(key_data), remnawave_api.get_subscription_info(key_data['remnawave_user_uuid'], host_name=key_data.get('host_name')) if key_data.get('remnawave_user_uuid') else asyncio.sleep(0, None))
             
             conn = details.get('connection_string') or conn if details else conn
-            hw_lim, hw_usg = (details['user'].get('hwidDeviceLimit'), (await remnawave_api.get_connected_devices_count(details['user']['uuid'], host_name=key_data.get('host_name'))).get('total', 0)) if details and details.get('user') else (None, 0)
+            hw_lim, hw_usg = (details['user'].get('hwidDeviceLimit'), (await remnawave_api.get_connected_devices_count(remnawave_api.user_ref(details['user']), host_name=key_data.get('host_name'))).get('total', 0)) if details and details.get('user') else (None, 0)
             tr_lim, tr_usg = (sub.get('trafficLimit'), sub.get('trafficUsed')) if sub and isinstance(sub, dict) else (None, None)
 
             text_final = get_key_info_text(key_num, expiry, created, conn, email=email, hwid_limit=hw_lim, hwid_usage=hw_usg, traffic_limit=tr_lim, traffic_used=tr_usg, comment=key_data.get('comment_key'))
@@ -2805,7 +2805,7 @@ def get_user_router() -> Router:
                 
                 if details and details.get('connection_string'):
                     conn = details['connection_string']
-                    hw_usg = (await remnawave_api.get_connected_devices_count(details['user']['uuid'], new_host)).get('total', 0) if details.get('user') else 0
+                    hw_usg = (await remnawave_api.get_connected_devices_count(remnawave_api.user_ref(details['user']), new_host)).get('total', 0) if details.get('user') else 0
                     tr_usg = sub.get('trafficUsed') if sub and isinstance(sub, dict) else None
                     
                     all_u_keys = get_user_keys(callback.from_user.id); k_num = next((i + 1 for i, k in enumerate(all_u_keys) if k['key_id'] == kid), 0)
