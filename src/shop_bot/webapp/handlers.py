@@ -609,7 +609,7 @@ async def enrich_keys_with_live_stats(active_keys: list, user_id: int) -> None:
 
             # Determine UUID for subscription check
             # BOT PRIORITY: Use DB UUID first, then API response
-            target_uuid = k.get('remnawave_user_uuid') or u.get('uuid')
+            target_uuid = k.get('remnawave_user_uuid') or remnawave_api.user_ref(u)
             host = k.get('host_name')
 
             if target_uuid:
@@ -654,7 +654,7 @@ async def enrich_keys_with_live_stats(active_keys: list, user_id: int) -> None:
             u = key_details_map.get(k['key_id'])
             target_uuid = None
             if u:
-                 target_uuid = u.get('uuid')
+                 target_uuid = remnawave_api.user_ref(u)
             if not target_uuid:
                  target_uuid = k.get('remnawave_user_uuid')
 

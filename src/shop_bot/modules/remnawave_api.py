@@ -292,53 +292,107 @@ def _to_iso(dt: datetime) -> str:
     return dt_utc.isoformat().replace("+00:00", "Z")
 
 
+def user_ref(user_payload: dict[str, Any] | None) -> str | None:
+    """Идентификатор пользователя Remnawave из ответа панели.
+
+    В 3.1 пользователь адресуется числовым `id`, поля `uuid` больше нет.
+    Fallback на `uuid` оставлен, чтобы данные, записанные до перехода,
+    не роняли обработчики.
+    """
+    if not isinstance(user_payload, dict):
+        return None
+    for key in ("id", "uuid"):
+        value = user_payload.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return None
+
+
+async def _stream_users(
+    filters: dict[str, Any],
+    *,
+    host_name: str | None = None,
+    limit: int = 100,
+    max_pages: int = 1000,
+) -> list[dict[str, Any]]:
+    """Выборка пользователей через /api/users/stream.
+
+    В 3.1 точечные лукапы (by-email, by-telegram-id, by-tag) удалены, вместо них
+    один курсорный стрим с фильтрами.
+    """
+    collected: list[dict[str, Any]] = []
+    cursor: Any = None
+
+    for _ in range(max_pages):
+        params: dict[str, Any] = {k: v for k, v in filters.items() if v not in (None, "")}
+        params["limit"] = limit
+        if cursor:
+            params["cursor"] = cursor
+
+        if host_name:
+            response = await _request_for_host(host_name, "GET", "/api/users/stream", params=params, expected_status=(200, 404))
+        else:
+            response = await _request("GET", "/api/users/stream", params=params, expected_status=(200, 404))
+        if response.status_code == 404:
+            break
+
+        body = (response.json() or {}).get("response") or {}
+        batch = body.get("users")
+        if not isinstance(batch, list) or not batch:
+            break
+        collected.extend(batch)
+
+        next_cursor = body.get("nextCursor")
+        if not body.get("hasMore") or not next_cursor or next_cursor == cursor:
+            break
+        cursor = next_cursor
+
+    return collected
+
+
 async def get_user_by_email(email: str, *, host_name: str | None = None) -> dict[str, Any] | None:
     if not email:
         return None
-    encoded_email = quote(email.strip())
+    try:
+        users = await _stream_users({"email": email.strip()}, host_name=host_name, limit=1)
+    except RemnawaveAPIError as exc:
+        # Панель отбрасывает email, не проходящий её валидацию: для поиска это
+        # не ошибка, просто такого пользователя нет.
+        logger.debug("Remnawave: поиск по email %s не удался: %s", email, exc)
+        return None
+    return users[0] if users else None
+
+
+async def get_user_by_telegram_id(telegram_id: int | str, *, host_name: str | None = None) -> dict[str, Any] | None:
+    if telegram_id in (None, ""):
+        return None
+    users = await _stream_users({"telegramId": int(telegram_id)}, host_name=host_name, limit=1)
+    return users[0] if users else None
+
+
+async def get_user_by_uuid(user_id: str, *, host_name: str | None = None) -> dict[str, Any] | None:
+    """Пользователь по идентификатору. Имя оставлено ради вызывающих;
+    в 3.1 в него передаётся числовой id, а не uuid."""
+    if not user_id:
+        return None
+    encoded_id = quote(str(user_id).strip())
     if host_name:
-        response = await _request_for_host(host_name, "GET", f"/api/users/by-email/{encoded_email}", expected_status=(200, 404))
+        response = await _request_for_host(host_name, "GET", f"/api/users/{encoded_id}", expected_status=(200, 404))
     else:
-        response = await _request("GET", f"/api/users/by-email/{encoded_email}", expected_status=(200, 404))
-    if response.status_code == 404:
-        return None
-    payload = response.json()
-
-    data: Any
-    if isinstance(payload, dict):
-        inner = payload.get("response")
-        data = inner if inner is not None else payload
-    else:
-        data = payload
-
-    if isinstance(data, list):
-
-        for item in data:
-            if isinstance(item, dict):
-                return item
-        return None
-    return data if isinstance(data, dict) else None
-
-
-async def get_user_by_uuid(user_uuid: str, *, host_name: str | None = None) -> dict[str, Any] | None:
-    if not user_uuid:
-        return None
-    encoded_uuid = quote(user_uuid.strip())
-    if host_name:
-        response = await _request_for_host(host_name, "GET", f"/api/users/{encoded_uuid}", expected_status=(200, 404))
-    else:
-        response = await _request("GET", f"/api/users/{encoded_uuid}", expected_status=(200, 404))
+        response = await _request("GET", f"/api/users/{encoded_id}", expected_status=(200, 404))
     if response.status_code == 404:
         return None
     payload = response.json()
     return payload.get("response") if isinstance(payload, dict) else None
 
 
-async def get_connected_devices_count(user_uuid: str, *, host_name: str | None = None) -> dict[str, Any] | None:
-    if not user_uuid:
+get_user_by_id = get_user_by_uuid
+
+
+async def get_connected_devices_count(user_id: str, *, host_name: str | None = None) -> dict[str, Any] | None:
+    if not user_id:
         return None
-    encoded_uuid = quote(user_uuid.strip())
-    path = f"/api/hwid/devices/{encoded_uuid}"
+    path = f"/api/hwid/devices/{_ref_path(user_id)}"
     
     if host_name:
         response = await _request_for_host(host_name, "GET", path, expected_status=(200, 404))
@@ -355,72 +409,28 @@ async def get_connected_devices_count(user_uuid: str, *, host_name: str | None =
     return None
 
 
-async def get_user_devices(user_uuid: str, *, host_name: str | None = None) -> list[dict[str, Any]]:
-    if not user_uuid:
-        return []
-    encoded_uuid = quote(user_uuid.strip())
-    path = f"/api/hwid/devices/{encoded_uuid}"
+async def get_subscription_info(user_id: str, *, host_name: str | None = None) -> dict[str, Any] | None:
+    """Данные подписки пользователя.
 
-    if host_name:
-        response = await _request_for_host(host_name, "GET", path, expected_status=(200, 404))
-    else:
-        response = await _request("GET", path, expected_status=(200, 404))
-
-    if response.status_code == 404:
-        return []
-
-    payload = response.json()
-    if isinstance(payload, dict):
-        response_data = payload.get("response")
-        if isinstance(response_data, dict):
-            devices = response_data.get("devices")
-            if isinstance(devices, list):
-                return devices
-    return []
-
-
-async def delete_user_device(device_id: str, *, host_name: str | None = None) -> bool:
-    if not device_id:
-        return False
-    encoded_id = quote(device_id.strip())
-    path = f"/api/hwid/devices/{encoded_id}"
-
-    if host_name:
-        response = await _request_for_host(host_name, "DELETE", path, expected_status=(200, 204, 404))
-        log_prefix = f"Remnawave[{host_name}]"
-    else:
-        response = await _request("DELETE", path, expected_status=(200, 204, 404))
-        log_prefix = "Remnawave"
-
-    if response.status_code == 404:
-        logger.info("%s: устройство %s не найдено при удалении (возможно, уже удалено)", log_prefix, device_id)
-        return False
-    elif response.status_code in (200, 204):
-        logger.info("%s: устройство %s успешно удалено (HTTP %s)", log_prefix, device_id, response.status_code)
-        return True
-    return False
-
-
-async def get_subscription_info(user_uuid: str, *, host_name: str | None = None) -> dict[str, Any] | None:
-    if not user_uuid:
+    В 3.1 эндпоинта /api/subscriptions/by-uuid больше нет, а всё, что вызывающие
+    отсюда берут (лимиты и расход трафика), лежит в самом объекте пользователя.
+    Плоские trafficLimit/trafficUsed старого ответа добавляем поверх, чтобы
+    вызывающим не пришлось знать про новую вложенность userTraffic.
+    """
+    user = await get_user_by_uuid(user_id, host_name=host_name)
+    if not user:
         return None
-    encoded_uuid = quote(user_uuid.strip())
-    path = f"/api/subscriptions/by-uuid/{encoded_uuid}"
-    
-    if host_name:
-        response = await _request_for_host(host_name, "GET", path, expected_status=(200, 404))
-    else:
-        response = await _request("GET", path, expected_status=(200, 404))
-        
-    if response.status_code == 404:
-        return None
-        
-    payload = response.json()
-    if isinstance(payload, dict):
-        response_data = payload.get("response")
-        if isinstance(response_data, dict):
-             return response_data.get("user")
-    return None
+
+    traffic = user.get("userTraffic") if isinstance(user.get("userTraffic"), dict) else {}
+    used = traffic.get("usedTrafficBytes")
+    if used is None:
+        used = user.get("usedTrafficBytes")
+
+    enriched = dict(user)
+    enriched.setdefault("trafficLimit", user.get("trafficLimitBytes"))
+    if used is not None:
+        enriched.setdefault("trafficUsed", used)
+    return enriched
 
 
 async def ensure_user(
@@ -473,16 +483,18 @@ async def ensure_user(
                 except ValueError:
                     pass
         
+        current_ref = user_ref(current)
         logger.info(
             "Remnawave: найден пользователь %s (%s) на '%s' — обновляю срок до %s",
             email,
-            current.get("uuid"),
+            current_ref,
             host_name,
             expire_iso,
         )
 
         payload = {
-            "uuid": current.get("uuid"),
+            # 3.1 адресует пользователя числовым id, поле uuid из API убрано.
+            "id": int(current_ref) if str(current_ref).isdigit() else current_ref,
             "status": "ACTIVE",
             "expireAt": expire_iso,
             "activeInternalSquads": [squad_uuid],
@@ -566,7 +578,7 @@ async def ensure_user(
     logger.info(
         "Remnawave: пользователь %s (%s) на '%s' успешно %s. Истекает: %s",
         email,
-        result.get("uuid"),
+        user_ref(result),
         host_name,
         action,
         result.get("expireAt"),
@@ -578,40 +590,9 @@ async def ensure_user(
 
 
 async def list_users(host_name: str, squad_uuid: str | None = None, size: int | None = 1000) -> list[dict[str, Any]]:
-    all_users = []
-    page = 0
-    actual_size = size or 100
-    
-    while True:
-        params: dict[str, Any] = {"page": page, "size": actual_size}
-        if squad_uuid:
-            params["squadUuid"] = squad_uuid
-            
-        try:
-            response = await _request_for_host(host_name, "GET", "/api/users", params=params, expected_status=(200,))
-        except Exception:
-            if page == 0:
-                raise
-            break
-            
-        payload = response.json() or {}
-        raw_users = []
-        if isinstance(payload, dict):
-            body = payload.get("response") if isinstance(payload.get("response"), dict) else payload
-            raw_users = body.get("users") or body.get("data") or []
-            
-        if not isinstance(raw_users, list):
-            raw_users = []
-            
-        if not raw_users:
-            break
-            
-        all_users.extend(raw_users)
-        
-        if len(raw_users) < actual_size:
-            break
-            
-        page += 1
+    # Через /api/users/stream, а не /api/users: в 3.1 список отдаётся целиком и
+    # игнорирует page/size, поэтому постраничный цикл по нему не завершался бы.
+    all_users = await _stream_users({}, host_name=host_name, limit=min(size or 100, 500))
 
     if squad_uuid:
         filtered: list[dict[str, Any]] = []
@@ -631,44 +612,47 @@ async def list_users(host_name: str, squad_uuid: str | None = None, size: int | 
         return filtered
         
     return all_users
-async def delete_user(user_uuid: str) -> bool:
+def _ref_path(user_id: Any) -> str:
+    """Идентификатор пользователя для подстановки в путь запроса."""
+    return quote(str(user_id).strip())
+
+
+async def delete_user(user_id: str) -> bool:
     """Глобальный вариант (устарел): удаление без привязки к хосту.
     Сохраняется для обратной совместимости, но предпочтительно использовать host-specific путь ниже.
     """
-    if not user_uuid:
+    if not user_id:
         return False
-    encoded_uuid = quote(user_uuid.strip())
-    response = await _request("DELETE", f"/api/users/{encoded_uuid}", expected_status=(200, 204, 404))
+    # 3.1 отдаёт на удаление 204 без тела.
+    response = await _request("DELETE", f"/api/users/{_ref_path(user_id)}", expected_status=(200, 202, 204, 404))
     if response.status_code == 404:
-        logger.info("Remnawave: пользователь %s не найден при удалении (возможно, уже удалён)", user_uuid)
-    elif response.status_code in (200, 204):
-        logger.info("Remnawave: пользователь %s успешно удалён (HTTP %s)", user_uuid, response.status_code)
+        logger.info("Remnawave: пользователь %s не найден при удалении (возможно, уже удалён)", user_id)
+    else:
+        logger.info("Remnawave: пользователь %s успешно удалён (HTTP %s)", user_id, response.status_code)
     return True
 
 
-async def delete_user_on_host(host_name: str, user_uuid: str) -> bool:
+async def delete_user_on_host(host_name: str, user_id: str) -> bool:
     """Удаление пользователя на конкретном хосте, используя конфиг хоста."""
-    if not user_uuid:
+    if not user_id:
         return False
-    encoded_uuid = quote(user_uuid.strip())
-    response = await _request_for_host(host_name, "DELETE", f"/api/users/{encoded_uuid}", expected_status=(200, 204, 404))
+    response = await _request_for_host(host_name, "DELETE", f"/api/users/{_ref_path(user_id)}", expected_status=(200, 202, 204, 404))
     if response.status_code == 404:
-        logger.info("Remnawave[%s]: пользователь %s не найден при удалении (возможно, уже удалён)", host_name, user_uuid)
-    elif response.status_code in (200, 204):
-        logger.info("Remnawave[%s]: пользователь %s успешно удалён (HTTP %s)", host_name, user_uuid, response.status_code)
+        logger.info("Remnawave[%s]: пользователь %s не найден при удалении (возможно, уже удалён)", host_name, user_id)
+    else:
+        logger.info("Remnawave[%s]: пользователь %s успешно удалён (HTTP %s)", host_name, user_id, response.status_code)
     return True
 
 
-async def reset_user_traffic(user_uuid: str) -> bool:
-    if not user_uuid:
+async def reset_user_traffic(user_id: str) -> bool:
+    if not user_id:
         return False
-    encoded_uuid = quote(user_uuid.strip())
-    await _request("POST", f"/api/users/{encoded_uuid}/actions/reset-traffic", expected_status=(200, 204))
+    await _request("POST", f"/api/users/{_ref_path(user_id)}/actions/reset-traffic", expected_status=(200, 202, 204))
     return True
 
 
 async def update_user_description(
-    user_uuid: str,
+    user_id: str,
     description: str,
     *,
     host_name: str | None = None,
@@ -680,14 +664,15 @@ async def update_user_description(
     поэтому действующие подключения и ссылка подписки остаются рабочими.
     Remnawave ограничивает длину описания, поэтому текст подрезается.
     """
-    if not user_uuid:
+    if not user_id:
         return False
 
     text = (description or "").strip()
     if len(text) > 500:
         text = text[:497].rstrip() + "..."
 
-    payload = {"uuid": user_uuid.strip(), "description": text}
+    ref = str(user_id).strip()
+    payload = {"id": int(ref) if ref.isdigit() else ref, "description": text}
 
     try:
         if host_name:
@@ -696,13 +681,13 @@ async def update_user_description(
         else:
             await _request("PATCH", "/api/users",
                            json_payload=payload, expected_status=(200, 201))
-        logger.info("Remnawave: описание пользователя %s обновлено", user_uuid)
+        logger.info("Remnawave: описание пользователя %s обновлено", user_id)
         return True
     except RemnawaveAPIError as exc:
-        logger.warning("Remnawave: не удалось обновить описание %s: %s", user_uuid, exc)
+        logger.warning("Remnawave: не удалось обновить описание %s: %s", user_id, exc)
         return False
     except Exception:
-        logger.exception("Remnawave: непредвиденная ошибка обновления описания %s", user_uuid)
+        logger.exception("Remnawave: непредвиденная ошибка обновления описания %s", user_id)
         return False
 
 
@@ -716,8 +701,7 @@ async def revoke_subscription_on_host(user_uuid: str, *, host_name: str | None =
     """
     if not user_uuid:
         return None
-    encoded_uuid = quote(user_uuid.strip())
-    path = f"/api/users/{encoded_uuid}/actions/revoke"
+    path = f"/api/users/{_ref_path(user_uuid)}/actions/revoke"
 
     try:
         if host_name:
@@ -742,32 +726,44 @@ async def revoke_subscription_on_host(user_uuid: str, *, host_name: str | None =
         return None
 
 
-async def set_user_status(user_uuid: str, active: bool) -> bool:
-    if not user_uuid:
+async def set_user_status(user_id: str, active: bool) -> bool:
+    if not user_id:
         return False
-    encoded_uuid = quote(user_uuid.strip())
     action = "enable" if active else "disable"
-    await _request("POST", f"/api/users/{encoded_uuid}/actions/{action}", expected_status=(200, 204))
+    await _request("POST", f"/api/users/{_ref_path(user_id)}/actions/{action}", expected_status=(200, 202, 204))
     return True
 
 
-async def add_users_to_external_squad(host_name: str, squad_uuid: str, user_uuids: list[str]) -> bool:
-    if not squad_uuid or not user_uuids:
+async def add_users_to_external_squad(host_name: str, squad_uuid: str, user_ids: list[str]) -> bool:
+    """Привязывает пользователей к внешнему скваду.
+
+    Пакетного /api/external-squads/add-users в 3.1 больше нет: принадлежность
+    к внешнему скваду теперь поле самого пользователя, поэтому проставляем его
+    каждому по отдельности.
+    """
+    if not squad_uuid or not user_ids:
         return False
-    
-    try:
-        path = "/api/external-squads/add-users"
+
+    ok = 0
+    for raw_id in user_ids:
+        ref = str(raw_id).strip()
+        if not ref:
+            continue
         payload = {
-            "squadUuid": squad_uuid,
-            "userUuids": user_uuids
+            "id": int(ref) if ref.isdigit() else ref,
+            "externalSquadUuid": squad_uuid,
         }
-        
-        response = await _request_for_host(host_name, "POST", path, json_payload=payload, expected_status=(200, 201))
-        logger.info(f"Remnawave[{host_name}]: добавлено {len(user_uuids)} пользователей в external squad {squad_uuid}")
-        return True
-    except RemnawaveAPIError as e:
-        logger.error(f"Remnawave[{host_name}]: ошибка добавления во external squad {squad_uuid}: {e}")
-        return False
+        try:
+            await _request_for_host(host_name, "PATCH", "/api/users",
+                                    json_payload=payload, expected_status=(200, 201))
+            ok += 1
+        except RemnawaveAPIError as e:
+            logger.error("Remnawave[%s]: не удалось привязать %s к external squad %s: %s",
+                         host_name, ref, squad_uuid, e)
+
+    logger.info("Remnawave[%s]: во external squad %s добавлено %d из %d пользователей",
+                host_name, squad_uuid, ok, len(user_ids))
+    return ok > 0
 
 
 def extract_subscription_url(user_payload: dict[str, Any] | None) -> str | None:
@@ -890,7 +886,8 @@ async def create_or_update_key_on_host(
         expiry_ts_ms = int(expire_dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
 
         return {
-            'client_uuid': user_payload.get('uuid'),
+            # Ключ словаря оставлен прежним ради вызывающих; внутри — числовой id 3.1.
+            'client_uuid': user_ref(user_payload),
             'short_uuid': user_payload.get('shortUuid'),
             'email': email,
             'host_name': squad.get('host_name') or host_name,
@@ -970,13 +967,13 @@ async def delete_client_on_host(host_name: str, client_email: str) -> bool:
         if isinstance(user_payload, list):
 
             user_payload = next((u for u in user_payload if isinstance(u, dict)), None)
-        user_uuid = user_payload.get('uuid') if isinstance(user_payload, dict) else None
-        if not user_uuid:
-            logger.warning("Remnawave: нет uuid для пользователя %s", client_email)
+        user_id = user_ref(user_payload)
+        if not user_id:
+            logger.warning("Remnawave: нет идентификатора для пользователя %s", client_email)
             return False
-        logger.info("Remnawave: удаляю пользователя %s (%s) на '%s'...", client_email, user_uuid, host_name)
-        await delete_user_on_host(host_name, user_uuid)
-        logger.info("Remnawave: пользователь %s (%s) успешно удалён на '%s'", client_email, user_uuid, host_name)
+        logger.info("Remnawave: удаляю пользователя %s (%s) на '%s'...", client_email, user_id, host_name)
+        await delete_user_on_host(host_name, user_id)
+        logger.info("Remnawave: пользователь %s (%s) успешно удалён на '%s'", client_email, user_id, host_name)
         return True
     except RemnawaveAPIError as exc:
         logger.error("Remnawave: ошибка удаления пользователя %s: %s", client_email, exc)
@@ -1006,29 +1003,27 @@ async def get_user_devices(user_uuid: str, host_name: str | None = None) -> list
         return []
 
 
-async def delete_user_device(user_uuid: str, hwid: str, host_name: str | None = None) -> bool:
-    """Удаляет устройство по HWID и UUID пользователя."""
-    if not user_uuid or not hwid:
+async def delete_user_device(user_id: str, hwid: str, host_name: str | None = None) -> bool:
+    """Удаляет устройство по HWID и идентификатору пользователя."""
+    if not user_id or not hwid:
         return False
-        
+
     try:
-        # Эндпоинт: POST /api/hwid/devices/delete
-        # Body: { "userUuid": "...", "hwid": "..." }
+        # POST /api/hwid/devices/delete; в 3.1 в теле userId вместо userUuid.
+        ref = str(user_id).strip()
         payload = {
-            "userUuid": user_uuid,
-            "hwid": hwid
+            "userId": int(ref) if ref.isdigit() else ref,
+            "hwid": hwid,
         }
-        
+
         path = "/api/hwid/devices/delete"
-        
+
         if host_name:
-            response = await _request_for_host(host_name, "POST", path, json_payload=payload, expected_status=(200, 204))
+            response = await _request_for_host(host_name, "POST", path, json_payload=payload, expected_status=(200, 202, 204))
         else:
-            response = await _request("POST", path, json=payload, expected_status=(200, 204))
-            
-        if response.status_code in (200, 201, 204):
-            return True
-        return False
+            response = await _request("POST", path, json_payload=payload, expected_status=(200, 202, 204))
+
+        return response.status_code in (200, 201, 202, 204)
     except Exception as e:
-        logger.error(f"Remnawave: ошибка удаления устройства {hwid} (user {user_uuid}): {e}")
+        logger.error(f"Remnawave: ошибка удаления устройства {hwid} (user {user_id}): {e}")
         return False
