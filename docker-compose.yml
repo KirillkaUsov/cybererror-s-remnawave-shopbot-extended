@@ -3,8 +3,10 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - '1488:1488'
-      - '8000:8000'
+      # Только для nginx. Без 127.0.0.1 порты слушают 0.0.0.0 и доступны
+      # снаружи по голому HTTP в обход TLS.
+      - '127.0.0.1:1488:1488'   # Flask: админка и вебхуки платежей
+      - '127.0.0.1:8000:8000'   # FastAPI: клиентский веб-апп (поднимается вместе с ботом)
     volumes:
       - .:/app/project
     container_name: remnawave-shopbot
