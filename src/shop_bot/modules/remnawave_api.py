@@ -414,8 +414,13 @@ async def get_subscription_info(user_id: str, *, host_name: str | None = None) -
 
     В 3.1 эндпоинта /api/subscriptions/by-uuid больше нет, а всё, что вызывающие
     отсюда берут (лимиты и расход трафика), лежит в самом объекте пользователя.
-    Плоские trafficLimit/trafficUsed старого ответа добавляем поверх, чтобы
-    вызывающим не пришлось знать про новую вложенность userTraffic.
+    Пришедший на замену /api/subscriptions/by-id отдаёт те же цифры строками
+    ("0" вместо 0), из-за чего форматирование трафика ломается, поэтому берём
+    их из объекта пользователя.
+
+    Плоские trafficLimit/trafficUsed старого ответа и usedTrafficBytes нового
+    добавляем поверх, чтобы вызывающим не пришлось знать про вложенность
+    userTraffic.
     """
     user = await get_user_by_uuid(user_id, host_name=host_name)
     if not user:
@@ -430,6 +435,7 @@ async def get_subscription_info(user_id: str, *, host_name: str | None = None) -
     enriched.setdefault("trafficLimit", user.get("trafficLimitBytes"))
     if used is not None:
         enriched.setdefault("trafficUsed", used)
+        enriched.setdefault("usedTrafficBytes", used)
     return enriched
 
 
@@ -737,18 +743,35 @@ async def set_user_status(user_id: str, active: bool) -> bool:
 async def add_users_to_external_squad(host_name: str, squad_uuid: str, user_ids: list[str]) -> bool:
     """Привязывает пользователей к внешнему скваду.
 
-    Пакетного /api/external-squads/add-users в 3.1 больше нет: принадлежность
-    к внешнему скваду теперь поле самого пользователя, поэтому проставляем его
-    каждому по отдельности.
+    Плоского /api/external-squads/add-users в 3.1 больше нет, вместо него
+    bulk-действие на самом скваде: один запрос на всю пачку, ответ 202 (задача
+    выполняется в фоне). Если панель его не приняла, проставляем принадлежность
+    каждому пользователю по отдельности — в 3.1 это обычное поле пользователя.
     """
     if not squad_uuid or not user_ids:
         return False
 
+    refs = [str(raw_id).strip() for raw_id in user_ids if str(raw_id).strip()]
+    if not refs:
+        return False
+
+    try:
+        await _request_for_host(
+            host_name,
+            "POST",
+            f"/api/external-squads/{quote(squad_uuid)}/bulk-actions/add-users",
+            json_payload={"userIds": [int(r) if r.isdigit() else r for r in refs]},
+            expected_status=(200, 201, 202),
+        )
+        logger.info("Remnawave[%s]: во external squad %s добавлено %d пользователей",
+                    host_name, squad_uuid, len(refs))
+        return True
+    except RemnawaveAPIError as e:
+        logger.warning("Remnawave[%s]: bulk-добавление в external squad %s не прошло (%s), "
+                       "проставляю сквад пользователям по одному", host_name, squad_uuid, e)
+
     ok = 0
-    for raw_id in user_ids:
-        ref = str(raw_id).strip()
-        if not ref:
-            continue
+    for ref in refs:
         payload = {
             "id": int(ref) if ref.isdigit() else ref,
             "externalSquadUuid": squad_uuid,
@@ -762,7 +785,7 @@ async def add_users_to_external_squad(host_name: str, squad_uuid: str, user_ids:
                          host_name, ref, squad_uuid, e)
 
     logger.info("Remnawave[%s]: во external squad %s добавлено %d из %d пользователей",
-                host_name, squad_uuid, ok, len(user_ids))
+                host_name, squad_uuid, ok, len(refs))
     return ok > 0
 
 
@@ -787,6 +810,7 @@ async def create_or_update_key_on_host(
     hwid_limit: int | None = None,  # Added
     traffic_limit_gb: int | None = None,  # Added
     external_squad_uuid: str | None = None,  # Added for seller
+    internal_squad_uuid: str | None = None,  # Переопределяет сквад хоста (например, для триала)
 ) -> dict | None:
     """Legacy совместимость: создаёт/обновляет пользователя Remnawave и возвращает данные по ключу."""
     
@@ -806,7 +830,7 @@ async def create_or_update_key_on_host(
         if not squad:
             logger.error("Remnawave: не найден сквад/хост '%s'", host_name)
             return None
-        squad_uuid = (squad.get('squad_uuid') or '').strip()
+        squad_uuid = ((internal_squad_uuid or '').strip() or (squad.get('squad_uuid') or '').strip())
         if not squad_uuid:
             logger.error("Remnawave: сквад '%s' не имеет squad_uuid", host_name)
             return None

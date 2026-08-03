@@ -179,7 +179,12 @@ class BotController:
             webapp_settings = rw_repo.get_webapp_settings()
             if webapp_app and webapp_settings.get("webapp_enable"):
                 logger.info("Запуск Webapp сервера...")
-                config = uvicorn.Config(webapp_app, host="0.0.0.0", port=8000, log_level="info")
+                # log_config=None — чтобы uvicorn не ставил свои обработчики.
+                # По умолчанию он выставляет своим логгерам propagate=False, и
+                # записи не доходят до корневого логгера, а значит и до
+                # logs/webapp.log — вкладка «Webapp» в логах оставалась бы пустой.
+                config = uvicorn.Config(webapp_app, host="0.0.0.0", port=8000,
+                                        log_level="info", log_config=None)
                 self._webapp_server = uvicorn.Server(config)
                 self._webapp_thread = threading.Thread(target=self._webapp_server.run)
                 self._webapp_thread.daemon = True

@@ -191,12 +191,12 @@ async def _send_invoice_stars(user_id: int, title: str, description: str, payloa
 
 from shop_bot.modules.platega_api import PlategaAPI
 from shop_bot.modules.heleket_api import create_heleket_payment_request
+from shop_bot.modules.payment_methods import get_available_payment_methods
 from shop_bot.bot.keyboards import (
     create_payment_keyboard, create_cryptobot_payment_keyboard,
     create_yoomoney_payment_keyboard
 )
 from shop_bot.bot.handlers import create_cryptobot_api_invoice, process_successful_payment
-from yookassa import Configuration as YookassaConfiguration, Payment as YookassaPayment
 from aiogram.types import BufferedInputFile
 import io
 import qrcode
@@ -607,9 +607,10 @@ async def enrich_keys_with_live_stats(active_keys: list, user_id: int) -> None:
                     k['email'] = api_email
                     k['key_email'] = api_email
 
-            # Determine UUID for subscription check
-            # BOT PRIORITY: Use DB UUID first, then API response
-            target_uuid = k.get('remnawave_user_uuid') or remnawave_api.user_ref(u)
+            # Идентификатор для запроса подписки. Панель только что вернула `u`,
+            # поэтому её id всегда актуален; в базе может лежать uuid со старой
+            # панели, который в 3.1 уже ничего не находит.
+            target_uuid = remnawave_api.user_ref(u) or k.get('remnawave_user_uuid')
             host = k.get('host_name')
 
             if target_uuid:
@@ -625,7 +626,7 @@ async def enrich_keys_with_live_stats(active_keys: list, user_id: int) -> None:
             found_traffic = None
             if not isinstance(sub_res, Exception) and sub_res and isinstance(sub_res, dict):
                 # check common keys
-                for key_name in ['trafficUsed', 'traffic', 'used_traffic']:
+                for key_name in ['usedTrafficBytes', 'trafficUsed', 'traffic', 'used_traffic']:
                     val = sub_res.get(key_name)
                     if val is not None:
                         found_traffic = val
@@ -643,6 +644,13 @@ async def enrich_keys_with_live_stats(active_keys: list, user_id: int) -> None:
                          if u.get(key_name) is not None:
                              try: k['used_bytes'] = int(u.get(key_name)); break
                              except: pass
+
+                     # В 3.1 расход трафика лежит во вложенном userTraffic.
+                     if 'used_bytes' not in k and isinstance(u.get('userTraffic'), dict):
+                         used = u['userTraffic'].get('usedTrafficBytes')
+                         if used is not None:
+                             try: k['used_bytes'] = int(used)
+                             except (TypeError, ValueError): pass
 
                      # Final fallback: sum upload + download
                      if 'used_bytes' not in k:
@@ -1569,44 +1577,19 @@ async def api_wheel_notify(req: WheelNotifyRequest, auth: dict = Depends(webapp_
 async def api_get_payment_methods(req: PaymentMethodsRequest, auth: dict = Depends(webapp_user)):
     user_id = session_user_id(auth)
     user = get_user(user_id)
-    
-    methods = []
-    
-    # 1. YooKassa
-    if (get_setting("yookassa_shop_id") or "") and (get_setting("yookassa_secret_key") or ""):
-        label = "Банковская карта"
-        if (get_setting("sbp_enabled") or "false").strip().lower() == "true":
-            label = "СБП / Банковская карта"
-        methods.append({"id": "pay_yookassa", "name": label, "icon": "credit_card"})
 
-    # 2. Platega
-    if (get_setting("platega_enabled") or "false").strip().lower() == "true":
-        methods.append({"id": "pay_platega", "name": "СБП / Platega", "icon": "payments"})
-    if (get_setting("platega_crypto_enabled") or "false").strip().lower() == "true":
-        methods.append({"id": "pay_platega_crypto", "name": "Крипта / Platega", "icon": "payments"})
-
-    # 3. CryptoBot
-    if get_setting("cryptobot_token"):
-        methods.append({"id": "pay_cryptobot", "name": "Криптовалюта", "icon": "currency_bitcoin"})
-    # 3.1 Heleket (alternative crypto)
-    elif (get_setting("heleket_merchant_id") or "") and (get_setting("heleket_api_key") or ""):
-        methods.append({"id": "pay_heleket", "name": "Криптовалюта", "icon": "currency_bitcoin"})
-
-    # 4. TON Connect
-    if (get_setting("ton_wallet_address") or "") and (get_setting("tonapi_key") or ""):
-        methods.append({"id": "pay_tonconnect", "name": "TON Connect", "icon": "wallet"})
-
-    # 5. Telegram Stars
-    if (get_setting("stars_enabled") or "false").strip().lower() == "true":
-        methods.append({"id": "pay_stars", "name": "Telegram Stars", "icon": "star"})
-
-    # 6. YooMoney
-    if (get_setting("yoomoney_enabled") or "false").strip().lower() == "true":
-        methods.append({"id": "pay_yoomoney", "name": "ЮMoney (кошелёк)", "icon": "account_balance_wallet"})
-
-    # 7. Balance
     balance = float(user.get('balance', 0)) if user else 0
-    methods.append({"id": "pay_balance", "name": "Баланс", "icon": "account_balance", "balance": balance})
+
+    methods = []
+    for method in get_available_payment_methods(include_balance=True, balance=balance):
+        custom = get_setting(f"payment_button_{method['method']}_text")
+        # Суффикс с суммой здесь не нужен: веб-апп подписывает баланс сам.
+        methods.append({
+            "id": method["webapp_id"],
+            "name": custom or method["webapp_default_label"],
+            "icon": method["icon"],
+            "balance": balance if method["method"] == "balance" else None,
+        })
 
     return {"ok": True, "methods": methods, "balance": balance}
 
@@ -1754,8 +1737,6 @@ async def api_create_payment(req: CreatePaymentRequest, auth: dict = Depends(web
         if method_id == "pay_yookassa":
             shop_id, secret = get_setting("yookassa_shop_id"), get_setting("yookassa_secret_key")
             if not shop_id or not secret: return {"ok": False, "error": "YooKassa не настроена"}
-            YookassaConfiguration.account_id = shop_id
-            YookassaConfiguration.secret_key = secret
             pid = str(uuid.uuid4())
             meta = {
                 "user_id": user_id, "months": months, "price": float(final_price),
@@ -1771,8 +1752,14 @@ async def api_create_payment(req: CreatePaymentRequest, auth: dict = Depends(web
                 "capture": True, "description": comment, "metadata": meta
             }
             try:
-                pay_obj = YookassaPayment.create(payload, pid)
-                pay_url = pay_obj.confirmation.confirmation_url
+                # Синхронный YookassaPayment.create вешает event loop на всё время
+                # запроса к банку — а веб-апп обслуживает всех пользователей одним
+                # циклом. Плюс он настраивается через глобали, которые в асинхронном
+                # коде могут перетереться параллельным запросом.
+                from shop_bot.bot.handlers import create_yookassa_payment_async
+
+                pay_obj = await create_yookassa_payment_async(payload, pid, shop_id, secret)
+                pay_url = pay_obj["confirmation"]["confirmation_url"]
                 
                 kb = create_payment_keyboard(pay_url)
                 await _send_telegram_message(user_id, f"<b>Оплата через ЮKassa</b>\n\nСумма: <b>{final_price:.2f} RUB</b>\n\n<i>Вы можете оплатить счет здесь или в WebApp.</i>", kb)
@@ -1782,6 +1769,30 @@ async def api_create_payment(req: CreatePaymentRequest, auth: dict = Depends(web
             except Exception as e:
                 logger.error(f"[WEBAPP] - Ошибка YooKassa для {user_id}: {e}")
                 return {"ok": False, "error": f"Ошибка YooKassa: {e}"}
+
+        # --- Platega Payform ---
+        elif method_id == "pay_platega_payform":
+            mid, key = get_setting("platega_merchant_id"), get_setting("platega_api_key")
+            if not mid or not key: return {"ok": False, "error": "Platega не настроена"}
+            pid = str(uuid.uuid4())
+            meta = {
+                "user_id": user_id, "months": months, "price": float(final_price),
+                "action": action_name, "key_id": req.key_id, "host_name": req.host_name,
+                "plan_id": plan_id, "payment_method": "Platega Payform", "payment_id": pid,
+                "tier_device_count": tier_device_count
+            }
+            _pending(pid, meta)
+            desc = f"Order {pid}"
+            try:
+                platega = PlategaAPI(mid, key)
+                _, url = await platega.create_payment_payform(float(final_price), desc, pid, f"https://t.me/{get_setting('telegram_bot_username')}", f"https://t.me/{get_setting('telegram_bot_username')}")
+                if url:
+                    kb = create_payment_keyboard(url)
+                    await _send_telegram_message(user_id, f"<b>Оплата через Platega</b>\n\nСумма: <b>{final_price:.2f} RUB</b>\n\n<i>Счет также доступен в WebApp.</i>", kb)
+                    return {"ok": True, "payment_url": url, "payment_id": pid, "message": "Счёт создан"}
+                return {"ok": False, "error": "Ошибка получения ссылки Platega"}
+            except Exception as e:
+                return {"ok": False, "error": f"Ошибка Platega: {e}"}
 
         # --- Platega ---
         elif method_id == "pay_platega":
@@ -2031,8 +2042,6 @@ async def api_topup_create(req: TopUpRequest, auth: dict = Depends(webapp_user))
             shop_id, secret = get_setting("yookassa_shop_id"), get_setting("yookassa_secret_key")
             if not shop_id or not secret:
                 return {"ok": False, "error": "YooKassa не настроена"}
-            YookassaConfiguration.account_id = shop_id
-            YookassaConfiguration.secret_key = secret
             meta["payment_method"] = "YooKassa"
             create_payload_pending(pid, user_id, amount, meta)
             payload = {
@@ -2040,8 +2049,21 @@ async def api_topup_create(req: TopUpRequest, auth: dict = Depends(webapp_user))
                 "confirmation": {"type": "redirect", "return_url": f"https://t.me/{get_setting('telegram_bot_username')}"},
                 "capture": True, "description": comment, "metadata": meta,
             }
-            pay_obj = YookassaPayment.create(payload, pid)
-            url = pay_obj.confirmation.confirmation_url
+            from shop_bot.bot.handlers import create_yookassa_payment_async
+
+            pay_obj = await create_yookassa_payment_async(payload, pid, shop_id, secret)
+            url = pay_obj["confirmation"]["confirmation_url"]
+
+        elif method_id == "pay_platega_payform":
+            mid, key = get_setting("platega_merchant_id"), get_setting("platega_api_key")
+            if not mid or not key:
+                return {"ok": False, "error": "Platega не настроена"}
+            meta["payment_method"] = "Platega Payform"
+            create_payload_pending(pid, user_id, amount, meta)
+            back = f"https://t.me/{get_setting('telegram_bot_username')}"
+            _, url = await PlategaAPI(mid, key).create_payment_payform(amount, f"Topup {pid}", pid, back, back)
+            if not url:
+                return {"ok": False, "error": "Не удалось получить ссылку Platega"}
 
         elif method_id in ("pay_platega", "pay_platega_crypto"):
             mid, key = get_setting("platega_merchant_id"), get_setting("platega_api_key")
@@ -3246,6 +3268,7 @@ async def api_trial_activate(req: TrialRequest, auth: dict = Depends(webapp_user
             telegram_id=req.user_id,
             traffic_limit_gb=trial_traffic if trial_traffic > 0 else None,
             hwid_limit=trial_hwid if trial_hwid > 0 else None,
+            internal_squad_uuid=(get_setting("trial_internal_squad_uuid") or "").strip() or None,
         )
         if not result:
             return {"ok": False, "error": "Сервер не ответил. Попробуйте позже."}
