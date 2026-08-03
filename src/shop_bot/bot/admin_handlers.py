@@ -43,6 +43,7 @@ from shop_bot.data_manager.remnawave_repository import (
 )
 from shop_bot.config import get_msk_time
 from shop_bot.data_manager.database import (
+    get_admin_financial_stats,
     update_key_email,
     set_referral_balance,
     set_referral_balance_all,
@@ -143,19 +144,22 @@ def get_admin_router() -> Router:
 
         text = (
             "📊 <b>Панель Администратора</b>\n\n"
-            "<b>За сегодня:</b>\n"
-            f"👥 Новые User`s: {today_new}\n"
-            f"💰 Доход: {today_income:.2f}₽\n"
-            f"💎 Пополнения баланса: {today_topups:.2f}₽\n"
-            f"🛍 Покупка подписки: {today_subscription_purchases:.2f}₽\n"
-            f"🔑 Куплено ключей: {today_keys}\n"
-            f"🎁 Выдано пробных: {today_trials}\n\n"
-            "<b>За все время:</b>\n"
-            f"👥 Всего пользователей: {total_users}\n"
-            f"💰 Общий доход: {total_income:.2f}₽\n"
-            f"🔑 Всего ключей: {total_keys}\n\n"
-            "<b>Состояние ключей:</b>\n"
-            f"✅ Активных: {active_keys}"
+            "Всего:\n"
+            "<blockquote>"
+            f"┌ 👥 Пользователей: {total_users}\n"
+            f"├ 💰 Общий доход: {total_income:.2f}₽\n"
+            f"├ 🔑 Всего ключей: {total_keys}\n"
+            f"└ ✅ Активных: {active_keys}"
+            "</blockquote>\n\n"
+            "За сегодня:\n"
+            "<blockquote>"
+            f"┌ 👥 Новых пользователей: +{today_new}\n"
+            f"├ 💰 Доход: {today_income:.2f}₽\n"
+            f"├ 💎 Пополнения баланса: {today_topups:.2f}₽\n"
+            f"├ 🛍 Покупка подписки: {today_subscription_purchases:.2f}₽\n"
+            f"├ 🔑 Куплено ключей: {today_keys}\n"
+            f"└ 🎁 Выдано пробных: {today_trials}"
+            "</blockquote>"
         )
 
         try:
@@ -168,6 +172,81 @@ def get_admin_router() -> Router:
             await smart_edit_message(message, text, keyboard)
         else:
             await smart_edit_message(message, text, keyboard)
+
+    async def show_admin_finance_menu(message: types.Message, edit_message: bool = False):
+        stats = get_admin_financial_stats() or {}
+        top_partner = stats.get("top_partner") or {}
+        top_user = stats.get("top_user") or {}
+        totals = stats.get("payment_totals") or {}
+
+        def who(entry: dict, amount: str) -> str:
+            """Кто и сколько. Пока никого нет — прочерк вместо «— — 0 мес.»."""
+            telegram_id = entry.get("telegram_id") or 0
+            if not telegram_id:
+                return "—"
+            username = (entry.get("username") or "").strip()
+            # Сообщение уходит с parse_mode=HTML, а в имени может быть < или &.
+            name = f"@{html_escape.escape(username)}" if username else str(telegram_id)
+            return f"{name} — {amount}"
+
+        text = (
+            "💸 <b>Финансы</b>\n\n"
+            "Статистика:\n"
+            "<blockquote>"
+            f"┌ 👥 Всего пользователей: {int(stats.get('total_users', 0) or 0)}\n"
+            f"├ 💰 Общий доход: {float(stats.get('total_income', 0) or 0):.2f}₽\n"
+            f"├ 🔑 Всего ключей: {int(stats.get('total_keys', 0) or 0)}\n"
+            f"├ ✅ Активных ключей: {int(stats.get('active_keys', 0) or 0)}\n"
+            f"└ 🎁 Использовали триал: {int(stats.get('trial_used_total', 0) or 0)}"
+            "</blockquote>\n\n"
+            "Пользователи:\n"
+            "<blockquote>"
+            f"┌ 👥 Не купили ключ: {int(stats.get('no_purchases', 0) or 0)}\n"
+            f"├ 👥 Не продлили: {int(stats.get('inactive_buyers', 0) or 0)}\n"
+            f"├ 👥 На триале: {int(stats.get('trials', 0) or 0)}\n"
+            f"├ 👥 Купили ключ: {int(stats.get('active_buyers', 0) or 0)}\n"
+            f"├ 💼 На балансах: {float(stats.get('user_balance_total', 0) or 0):.2f}₽\n"
+            f"└ 🏆 Топ покупатель: {who(top_user, str(int(top_user.get('months_total') or 0)) + ' мес.')}"
+            "</blockquote>\n\n"
+            "Доход:\n"
+            "<blockquote>"
+            f"┌ 📅 Сегодня: {float(stats.get('today_income', 0) or 0):.2f}₽\n"
+            f"├ 📅 Вчера: {float(stats.get('yesterday_income', 0) or 0):.2f}₽\n"
+            f"├ 📅 За неделю: {float(stats.get('week_income', 0) or 0):.2f}₽\n"
+            f"├ 📅 За месяц: {float(stats.get('month_income', 0) or 0):.2f}₽\n"
+            f"├ 📅 Прошлый месяц: {float(stats.get('last_month_income', 0) or 0):.2f}₽\n"
+            f"├ 📅 За год: {float(stats.get('year_income', 0) or 0):.2f}₽\n"
+            f"├ ⏳ Ждут оплаты: {float(stats.get('pending_amount', 0) or 0):.2f}₽ "
+            f"({int(stats.get('pending_count', 0) or 0)} шт.)\n"
+            f"└ 🏦 Всего: {float(stats.get('total_income', 0) or 0):.2f}₽"
+            "</blockquote>\n\n"
+            "Партнёрская программа:\n"
+            "<blockquote>"
+            f"┌ 👥 Партнёров с рефералами: {int(stats.get('partners_with_referrals', 0) or 0)}\n"
+            f"├ 👥 Всего привлечено: {int(stats.get('total_referred', 0) or 0)}\n"
+            f"├ 💼 Партнёрский баланс: {float(stats.get('partner_balance', 0) or 0):.2f}₽\n"
+            f"├ 💰 Заработано всего: {float(stats.get('partners_earned_total', 0) or 0):.2f}₽\n"
+            f"├ 💰 Заработано за месяц: {float(stats.get('partners_earned_month', 0) or 0):.2f}₽\n"
+            f"└ 🏆 Топ партнёр: {who(top_partner, str(int(top_partner.get('referrals_count') or 0)) + ' реф.')}"
+            "</blockquote>\n\n"
+            "По методам оплаты:\n"
+            "<blockquote>"
+            f"┌ 🏦 YooKassa: {float(totals.get('yookassa', 0) or 0):.2f}₽\n"
+            f"├ 🏦 YooMoney: {float(totals.get('yoomoney', 0) or 0):.2f}₽\n"
+            f"├ 🏦 Platega (все): {float(totals.get('platega_all', 0) or 0):.2f}₽\n"
+            f"├ 🏦 CryptoBot: {float(totals.get('cryptobot', 0) or 0):.2f}₽\n"
+            f"├ 🏦 Heleket: {float(totals.get('heleket', 0) or 0):.2f}₽\n"
+            f"├ 🏦 TON Connect: {float(totals.get('ton_connect', 0) or 0):.2f}₽\n"
+            f"└ 🏦 Telegram Stars: {float(totals.get('telegram_stars', 0) or 0):.2f}₽"
+            "</blockquote>"
+        )
+
+        kb = InlineKeyboardBuilder()
+        kb.button(text="🔄 Обновить", callback_data="admin_finance")
+        kb.button(text="⬅️ В админ-меню", callback_data="admin_menu")
+        kb.adjust(1, 1)
+
+        await smart_edit_message(message, text, kb.as_markup())
 
     async def show_admin_promo_menu(message: types.Message, edit_message: bool = False):
         text = (
@@ -283,6 +362,14 @@ def get_admin_router() -> Router:
         waiting_for_valid_until = State()
         waiting_for_description = State()
         confirming = State()
+
+    @admin_router.callback_query(F.data == "admin_finance")
+    async def admin_finance_handler(callback: types.CallbackQuery):
+        if not is_admin(callback.from_user.id):
+            await callback.answer("У вас нет прав.", show_alert=True)
+            return
+        await callback.answer()
+        await show_admin_finance_menu(callback.message, edit_message=True)
 
     @admin_router.callback_query(F.data == "admin_promo_menu")
     async def admin_promo_menu_handler(callback: types.CallbackQuery, state: FSMContext):

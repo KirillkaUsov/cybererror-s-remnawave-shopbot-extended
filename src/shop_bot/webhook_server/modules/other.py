@@ -1639,107 +1639,38 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
             return jsonify({'ok': False, 'error': str(e)}), 500
     # ===== Конец роута deploy_remove_all =====
     
-    # ===== СТРИМИНГ ЛОГОВ БОТА =====
+    def get_log_source_config(source: str):
+        """Логи бота и веб-аппа пишутся в разные файлы (см. __main__.py)."""
+        source = (source or 'bot').strip().lower()
+        if source == 'webapp':
+            return {'source': 'webapp', 'display_name': 'Webapp', 'log_files': ['logs/webapp.log', 'webapp.log']}
+        return {'source': 'bot', 'display_name': 'Бот', 'log_files': ['logs/bot.log', 'bot.log']}
+
+    # ===== СТРИМИНГ ЛОГОВ =====
     # Обеспечивает передачу логов в реальном времени через SSE (Server-Sent Events)
     @flask_app.route('/other/logs/stream')
     @login_required
     def logs_stream():
+        source_config = get_log_source_config(request.args.get('source', 'bot'))
+
         def generate():
-            import subprocess, shutil, time, socket, http.client
+            import time
             tail_lines = "100"
-            
+
             if os.name == 'nt':
-                yield f"data: [INFO] --- Windows Logs Simulation Mode ---\n\n"
+                yield f"data: [INFO] --- Windows Logs Simulation Mode ({source_config['display_name']}) ---\n\n"
                 while True:
                     yield f": heartbeat {get_msk_time().isoformat()}\n\n"
                     time.sleep(2)
                 return
 
-            cli_cmd = ['docker-compose', 'logs', '-f', f'--tail={tail_lines}'] if shutil.which('docker-compose') else (['docker', 'compose', 'logs', '-f', f'--tail={tail_lines}'] if shutil.which('docker') else None)
-            
-            if cli_cmd and os.path.exists('/root/remnawave-shopbot'):
-                yield f"data: [INFO] Docker CLI найден. Попытка стриминга через команду...\n\n"
-                try:
-                    process = subprocess.Popen(cli_cmd, cwd='/root/remnawave-shopbot', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
-                    buf = b''
-                    while True:
-                        chunk = process.stdout.read(1)
-                        if not chunk:
-                            if buf:
-                                text = buf.decode('utf-8', errors='replace')
-                                cleaned = clean_ansi(text)
-                                if cleaned.rstrip():
-                                    yield f"data: {cleaned.rstrip()}\n\n"
-                            break
-                        if chunk == b'\n':
-                            text = buf.decode('utf-8', errors='replace')
-                            buf = b''
-                            cleaned = clean_ansi(text)
-                            if cleaned.rstrip():
-                                yield f"data: {cleaned.rstrip()}\n\n"
-                        elif chunk == b'\r':
-                            text = buf.decode('utf-8', errors='replace')
-                            buf = b''
-                            cleaned = clean_ansi(text)
-                            if cleaned.rstrip():
-                                yield f"data: \x01CR\x01{cleaned.rstrip()}\n\n"
-                        else:
-                            buf += chunk
-                    process.stdout.close()
-                    yield f"data: [EXIT] Процесс CLI завершен.\n\n"
-                    return 
-                except Exception as e: yield f"data: [WARN] Ошибка CLI: {e}. Пробуем Docker Socket...\n\n"
-            
-            socket_path = '/var/run/docker.sock'
-            if os.path.exists(socket_path):
-                yield f"data: [INFO] Docker socket найден в {socket_path}. Подключение...\n\n"
-                try:
-                    hostname = socket.gethostname()
-                    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    sock.connect(socket_path)
-                    
-                    request = f"GET /containers/{hostname}/logs?stdout=1&stderr=1&follow=1&tail={tail_lines} HTTP/1.1\r\nHost: localhost\r\n\r\n"
-                    sock.sendall(request.encode('ascii'))
-                    
-                    fp = sock.makefile('rb')
-                    while True:
-                        line = fp.readline()
-                        if line in (b'\r\n', b'\n', b''): break
-                        
-                    while True:
-                        header = fp.read(8)
-                        if not header or len(header) < 8: break
-                        import struct
-                        payload_size = struct.unpack('>I', header[4:])[0]
-                        if payload_size > 0:
-                            payload = fp.read(payload_size)
-                            if not payload: break
-                            try:
-                                text = payload.decode('utf-8', errors='replace')
-                                cleaned = clean_ansi(text)
-                                cleaned = cleaned.replace('\r\n', '\n')
-                                segments = cleaned.split('\n')
-                                for seg in segments:
-                                    if '\r' in seg:
-                                        parts = seg.split('\r')
-                                        last_part = parts[-1]
-                                        if last_part.rstrip():
-                                            yield f"data: \x01CR\x01{last_part.rstrip()}\n\n"
-                                    elif seg.rstrip():
-                                        yield f"data: {seg.rstrip()}\n\n"
-                            except: pass
-                    sock.close()
-                    yield f"data: [EXIT] Стрим через сокет завершен.\n\n"
-                    return
-                except Exception as e: yield f"data: [ERROR] Ошибка подключения к сокету: {e}\n\n"
-            else: yield f"data: [WARN] Docker socket не найден в {socket_path}.\n\n"
-
-            log_files = ['logs/bot.log', 'bot.log']
+            # Читаем файл, а не `docker logs`: в контейнерном стриме бот и веб-апп
+            # перемешаны, и разделить их по источнику уже нельзя.
             found_log = False
-            for log_file in log_files:
+            for log_file in source_config['log_files']:
                 if os.path.exists(log_file):
                     found_log = True
-                    yield f"data: [INFO] Чтение локального файла логов: {log_file}\n\n"
+                    yield f"data: [INFO] Чтение локального файла логов {source_config['display_name']}: {log_file}\n\n"
                     try:
                         from collections import deque
                         with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
@@ -1754,8 +1685,8 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
                                 yield f"data: {line.strip()}\n\n"
                     except Exception as e: yield f"data: [ERROR] Ошибка чтения файла: {e}\n\n"
                     break
-            
-            if not found_log: yield f"data: [WARN] Методы получения логов недоступны.\n\n"
+
+            if not found_log: yield f"data: [WARN] Логи {source_config['display_name']} недоступны.\n\n"
 
         response = current_app.response_class(generate(), mimetype='text/event-stream')
         response.headers['Cache-Control'] = 'no-cache'
@@ -1776,23 +1707,8 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
             offset = int(request.args.get('offset', 0))
         except ValueError: return jsonify({'ok': False, 'error': 'Некорректные параметры'})
 
-        import subprocess, shutil
-        if shutil.which('docker-compose') or shutil.which('docker'):
-            total_fetch = offset + lines_count
-            cli_cmd = ['docker-compose', 'logs', f'--tail={total_fetch}'] if shutil.which('docker-compose') else ['docker', 'compose', 'logs', f'--tail={total_fetch}']
-                
-            if cli_cmd and os.path.exists('/root/remnawave-shopbot'):
-                try:
-                    result = subprocess.run(cli_cmd, cwd='/root/remnawave-shopbot', capture_output=True, text=True, timeout=5)
-                    if result.returncode == 0:
-                        all_lines = result.stdout.splitlines()
-                        target_lines = all_lines[:len(all_lines) - offset]
-                        chunk = target_lines[-lines_count:] if lines_count < len(target_lines) else target_lines
-                        return jsonify({'ok': True, 'lines': chunk})
-                except Exception as e: logger.error(f"Ошибка получения истории из Docker: {e}")
-
-        log_files = ['logs/bot.log', 'bot.log']
-        for log_file in log_files:
+        source_config = get_log_source_config(request.args.get('source', 'bot'))
+        for log_file in source_config['log_files']:
             if os.path.exists(log_file):
                 try: 
                     with open(log_file, 'r', encoding='utf-8', errors='replace') as f: all_lines = f.readlines()
@@ -1801,7 +1717,7 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
                     return jsonify({'ok': True, 'lines': [l.rstrip() for l in chunk]})
                 except Exception as e: return jsonify({'ok': False, 'error': str(e)})
 
-        return jsonify({'ok': False, 'error': 'Логи недоступны'})
+        return jsonify({'ok': False, 'error': f"Логи {source_config['display_name']} недоступны"})
     # ===== Конец роута logs_history =====
     
     # ===== ОЧИСТКА ЛОГОВ (ЛОКАЛЬНЫХ ИЛИ DOCKER) =====
@@ -1810,23 +1726,24 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
     @login_required
     def logs_clear():
         try:
-            import subprocess
-            cleared_any, log_files = False, ['logs/bot.log', 'bot.log']
-            for log_file in log_files:
+            source_config = get_log_source_config(request.args.get('source', 'bot'))
+            cleared_any = False
+            for log_file in source_config['log_files']:
                 if os.path.exists(log_file):
                     try:
                         with open(log_file, 'w', encoding='utf-8') as f: pass
                         logger.info(f"Локальный лог {log_file} очищен"); cleared_any = True
                     except Exception as e: logger.error(f"Не удалось очистить {log_file}: {e}")
-            
-            if cleared_any: return jsonify({'ok': True, 'message': 'Локальные логи успешно очищены'})
+
+            if cleared_any:
+                return jsonify({'ok': True, 'message': f"Логи {source_config['display_name']} очищены"})
             if os.name == 'nt':
                 logger.info("Обнаружена Windows, имитация очистки логов")
                 return jsonify({'ok': True, 'message': 'Логи очищены (имитация)'})
-            
-            result = subprocess.run("truncate -s 0 /var/lib/docker/containers/*/*-json.log", shell=True, capture_output=True, text=True)
-            if result.returncode == 0: return jsonify({'ok': True, 'message': 'Логи Docker успешно очищены'})
-            return jsonify({'ok': False, 'error': f"Ошибка: {result.stderr or 'Доступ запрещен'}"}), 500
+
+            # Раньше здесь обрезались json-логи Docker, но там оба источника
+            # в одном файле — чистить их по кнопке «очистить логи бота» нельзя.
+            return jsonify({'ok': False, 'error': f"Логи {source_config['display_name']} недоступны"}), 404
         except Exception as e:
             logger.error(f"Ошибка очистки логов: {e}")
             return jsonify({'ok': False, 'error': str(e)}), 500
