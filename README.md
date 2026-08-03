@@ -117,18 +117,7 @@
 
 Скриптов-установщиков здесь нет: они предполагали чистый сервер и разворачивали Docker, Nginx и Certbot с нуля. Если бот у вас уже работает, всё это уже есть.
 
-**Переехать с оригинала на этот форк** — без потери базы, ключей и настроек:
-
-```bash
-cd /root/remnawave-shopbot
-git remote set-url origin https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended.git
-git pull
-docker compose up -d --build
-```
-
-Схема БД доезжает сама при старте — новые таблицы и колонки создаются миграциями.
-
-**С нуля** — если сервер уже с Docker, Nginx и сертификатом:
+**К сожалению можно установить только с нуля** — пока обновится с оригинального бота не получится:
 
 ```bash
 git clone https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended.git /root/remnawave-shopbot
@@ -149,26 +138,6 @@ cd /root/remnawave-shopbot && git pull && docker compose up -d --build
 ```
 
 Правки шаблонов и HTML подхватываются без пересборки — каталог проекта смонтирован в контейнер. Пересборка нужна только для изменений в Python и зависимостях.
-
----
-
-## Что взять из оригинала
-
-Обновления автора не прилетают автоматически — он остался вторым remote:
-
-```bash
-git remote add upstream https://github.com/CyberERROR/remnawave-shopbot.git
-git fetch upstream
-git merge upstream/main
-```
-
-Конфликты будут в шаблонах панели и в `webapp/app.html` — там переписано больше всего.
-
----
-
-## Баги
-
-Про то, что появилось в форке — [сюда](https://github.com/KirillkaUsov/cybererror-s-remnawave-shopbot-extended/issues). Про то, что воспроизводится и в оригинале — [в апстрим](https://github.com/CyberERROR/remnawave-shopbot/issues), там это починят для всех.
 
 ---
 
