@@ -701,6 +701,14 @@
                                 placeholder="{{ settings.panel_brand_title or 'VPN' }}" autocomplete="off"
                                 class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:border-primary/50 outline-none" />
                         </div>
+                        <div class="space-y-1">
+                            <label class="text-[9px] text-white/40 font-bold ml-1 uppercase">Адрес для ответа</label>
+                            <input type="email" name="smtp_reply_to" value="{{ settings.smtp_reply_to or '' }}"
+                                placeholder="support@chorusconnect.cc" autocomplete="off"
+                                class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:border-primary/50 outline-none" />
+                            <p class="text-[9px] text-white/30 ml-1">Живой ящик, куда попадёт ответ. Письмо без обратного
+                                адреса фильтры считают тупиковым.</p>
+                        </div>
                     </div>
 
                     <label
