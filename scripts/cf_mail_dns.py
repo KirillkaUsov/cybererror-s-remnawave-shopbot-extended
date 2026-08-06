@@ -104,6 +104,10 @@ def desired(records: list[dict]) -> list[dict]:
         {"type": "A", "name": MAIL_HOST, "content": SERVER_IP, "proxied": False,
          "comment": "Почтовый хост: должен совпадать с PTR, проксировать нельзя"},
         {"type": "TXT", "name": "@", "content": spf, "comment": "SPF"},
+        # У отбойников конверт пустой, и SPF проверяют по имени из HELO —
+        # то есть по этой записи, а не по апексу. Без неё они не проходят.
+        {"type": "TXT", "name": MAIL_HOST, "content": "v=spf1 a -all",
+         "comment": "SPF для HELO: без него отбойники не аутентифицируются"},
         {"type": "TXT", "name": f"{DKIM_SELECTOR}._domainkey", "content": dkim_value(),
          "comment": "DKIM, ключ лежит на сервере в /etc/opendkim"},
         {"type": "TXT", "name": "_dmarc", "content": DMARC, "comment": "DMARC"},
