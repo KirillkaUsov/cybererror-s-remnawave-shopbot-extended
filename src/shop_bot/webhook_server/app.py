@@ -107,7 +107,7 @@ ALL_SETTINGS_KEYS = [
 
     # SMTP для писем веб-аппа: подтверждение почты и сброс пароля
     "smtp_enabled", "smtp_host", "smtp_port", "smtp_security",
-    "smtp_user", "smtp_password", "smtp_from_email", "smtp_from_name",
+    "smtp_user", "smtp_password", "smtp_from_email", "smtp_from_name", "smtp_reply_to",
     "email_verification_required",
 
     # реквизиты для правовых документов на /legal/*: в коде их держать нельзя,

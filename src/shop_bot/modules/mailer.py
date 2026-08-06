@@ -12,6 +12,7 @@ import logging
 import re
 import smtplib
 import ssl
+from email import policy
 from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
@@ -25,6 +26,13 @@ logger = logging.getLogger(__name__)
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 
 SMTP_TIMEOUT_SECONDS = 20
+
+# Политика без переноса — только для заголовков, и только на момент сборки
+# готового письма. Стандартные 78 символов разрезают кириллическую тему на два
+# encoded-word, причём разными кодировками (кусок base64, кусок
+# quoted-printable): выглядит как попытка спрятать текст, и часть фильтров это
+# отдельно штрафует. Тема из пары слов в предельные 998 символов укладывается.
+UNFOLDED_HEADERS = policy.default.clone(max_line_length=0)
 
 
 class MailError(RuntimeError):
@@ -68,9 +76,27 @@ def _build_message(to_email: str, subject: str, text: str, html: str | None) -> 
     # идентификатор не выдавал имя машины.
     message["Date"] = formatdate(localtime=True)
     message["Message-ID"] = make_msgid(domain=domain or None)
-    message.set_content(text)
+
+    # Письмо служебное: автоответчики на него срабатывать не должны, а фильтрам
+    # это говорит, что перед ними не рассылка.
+    message["Auto-Submitted"] = "auto-generated"
+
+    # Отвечать на noreply бессмысленно, но письмо без обратного адреса выглядит
+    # тупиковым. Ящик поддержки на том же домене — живой.
+    reply_to = _setting("smtp_reply_to")
+    if reply_to and is_valid_email(reply_to):
+        message["Reply-To"] = reply_to
+
+    # quoted-printable, а не base64: кириллицу всё равно надо кодировать, но
+    # base64 прячет текст от фильтров, и часть из них штрафует за это отдельным
+    # правилом («текст замаскирован кодировкой»).
+    message.set_content(text, cte="quoted-printable")
     if html:
-        message.add_alternative(html, subtype="html")
+        message.add_alternative(html, subtype="html", cte="quoted-printable")
+
+    # Меняем политику только теперь: тело уже закодировано по обычным правилам и
+    # переносится по 76 символов, как положено, а перенос заголовков ещё впереди.
+    message.policy = UNFOLDED_HEADERS
     return message
 
 
