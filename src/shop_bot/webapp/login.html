@@ -324,20 +324,41 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
           </div>
         </div>
 
+        <div id="verifyPanel" class="panel hidden">
+          <div>
+            <h3>Подтверждение почты</h3>
+            <p class="hint" id="verifyHint">Код отправлен на указанный адрес.</p>
+          </div>
+          <div class="digits" id="verifyDigits">
+            <input type="text" inputmode="numeric" maxlength="1" class="digit">
+            <input type="text" inputmode="numeric" maxlength="1" class="digit">
+            <input type="text" inputmode="numeric" maxlength="1" class="digit">
+            <input type="text" inputmode="numeric" maxlength="1" class="digit">
+            <input type="text" inputmode="numeric" maxlength="1" class="digit">
+            <input type="text" inputmode="numeric" maxlength="1" class="digit">
+          </div>
+          <div id="verifyError" class="error-box hidden"></div>
+          <button id="verifyResendBtn" class="btn btn--soft">Отправить код ещё раз</button>
+          <div class="foot-row center">
+            <button id="verifySkipBtn" class="link-btn">Позже</button>
+            <button id="verifyBackBtn" class="link-btn hidden">Отмена</button>
+          </div>
+        </div>
+
         <div id="resetPanel" class="panel hidden">
           <div>
             <h3>Восстановление пароля</h3>
-            <p class="hint">Код придёт в Telegram, привязанный к этому аккаунту.</p>
+            <p class="hint" id="resetHint">Код придёт на почту, а если она не настроена — в привязанный Telegram.</p>
           </div>
 
           <div id="resetStep1" class="panel">
             <input type="email" id="resetEmailInput" placeholder="Ваш Email" class="field">
             <div id="resetError1" class="error-box hidden"></div>
-            <button id="resetRequestBtn" class="btn btn--soft" style="color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)">Получить код в Telegram</button>
+            <button id="resetRequestBtn" class="btn btn--soft" style="color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)">Получить код</button>
           </div>
 
           <div id="resetStep2" class="panel hidden">
-            <p id="resetSentMsg" style="font-size:13.5px;font-weight:500;text-align:center;margin:0">Код отправлен в Telegram</p>
+            <p id="resetSentMsg" style="font-size:13.5px;font-weight:500;text-align:center;margin:0">Код отправлен</p>
             <div class="digits" id="digitInputs">
               <input type="text" inputmode="numeric" maxlength="1" class="digit">
               <input type="text" inputmode="numeric" maxlength="1" class="digit">
@@ -459,6 +480,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
   function goToMethods(){
     hide(emailPanel); hide(document.getElementById('subPanel')); hide(document.getElementById('resetPanel'));
+    hide(document.getElementById('verifyPanel'));
     show(authMethods, 'flex'); show(authHeader);
     if(awaitingTelegram) show(statusLine, 'flex');
   }
@@ -520,14 +542,117 @@ document.addEventListener('DOMContentLoaded', function(){
     hide(emailError);
     try{
       const data = await postJSON(endpoint, { email, password });
-      if(data.ok && data.token) loginWithToken(data.token);
-      else showError(emailError, data.error || 'Ошибка связи с сервером');
+      if(data.ok && data.token){
+        /* Регистрация: письмо ушло — предлагаем подтвердить адрес сразу.
+           Если подтверждение необязательно, отказаться можно кнопкой «Позже». */
+        if(isRegister && data.verification_sent){
+          openVerifyPanel({ email, token: data.token, channel: data.verification_channel, mandatory: data.verification_required });
+          return;
+        }
+        loginWithToken(data.token);
+      } else if(data.verification_required){
+        /* Вход в неподтверждённый аккаунт: код сервер уже отправил. */
+        openVerifyPanel({ email, token: null, channel: 'email', mandatory: true });
+      } else {
+        showError(emailError, data.error || 'Ошибка связи с сервером');
+      }
     }catch(e){ showError(emailError, 'Ошибка сети'); }
     emailLoginBtn.disabled = false; emailRegisterBtn.disabled = false;
   }
   emailLoginBtn.addEventListener('click', () => submitEmailAuth(false));
   emailRegisterBtn.addEventListener('click', () => submitEmailAuth(true));
   [emailInput, passwordInput].forEach(el => el.addEventListener('keydown', e => { if(e.key === 'Enter') submitEmailAuth(false); }));
+
+  /* ---------- подтверждение почты ---------- */
+  const verifyPanel = document.getElementById('verifyPanel');
+  const verifyHint = document.getElementById('verifyHint');
+  const verifyError = document.getElementById('verifyError');
+  const verifyResendBtn = document.getElementById('verifyResendBtn');
+  const verifySkipBtn = document.getElementById('verifySkipBtn');
+  const verifyBackBtn = document.getElementById('verifyBackBtn');
+  const verifyDigits = Array.from(document.querySelectorAll('#verifyDigits .digit'));
+  /* Что делать после успешного подтверждения: если аккаунт только что создан,
+     токен уже на руках — сразу впускаем. Иначе возвращаем к форме входа. */
+  let verifyState = { email: '', token: null, mandatory: false };
+
+  function channelWord(channel){
+    return channel === 'telegram' ? 'в Telegram' : 'на почту';
+  }
+
+  /* Один и тот же ввод из шести клеток нужен и для подтверждения, и для
+     сброса пароля — поведение (переход по клеткам, backspace, вставка целого
+     кода) описано здесь один раз. */
+  function wireDigits(inputs, onComplete){
+    const value = () => inputs.map(i => i.value).join('');
+    inputs.forEach((input, index) => {
+      input.addEventListener('input', async e => {
+        if(e.target.value.length === 0) return;
+        e.target.value = e.target.value.replace(/\D/g,'');
+        if(!e.target.value) return;
+        if(index < inputs.length - 1) inputs[index+1].focus();
+        else await onComplete(value());
+      });
+      input.addEventListener('keydown', e => {
+        if(e.key === 'Backspace' && e.target.value === '' && index > 0) inputs[index-1].focus();
+      });
+      input.addEventListener('paste', async e => {
+        e.preventDefault();
+        const pasted = (e.clipboardData || window.clipboardData).getData('text').trim().replace(/\D/g,'');
+        if(pasted.length < inputs.length) return;
+        inputs.forEach((el, i) => el.value = pasted[i]);
+        inputs[inputs.length-1].focus();
+        await onComplete(value());
+      });
+    });
+    return { value, clear(){ inputs.forEach(i => i.value = ''); inputs[0].focus(); } };
+  }
+
+  function openVerifyPanel({ email, token, channel, mandatory }){
+    verifyState = { email, token: token || null, mandatory: !!mandatory };
+    hide(emailPanel); hide(resetPanel);
+    show(verifyPanel, 'flex');
+    hide(verifyError);
+    verifyHint.textContent = `Код отправлен ${channelWord(channel)} — ${email}. Введите шесть цифр.`;
+    /* Пока подтверждение обязательно, «Позже» — обман: без него всё равно
+       не пустят. Показываем «Отмена» с возвратом к форме входа. */
+    if(verifyState.mandatory){ hide(verifySkipBtn); show(verifyBackBtn); }
+    else { show(verifySkipBtn); hide(verifyBackBtn); }
+    verifyInputs.clear();
+  }
+
+  function leaveVerifyPanel(){
+    hide(verifyPanel);
+    if(verifyState.token) loginWithToken(verifyState.token);
+    else show(emailPanel, 'flex');
+  }
+
+  const verifyInputs = wireDigits(verifyDigits, async code => {
+    hide(verifyError);
+    try{
+      const data = await postJSON('/api/auth/email/verify', { email: verifyState.email, code });
+      if(data.ok){
+        if(verifyState.token) loginWithToken(verifyState.token);
+        else { hide(verifyPanel); show(emailPanel, 'flex'); showError(emailError, 'Почта подтверждена — войдите'); }
+        return;
+      }
+      showError(verifyError, data.error || 'Неверный код');
+      verifyInputs.clear();
+    }catch(e){ showError(verifyError, 'Ошибка сети'); }
+  });
+
+  verifyResendBtn.addEventListener('click', async () => {
+    await withPending(verifyResendBtn, 'Отправка…', async () => {
+      hide(verifyError);
+      try{
+        const data = await postJSON('/api/auth/email/verify/request', { email: verifyState.email });
+        if(data.ok) verifyHint.textContent = `Новый код отправлен ${channelWord(data.channel)} — ${verifyState.email}.`;
+        else showError(verifyError, data.error || 'Не удалось отправить код');
+      }catch(e){ showError(verifyError, 'Ошибка сети'); }
+    });
+  });
+
+  verifySkipBtn.addEventListener('click', leaveVerifyPanel);
+  verifyBackBtn.addEventListener('click', () => { hide(verifyPanel); show(emailPanel, 'flex'); });
 
   /* ---------- password reset ---------- */
   const resetPanel = document.getElementById('resetPanel');
@@ -579,27 +704,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }catch(e){ showError(resetError2, 'Ошибка сети'); }
   }
 
-  digitInputs.forEach((input, index) => {
-    input.addEventListener('input', async e => {
-      if(e.target.value.length > 0){
-        e.target.value = e.target.value.replace(/\D/g,'');
-        if(index < digitInputs.length - 1 && e.target.value) digitInputs[index+1].focus();
-        else if(index === 5 && e.target.value) await checkResetCode();
-      }
-    });
-    input.addEventListener('keydown', e => {
-      if(e.key === 'Backspace' && e.target.value === '' && index > 0) digitInputs[index-1].focus();
-    });
-    input.addEventListener('paste', async e => {
-      e.preventDefault();
-      const pasted = (e.clipboardData || window.clipboardData).getData('text').trim().replace(/\D/g,'');
-      if(pasted.length >= 6){
-        for(let i=0;i<6;i++) digitInputs[i].value = pasted[i];
-        digitInputs[5].focus();
-        await checkResetCode();
-      }
-    });
-  });
+  wireDigits(digitInputs, checkResetCode);
 
   resetBackStepBtn.addEventListener('click', () => {
     hide(resetStep2);
@@ -635,6 +740,7 @@ document.addEventListener('DOMContentLoaded', function(){
     try{
       const data = await postJSON('/api/auth/email/reset/request', { email });
       if(data.ok){
+        resetSentMsg.textContent = `Код отправлен ${channelWord(data.channel)}`;
         hide(resetStep1);
         show(resetStep2, 'flex');
         hide(resetError1);

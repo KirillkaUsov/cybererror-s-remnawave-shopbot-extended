@@ -15,6 +15,11 @@ class BanMiddleware(BaseMiddleware):
         if not user:
             return await handler(event, data)
 
+        # Боты в базе нам не нужны: они не покупают, но засоряют статистику
+        # и могут пройти по реферальной ссылке.
+        if user.is_bot:
+            return
+
         user_data = get_user(user.id)
         if user_data and user_data.get('is_banned'):
             ban_message_text = "🚫 Вы заблокированы и не можете использовать этого бота."

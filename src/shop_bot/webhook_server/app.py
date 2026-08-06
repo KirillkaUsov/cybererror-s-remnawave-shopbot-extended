@@ -62,7 +62,7 @@ from shop_bot.data_manager.remnawave_repository import (
     update_host_url, update_host_name, update_host_ssh_settings, get_latest_speedtest, get_speedtests,
     update_host_description, update_host_traffic_settings,
     get_all_keys, get_keys_for_user, delete_key_by_id, update_key_comment,
-    get_balance, adjust_user_balance, get_referrals_for_user, log_transaction,
+    get_balance, adjust_user_balance, get_referrals_for_user, detach_referrals_from_user, log_transaction,
 
     get_users_paginated, get_keys_counts_for_users,
 
@@ -104,6 +104,11 @@ ALL_SETTINGS_KEYS = [
     "support_bot_token", "support_bot_username",
 
     "panel_brand_title",
+
+    # SMTP для писем веб-аппа: подтверждение почты и сброс пароля
+    "smtp_enabled", "smtp_host", "smtp_port", "smtp_security",
+    "smtp_user", "smtp_password", "smtp_from_email", "smtp_from_name",
+    "email_verification_required",
 
     # реквизиты для правовых документов на /legal/*: в коде их держать нельзя,
     # а без наименования оператора политика не отвечает ст. 18.1 152-ФЗ
@@ -1248,6 +1253,20 @@ def create_webhook_app(bot_controller_instance):
             return jsonify({"ok": True, "items": items})
         except Exception as e:
             logger.error(f"Ошибка получения истории имён {user_id}: {e}")
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
+    @flask_app.route('/users/<int:user_id>/referrals/detach', methods=['POST'])
+    @login_required
+    def detach_user_referrals_route(user_id: int):
+        """Снимает привязку рефералов, сами аккаунты остаются на месте."""
+        try:
+            if not get_user(user_id):
+                return jsonify({"ok": False, "error": "Пользователь не найден"}), 404
+            detached_count = detach_referrals_from_user(user_id)
+            return jsonify({"ok": True, "detached_count": detached_count})
+        except Exception as e:
+            logger.error("Не удалось отвязать рефералов пользователя %s: %s", user_id, e)
             return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
 
 
@@ -3534,6 +3553,27 @@ def create_webhook_app(bot_controller_instance):
             flash('Ошибка при удалении тикетов.', 'danger')
         return redirect(url_for('support_list_page'))
 
+    @flask_app.route('/settings/smtp-test', methods=['POST'])
+    @login_required
+    def smtp_test_route():
+        """Отправляет одно проверочное письмо сохранёнными настройками SMTP."""
+        from shop_bot.modules import mailer
+
+        email = (request.form.get('email') or '').strip()
+        if not mailer.is_valid_email(email):
+            return jsonify({"ok": False, "error": "Некорректный адрес"}), 400
+        if not mailer.is_configured():
+            return jsonify({"ok": False, "error": "Заполните и сохраните настройки SMTP"}), 400
+        try:
+            mailer.send_test_mail_sync(email)
+            return jsonify({"ok": True})
+        except mailer.MailError as e:
+            return jsonify({"ok": False, "error": str(e)}), 502
+        except Exception as e:
+            logger.error("Проверка SMTP не удалась: %s", e)
+            return jsonify({"ok": False, "error": "Внутренняя ошибка"}), 500
+
+
     @flask_app.route('/settings', methods=['GET', 'POST'])
     @login_required
     def settings_page():
@@ -3543,7 +3583,7 @@ def create_webhook_app(bot_controller_instance):
                 update_setting('panel_password', request.form.get('panel_password'))
 
 
-            checkbox_keys = ['force_subscription', 'sbp_enabled', 'trial_enabled', 'enable_referrals', 'enable_fixed_referral_bonus', 'stars_enabled', 'yoomoney_enabled', 'monitoring_enabled', 'platega_enabled', 'platega_crypto_enabled', 'platega_payform_enabled', 'skip_email', 'enable_wal_mode', 'stealth_login_enabled', 'demo_mode_enabled']
+            checkbox_keys = ['force_subscription', 'sbp_enabled', 'trial_enabled', 'enable_referrals', 'enable_fixed_referral_bonus', 'stars_enabled', 'yoomoney_enabled', 'monitoring_enabled', 'platega_enabled', 'platega_crypto_enabled', 'platega_payform_enabled', 'skip_email', 'enable_wal_mode', 'stealth_login_enabled', 'demo_mode_enabled', 'smtp_enabled', 'email_verification_required']
             for checkbox_key in checkbox_keys:
                 values = request.form.getlist(checkbox_key)
                 value = values[-1] if values else 'false'
@@ -4364,8 +4404,17 @@ def create_webhook_app(bot_controller_instance):
                 flash('Название тарифа не может быть пустым.', 'danger')
                 return redirect(url_for('settings_page', tab='hosts'))
 
-            button_style = (request.form.get('button_style') or '').strip() or None
-            icon_emoji_id = (request.form.get('icon_emoji_id') or '').strip() or None
+            # Форма редактирования не всегда содержит оформление: если поля нет
+            # вовсе — оставляем сохранённое, а не затираем его пустым.
+            current_plan = get_plan_by_id(plan_id) or {}
+            if 'button_style' in request.form:
+                button_style = (request.form.get('button_style') or '').strip() or None
+            else:
+                button_style = current_plan.get('button_style')
+            if 'icon_emoji_id' in request.form:
+                icon_emoji_id = (request.form.get('icon_emoji_id') or '').strip() or None
+            else:
+                icon_emoji_id = current_plan.get('icon_emoji_id')
             ok = update_plan(plan_id, plan_name, months, price, hwid_limit=hwid_limit, traffic_limit_gb=traffic_limit_gb, button_style=button_style, icon_emoji_id=icon_emoji_id)
             if ok:
                 if wants_json:
