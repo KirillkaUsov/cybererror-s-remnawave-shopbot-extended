@@ -14,6 +14,7 @@ import smtplib
 import ssl
 from email.headerregistry import Address
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 
 from shop_bot.data_manager.remnawave_repository import get_setting
 
@@ -62,6 +63,11 @@ def _build_message(to_email: str, subject: str, text: str, html: str | None) -> 
     message["Subject"] = subject
     message["From"] = Address(from_name, local, domain)
     message["To"] = to_email
+    # Date и Message-ID smtplib сам не проставит, а письмо без них спам-фильтры
+    # считают подозрительным. Домен берём из адреса отправителя, чтобы
+    # идентификатор не выдавал имя машины.
+    message["Date"] = formatdate(localtime=True)
+    message["Message-ID"] = make_msgid(domain=domain or None)
     message.set_content(text)
     if html:
         message.add_alternative(html, subtype="html")

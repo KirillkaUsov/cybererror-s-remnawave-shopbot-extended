@@ -114,21 +114,33 @@ def full_name(name: str) -> str:
     return ZONE_NAME if name == "@" else f"{name}.{ZONE_NAME}"
 
 
-def match(records: list[dict], want: dict) -> dict | None:
-    """Ищет запись, которую надо обновить, а не создавать заново.
+def txt_kind(content: str) -> str:
+    """Чем различать TXT на одном имени.
 
-    TXT на одном имени бывает несколько (SPF, проверки владения домена), поэтому
-    для них сравниваем ещё и начало значения.
+    SPF, DKIM и DMARC начинаются с `v=`, а рядом на апексе обычно висят
+    подтверждения владения доменом — их трогать нельзя.
     """
+    match = re.match(r"v=[A-Za-z0-9]+", content.strip().lstrip('"'))
+    return match.group(0).lower() if match else content[:16].lower()
+
+
+def match(records: list[dict], want: dict) -> dict | None:
+    """Ищет запись, которую надо обновить, а не создавать заново."""
     fqdn = full_name(want["name"])
     same = [r for r in records if r["type"] == want["type"] and r["name"] == fqdn]
     if want["type"] != "TXT":
         return same[0] if same else None
-    prefix = want["content"].split(";")[0].split("=")[0]
-    for record in same:
-        if record["content"].lstrip('"').startswith(prefix):
-            return record
-    return None
+
+    kind = txt_kind(want["content"])
+    same = [r for r in same if txt_kind(r["content"]) == kind]
+    if len(same) > 1:
+        # Две записи `v=spf1` — то же самое, что ни одной: домен становится
+        # непроверяемым. Молча обновить одну из них значит оставить поломку.
+        raise CFError(
+            f"На {fqdn} уже {len(same)} записей вида {kind} — лишние надо удалить "
+            f"вручную, иначе почтовики перестанут доверять домену"
+        )
+    return same[0] if same else None
 
 
 def main() -> int:
@@ -155,7 +167,11 @@ def main() -> int:
 
     changes = 0
     for want in desired(records):
-        current = match(records, want)
+        try:
+            current = match(records, want)
+        except CFError as exc:
+            print(f"Ошибка: {exc}", file=sys.stderr)
+            return 1
         label = f"{want['type']:5} {full_name(want['name'])}"
         if current and current["content"].strip('"') == want["content"]:
             print(f"  без изменений  {label}")
