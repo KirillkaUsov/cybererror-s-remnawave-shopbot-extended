@@ -500,8 +500,17 @@ async def create_pending_payment(user_id: int, amount: float, payment_method: st
     return payment_id, metadata
 # ===== Конец функции create_pending_payment =====
 
-async def create_yookassa_payment_async(payload: dict, idempotence_key: str, shop_id: str, secret_key: str, timeout_seconds: int = 20) -> dict:
-    timeout = aiohttp.ClientTimeout(total=timeout_seconds, connect=12, sock_read=timeout_seconds)
+def _referrer_is_payable(referrer_id) -> bool:
+    """Начисляем рефереру, только если он существует и не забанен."""
+    try:
+        referrer = get_user(int(referrer_id))
+    except (TypeError, ValueError):
+        return False
+    return bool(referrer) and not referrer.get('is_banned')
+
+
+async def create_yookassa_payment_async(payload: dict, idempotence_key: str, shop_id: str, secret_key: str, timeout_seconds: int = 30) -> dict:
+    timeout = aiohttp.ClientTimeout(total=timeout_seconds, connect=20, sock_read=timeout_seconds)
     headers = {"Idempotence-Key": str(idempotence_key)}
     auth = aiohttp.BasicAuth(str(shop_id), str(secret_key))
     api_payload = dict(payload)
@@ -509,7 +518,8 @@ async def create_yookassa_payment_async(payload: dict, idempotence_key: str, sho
         api_payload["metadata"] = {str(k): "" if v is None else str(v) for k, v in api_payload["metadata"].items()}
     async with aiohttp.ClientSession(timeout=timeout, auth=auth) as session:
         last_error = None
-        for attempt in range(3):
+        max_attempts = 4
+        for attempt in range(max_attempts):
             try:
                 async with session.post("https://api.yookassa.ru/v3/payments", json=api_payload, headers=headers) as response:
                     raw = await response.text()
@@ -519,16 +529,19 @@ async def create_yookassa_payment_async(payload: dict, idempotence_key: str, sho
                     if not data.get("confirmation", {}).get("confirmation_url"):
                         raise RuntimeError("YooKassa не вернула confirmation_url")
                     return data
-            except (aiohttp.ClientConnectionError, aiohttp.ServerTimeoutError, asyncio.TimeoutError) as exc:
+            # Повторяем любой сетевой сбой: Idempotence-Key гарантирует, что
+            # повтор не создаст второй платёж, даже если запрос всё-таки дошёл.
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 last_error = exc
-                if attempt == 2:
+                if attempt == max_attempts - 1:
                     break
-                delay = 1 + attempt
+                delay = 2 ** attempt
                 logger.warning(
-                    "YooKassa: временная ошибка соединения при создании платежа %s, повтор через %s сек. Попытка %s/3",
+                    "YooKassa: временная ошибка соединения при создании платежа %s, повтор через %s сек. Попытка %s/%s",
                     idempotence_key,
                     delay,
                     attempt + 1,
+                    max_attempts,
                 )
                 await asyncio.sleep(delay)
         if last_error is not None:
@@ -819,6 +832,8 @@ def get_user_router() -> Router:
     @user_router.message(CommandStart())
     @anti_spam
     async def start_handler(message: types.Message, state: FSMContext, bot: Bot, command: CommandObject):
+        if message.from_user.is_bot:
+            return
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.full_name
         referrer_id = None
@@ -831,8 +846,16 @@ def get_user_router() -> Router:
             try:
                 potential_referrer_id = int(command.args.split('_')[1])
                 if potential_referrer_id != user_id:
-                    referrer_id = potential_referrer_id
-                    logger.info(f"Пользователь {user_id} пришел по реферальной ссылке от {referrer_id}")
+                    # Ссылку могли сгенерировать до бана или вовсе подставить
+                    # чужой id — привязываемся только к живому реферу.
+                    potential_referrer = get_user(potential_referrer_id)
+                    if not potential_referrer:
+                        logger.info(f"Реферер {potential_referrer_id} не найден, привязка пропущена")
+                    elif potential_referrer.get('is_banned'):
+                        logger.info(f"Реферер {potential_referrer_id} заблокирован, привязка пропущена")
+                    else:
+                        referrer_id = potential_referrer_id
+                        logger.info(f"Пользователь {user_id} пришел по реферальной ссылке от {referrer_id}")
             except (IndexError, ValueError):
                 logger.warning(f"Получен некорректный реферальный код: {command.args}")
                 
@@ -4042,6 +4065,9 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
             # Реферальные начисления за пополнение
             if (pay_method or '').lower() != 'balance':
                 ref_id = user_info.get('referred_by')
+                # Реферера могли забанить уже после привязки — начислять ему нечего.
+                if ref_id and not _referrer_is_payable(ref_id):
+                    ref_id = None
                 if ref_id:
                     # Проверка индивидуального реферального процента для seller
                     seller_ref_percent = get_seller_referral_percent(int(ref_id))
@@ -4203,6 +4229,9 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
             # Реферальные начисления за покупку
             if (pay_method or '').lower() != 'balance':
                 u_data = get_user(uid) or {}; ref_id = u_data.get('referred_by')
+                # Реферера могли забанить уже после привязки — начислять ему нечего.
+                if ref_id and not _referrer_is_payable(ref_id):
+                    ref_id = None
                 if ref_id:
                     # Проверка индивидуального реферального процента для seller
                     seller_ref_percent = get_seller_referral_percent(int(ref_id))

@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 import json
 import re
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -236,6 +237,8 @@ def initialize_db():
                     referral_start_bonus_received BOOLEAN DEFAULT 0,
                     is_pinned BOOLEAN DEFAULT 0,
                     seller_active INTEGER DEFAULT 0,
+                    app_theme TEXT DEFAULT 'violet',
+                    email_verified INTEGER DEFAULT 0,
                     auth_token TEXT,
                     auth_email TEXT,
                     auth_pass TEXT
@@ -271,7 +274,8 @@ def initialize_db():
                     traffic_limit_strategy TEXT DEFAULT 'NO_RESET',
                     tag TEXT,
                     description TEXT,
-                    comment_key TEXT
+                    comment_key TEXT,
+                    is_pinned BOOLEAN DEFAULT 0
                 )
             ''')
 
@@ -528,6 +532,18 @@ def initialize_db():
                 "monitoring_disk_threshold": "90",
                 "monitoring_alert_cooldown_sec": "3600",
 
+                # Отправка почты: подтверждение адреса и сброс пароля в веб-аппе.
+                "smtp_enabled": "false",
+                "smtp_host": None,
+                "smtp_port": "587",
+                "smtp_security": "starttls",
+                "smtp_user": None,
+                "smtp_password": None,
+                "smtp_from_email": None,
+                "smtp_from_name": None,
+                # Пускать в кабинет до подтверждения адреса или нет.
+                "email_verification_required": "false",
+
                 "payment_button_balance_text": None,
                 "payment_button_yookassa_text": None,
                 "payment_button_platega_payform_text": None,
@@ -723,6 +739,10 @@ def _ensure_users_columns(cursor: sqlite3.Cursor) -> None:
         "referral_start_bonus_received": "BOOLEAN DEFAULT 0",
         "is_pinned": "BOOLEAN DEFAULT 0",
         "seller_active": "INTEGER DEFAULT 0",
+        # Цветовая схема веб-аппа, выбранная самим пользователем.
+        "app_theme": "TEXT DEFAULT 'violet'",
+        # 1 — адрес почты подтверждён кодом из письма.
+        "email_verified": "INTEGER DEFAULT 0",
         # 1 — имя задано вручную в панели, автосинк из Telegram его не трогает.
         "username_manually_set": "BOOLEAN DEFAULT 0",
         "auth_token": "TEXT",
@@ -1284,7 +1304,8 @@ def _rebuild_vpn_keys_table(cursor: sqlite3.Cursor) -> None:
             traffic_limit_strategy TEXT DEFAULT 'NO_RESET',
             tag TEXT,
             description TEXT,
-            comment_key TEXT
+            comment_key TEXT,
+            is_pinned BOOLEAN DEFAULT 0
         )
     ''')
     old_columns = _get_table_columns(cursor, "vpn_keys_legacy")
@@ -1320,6 +1341,7 @@ def _rebuild_vpn_keys_table(cursor: sqlite3.Cursor) -> None:
         f"{col('tag')} AS tag",
         f"{col('description')} AS description",
         f"{col('comment_key')} AS comment_key",
+        f"{col('is_pinned', '0')} AS is_pinned",
     ])
 
     cursor.execute(
@@ -1341,7 +1363,8 @@ def _rebuild_vpn_keys_table(cursor: sqlite3.Cursor) -> None:
             traffic_limit_strategy,
             tag,
             description,
-            comment_key
+            comment_key,
+            is_pinned
         )
         SELECT
             {select_clause}
@@ -1381,12 +1404,14 @@ def _ensure_vpn_keys_schema(cursor: sqlite3.Cursor) -> None:
                 traffic_limit_strategy TEXT DEFAULT 'NO_RESET',
                 tag TEXT,
                 description TEXT,
-                comment_key TEXT
+                comment_key TEXT,
+                is_pinned BOOLEAN DEFAULT 0
             )
         ''')
         _finalize_vpn_key_indexes(cursor)
         return
     _rebuild_vpn_keys_table(cursor)
+    _ensure_table_column(cursor, "vpn_keys", "is_pinned", "BOOLEAN DEFAULT 0")
 
 
 # ===================================
@@ -1451,6 +1476,7 @@ def run_migration():
             _ensure_support_tickets_columns(cursor)
             _ensure_vpn_keys_schema(cursor)
             _ensure_table_column(cursor, "vpn_keys", "comment_key", "TEXT")
+            _ensure_table_column(cursor, "vpn_keys", "is_pinned", "BOOLEAN DEFAULT 0")
             # общий для бота, вебаппа и админки момент последнего пересоздания подписки
             _ensure_table_column(cursor, "vpn_keys", "last_subscription_reset_at", "INTEGER")
             _ensure_ssh_targets_table(cursor)
@@ -1458,6 +1484,7 @@ def run_migration():
             _ensure_resource_metrics_table(cursor)
             _ensure_gift_tokens_table(cursor)
             _ensure_username_history_table(cursor)
+            _ensure_email_codes_table(cursor)
             _ensure_support_media_table(cursor)
             _ensure_promo_tables(cursor)
             _ensure_webapp_settings_table(cursor)
@@ -1957,6 +1984,29 @@ def _ensure_support_media_table(cursor: sqlite3.Cursor) -> None:
     )
     _ensure_index(cursor, "idx_support_media_ticket", "support_media", "ticket_id")
     _ensure_index(cursor, "idx_support_media_message", "support_media", "message_id")
+
+
+def _ensure_email_codes_table(cursor: sqlite3.Cursor) -> None:
+    """Коды подтверждения почты и сброса пароля.
+
+    Раньше коды сброса жили в словаре в памяти процесса: перезапуск бота (в том
+    числе автоматический после правки настроек) стирал их, и пользователь
+    получал «Код не запрашивался» на верный код.
+    """
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            purpose TEXT NOT NULL,
+            code_hash TEXT NOT NULL,
+            attempts INTEGER DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+        """
+    )
+    _ensure_index(cursor, "idx_email_codes_lookup", "email_codes", "email, purpose")
 
 
 def _ensure_username_history_table(cursor: sqlite3.Cursor) -> None:
@@ -3126,6 +3176,19 @@ def get_referrals_for_user(user_id: int) -> list[dict]:
 # ====================================
 
 
+# ===== DETACH_REFERRALS_FROM_USER =====
+def detach_referrals_from_user(user_id: int) -> int:
+    """Снимает привязку рефералов к пользователю, не трогая сами аккаунты.
+    Возвращает число отвязанных."""
+    cursor = _exec(
+        "UPDATE users SET referred_by = NULL WHERE referred_by = ?",
+        (int(user_id),),
+        f"Не удалось отвязать рефералов пользователя {user_id}",
+    )
+    return cursor.rowcount if cursor else 0
+# ======================================
+
+
 # ===== GET_ALL_SETTINGS =====
 def get_all_settings() -> dict:
     rows = _fetch_list("SELECT key, value FROM bot_settings", (), "Не удалось получить все настройки")
@@ -3531,6 +3594,24 @@ def get_user(telegram_id: int):
 # ==================
 
 
+# ===== APP_THEMES =====
+# Палитры веб-аппа: имя -> набор CSS-переменных, см. app.html.
+APP_THEMES = ("violet", "ocean", "forest", "ember", "rose", "gold")
+DEFAULT_APP_THEME = "violet"
+
+
+def update_user_app_theme(telegram_id: int, app_theme: str) -> bool:
+    if app_theme not in APP_THEMES:
+        return False
+    cursor = _exec(
+        "UPDATE users SET app_theme = ? WHERE telegram_id = ?",
+        (app_theme, telegram_id),
+        f"Не удалось обновить тему пользователя {telegram_id}",
+    )
+    return cursor is not None and cursor.rowcount > 0
+# =======================
+
+
 # ===== UPDATE_USER_USERNAME =====
 def update_user_username(telegram_id: int, username: str) -> bool:
     """Задаёт имя вручную и помечает его, чтобы автосинк из Telegram не перетёр."""
@@ -3566,6 +3647,94 @@ def create_user_by_email(email: str, password_hash: str) -> dict | None:
         return get_user(telegram_id)
     return None
 # =================================
+
+# ===== КОДЫ ПОДТВЕРЖДЕНИЯ ПОЧТЫ =====
+EMAIL_CODE_TTL_SECONDS = 900        # 15 минут
+EMAIL_CODE_RESEND_SECONDS = 60      # не чаще раза в минуту
+EMAIL_CODE_MAX_ATTEMPTS = 5
+
+
+def _hash_email_code(email: str, purpose: str, code: str) -> str:
+    """Код в базе лежит хешем: дампа таблицы недостаточно, чтобы им воспользоваться."""
+    import hashlib
+    material = f"{email.lower().strip()}|{purpose}|{code}".encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+
+def purge_expired_email_codes() -> None:
+    _exec("DELETE FROM email_codes WHERE expires_at < ?", (int(time.time()),),
+          "Не удалось убрать истёкшие коды")
+
+
+def seconds_until_email_code_resend(email: str, purpose: str) -> int:
+    """Сколько ещё ждать до повторной отправки; 0 — можно отправлять."""
+    row = _fetch_row(
+        "SELECT created_at FROM email_codes WHERE email = ? AND purpose = ? ORDER BY id DESC LIMIT 1",
+        (email.lower().strip(), purpose),
+        "Не удалось проверить частоту отправки кода",
+    )
+    if not row:
+        return 0
+    elapsed = int(time.time()) - int(row["created_at"])
+    return max(0, EMAIL_CODE_RESEND_SECONDS - elapsed)
+
+
+def issue_email_code(email: str, purpose: str) -> str:
+    """Выдаёт новый код, гася предыдущие для этой пары адрес+назначение."""
+    import secrets
+    email_lower = email.lower().strip()
+    code = f"{secrets.randbelow(1000000):06d}"
+    now = int(time.time())
+    _exec("DELETE FROM email_codes WHERE email = ? AND purpose = ?", (email_lower, purpose),
+          "Не удалось убрать прежние коды")
+    _exec(
+        "INSERT INTO email_codes (email, purpose, code_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+        (email_lower, purpose, _hash_email_code(email_lower, purpose, code), now, now + EMAIL_CODE_TTL_SECONDS),
+        "Не удалось сохранить код подтверждения",
+    )
+    return code
+
+
+def check_email_code(email: str, purpose: str, code: str, *, consume: bool = False) -> tuple[bool, str]:
+    """Проверяет код. Возвращает (успех, причина отказа).
+
+    consume=True удаляет код — так проверка на последнем шаге не даёт
+    переиспользовать один и тот же код дважды.
+    """
+    email_lower = email.lower().strip()
+    row = _fetch_row(
+        "SELECT id, code_hash, attempts, expires_at FROM email_codes WHERE email = ? AND purpose = ? ORDER BY id DESC LIMIT 1",
+        (email_lower, purpose),
+        "Не удалось получить код подтверждения",
+    )
+    if not row:
+        return False, "Код не запрашивался"
+    if int(row["expires_at"]) < int(time.time()):
+        _exec("DELETE FROM email_codes WHERE id = ?", (row["id"],), "Не удалось убрать истёкший код")
+        return False, "Код устарел — запросите новый"
+    if int(row["attempts"] or 0) >= EMAIL_CODE_MAX_ATTEMPTS:
+        _exec("DELETE FROM email_codes WHERE id = ?", (row["id"],), "Не удалось убрать исчерпанный код")
+        return False, "Слишком много попыток — запросите новый код"
+
+    if row["code_hash"] != _hash_email_code(email_lower, purpose, (code or "").strip()):
+        _exec("UPDATE email_codes SET attempts = attempts + 1 WHERE id = ?", (row["id"],),
+              "Не удалось учесть неверную попытку")
+        return False, "Неверный код"
+
+    if consume:
+        _exec("DELETE FROM email_codes WHERE id = ?", (row["id"],), "Не удалось погасить код")
+    return True, ""
+
+
+def set_email_verified(email: str, verified: bool = True) -> bool:
+    cursor = _exec(
+        "UPDATE users SET email_verified = ? WHERE LOWER(auth_email) = ?",
+        (1 if verified else 0, email.lower().strip()),
+        f"Не удалось отметить почту {email} подтверждённой",
+    )
+    return cursor is not None and cursor.rowcount > 0
+# ====================================
+
 
 # ===== UPDATE_USER_PASSWORD =====
 def update_user_password(email: str, new_password_hash: str) -> bool:
@@ -4172,6 +4341,7 @@ def update_key_fields(
     tag: str | None = None,
     description: str | None = None,
     comment_key: str | None = None,
+    is_pinned: bool | None = None,
 ) -> bool:
     updates: dict[str, Any] = {}
     if user_id is not None:
@@ -4203,6 +4373,8 @@ def update_key_fields(
         updates["description"] = description
     if comment_key is not None:
         updates["comment_key"] = comment_key
+    if is_pinned is not None:
+        updates["is_pinned"] = 1 if is_pinned else 0
     return _apply_key_updates(key_id, updates)
 # ===========================
 

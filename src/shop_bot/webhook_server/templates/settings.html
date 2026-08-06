@@ -77,6 +77,7 @@
             {'id': 'bot', 'label': 'Настройка ботов' if not (all_settings_ok and support_settings_ok) else 'Боты',
             'icon': 'smart_toy'},
             {'id': 'payments', 'label': 'Платежи', 'icon': 'payments'},
+            {'id': 'mail', 'label': 'Почта', 'icon': 'mail'},
             {'id': 'hosts', 'label': 'Хосты', 'icon': 'dns'},
             {'id': 'referrals', 'label': 'Рефералы', 'icon': 'group'},
             {'id': 'content', 'label': 'Контент', 'icon': 'article'}
@@ -620,6 +621,121 @@
             </div>
         </div>
     </section><!-- ===== Конец мониторинга ресурсов ===== -->
+
+
+    <!-- ===== ПОЧТА (SMTP) ===== -->
+    <section id="tab-mail" class="tab-content hidden">
+        <div class="space-y-6">
+            <div
+                class="relative overflow-hidden bg-white/5 border border-white/10 rounded-2xl p-4 shadow-xl backdrop-blur-md">
+                <div class="flex items-center gap-3 mb-5">
+                    <div
+                        class="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                        <span class="material-symbols-outlined text-primary text-lg">mail</span>
+                    </div>
+                    <div class="min-w-0">
+                        <h4 class="text-white font-bold text-sm">Отправка почты</h4>
+                        <p class="text-[10px] text-white/40 leading-tight">Подтверждение адреса и сброс пароля в
+                            веб-аппе. Подойдёт любой SMTP: свой сервер, Яндекс 360, Mailgun, Resend.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <label
+                        class="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-black/30 border border-white/10 cursor-pointer">
+                        <span class="text-[11px] font-bold text-white/80">Отправлять письма</span>
+                        <input type="checkbox" name="smtp_enabled" value="true" class="sr-only peer"
+                            {% if settings.smtp_enabled in ['true', '1', 'on', 'yes'] %}checked{% endif %} />
+                        <span
+                            class="w-9 h-5 rounded-full bg-white/10 relative transition-all peer-checked:bg-primary/60 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white/60 after:transition-all peer-checked:after:translate-x-4 peer-checked:after:bg-white shrink-0"></span>
+                    </label>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="space-y-1">
+                            <label class="text-[9px] text-white/40 font-bold ml-1 uppercase">SMTP-сервер</label>
+                            <input type="text" name="smtp_host" value="{{ settings.smtp_host or '' }}"
+                                placeholder="smtp.yandex.ru" autocomplete="off"
+                                class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:border-primary/50 outline-none" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-white/40 font-bold ml-1 uppercase">Порт</label>
+                                <input type="number" name="smtp_port" value="{{ settings.smtp_port or '587' }}"
+                                    placeholder="587"
+                                    class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:border-primary/50 outline-none" />
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-white/40 font-bold ml-1 uppercase">Шифрование</label>
+                                {% set security = settings.smtp_security or 'starttls' %}
+                                <select name="smtp_security"
+                                    class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:border-primary/50 outline-none">
+                                    <option value="starttls" {% if security == 'starttls' %}selected{% endif %}>STARTTLS (587)</option>
+                                    <option value="ssl" {% if security == 'ssl' %}selected{% endif %}>SSL/TLS (465)</option>
+                                    <option value="none" {% if security == 'none' %}selected{% endif %}>Без шифрования (25)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[9px] text-white/40 font-bold ml-1 uppercase">Логин</label>
+                            <input type="text" name="smtp_user" value="{{ settings.smtp_user or '' }}"
+                                placeholder="noreply@chorusconnect.cc" autocomplete="off"
+                                class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:border-primary/50 outline-none" />
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[9px] text-white/40 font-bold ml-1 uppercase">Пароль</label>
+                            <input type="password" name="smtp_password" value="{{ settings.smtp_password or '' }}"
+                                placeholder="пароль приложения" autocomplete="new-password"
+                                class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:border-primary/50 outline-none" />
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[9px] text-white/40 font-bold ml-1 uppercase">Адрес отправителя</label>
+                            <input type="email" name="smtp_from_email" value="{{ settings.smtp_from_email or '' }}"
+                                placeholder="noreply@chorusconnect.cc" autocomplete="off"
+                                class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:border-primary/50 outline-none" />
+                            <p class="text-[9px] text-white/30 ml-1">Домен адреса должен совпадать с тем, для которого
+                                настроены SPF и DKIM, иначе письма уйдут в спам.</p>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[9px] text-white/40 font-bold ml-1 uppercase">Имя отправителя</label>
+                            <input type="text" name="smtp_from_name" value="{{ settings.smtp_from_name or '' }}"
+                                placeholder="{{ settings.panel_brand_title or 'VPN' }}" autocomplete="off"
+                                class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:border-primary/50 outline-none" />
+                        </div>
+                    </div>
+
+                    <label
+                        class="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-black/30 border border-white/10 cursor-pointer">
+                        <span class="min-w-0">
+                            <span class="block text-[11px] font-bold text-white/80">Требовать подтверждения почты</span>
+                            <span class="block text-[9px] text-white/35 leading-tight">Без подтверждения в кабинет не
+                                пустит. Аккаунты, заведённые раньше, проверка не затрагивает.</span>
+                        </span>
+                        <input type="checkbox" name="email_verification_required" value="true" class="sr-only peer"
+                            {% if settings.email_verification_required in ['true', '1', 'on', 'yes'] %}checked{% endif %} />
+                        <span
+                            class="w-9 h-5 rounded-full bg-white/10 relative transition-all peer-checked:bg-primary/60 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white/60 after:transition-all peer-checked:after:translate-x-4 peer-checked:after:bg-white shrink-0"></span>
+                    </label>
+
+                    <div class="pt-3 border-t border-white/10 space-y-2">
+                        <p class="text-[10px] text-white/40">Проверка отправляет одно письмо по указанному адресу.
+                            Настройки при этом берутся из базы — сначала сохраните форму.</p>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input type="email" id="smtp-test-email" placeholder="куда отправить проверку"
+                                autocomplete="off"
+                                class="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:border-primary/50 outline-none" />
+                            <button type="button" id="btn-smtp-test"
+                                class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white/80 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all whitespace-nowrap flex items-center justify-center gap-1.5">
+                                <span class="material-symbols-outlined text-sm">send</span>
+                                Отправить проверку
+                            </button>
+                        </div>
+                        <div id="smtp-test-result" class="text-[10px] hidden"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- ===== Конец почты ===== -->
 
 
     <section id="tab-bot" class="tab-content hidden">
@@ -2083,9 +2199,9 @@
                                         </div>
                                     </div>
 
-                                    <div class="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-white/5">
+                                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-2 mt-4 pt-4 border-t border-white/5">
                                         <button type="button"
-                                            class="px-4 py-1.5 rounded-lg bg-white/5 text-white font-bold text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-1 border border-white/10"
+                                            class="px-2 py-1.5 rounded-lg bg-white/5 text-white font-bold text-[10px] uppercase tracking-normal whitespace-nowrap hover:bg-white/10 transition-all flex items-center justify-center gap-1 border border-white/10"
                                             onclick="document.getElementById('view-plan-{{ plan.plan_id }}').classList.add('hidden'); document.getElementById('edit-plan-{{ plan.plan_id }}').classList.remove('hidden')">
                                             <span class="material-symbols-outlined text-sm">edit</span> Изменить
                                         </button>
@@ -2093,7 +2209,7 @@
                                             method="post" class="w-full">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                                             <button type="submit"
-                                                class="w-full px-4 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-[10px] font-bold uppercase tracking-widest hover:bg-red-500/20 transition-all flex items-center justify-center gap-1 border border-red-500/10">
+                                                class="w-full px-2 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-[10px] font-bold uppercase tracking-normal whitespace-nowrap hover:bg-red-500/20 transition-all flex items-center justify-center gap-1 border border-red-500/10">
                                                 <span class="material-symbols-outlined text-sm">delete</span> Удалить
                                             </button>
                                         </form>
@@ -2133,7 +2249,7 @@
                                                 {% for val, lbl, cls in [('', '—', 'swatch-default'), ('danger', '🔴', 'swatch-danger'), ('success', '🟢', 'swatch-success'), ('primary', '🔵', 'swatch-primary')] %}
                                                 <label class="cursor-pointer">
                                                     <input type="radio" name="button_style" value="{{ val }}" class="sr-only peer" {% if p_style == val %}checked{% endif %} />
-                                                    <span class="inline-flex items-center justify-center w-6 h-6 rounded text-[10px] font-bold border peer-checked:ring-2 peer-checked:ring-primary peer-checked:border-primary border-white/10 hover:border-white/30 {{ cls }}">{{ lbl }}</span>
+                                                    <span class="inline-flex items-center justify-center w-5 h-5 rounded text-[9px] font-bold border border-white/5 peer-checked:ring-1 peer-checked:ring-primary peer-checked:border-primary hover:border-white/20 {{ cls }}">{{ lbl }}</span>
                                                 </label>
                                                 {% endfor %}
                                             </div>
@@ -2206,7 +2322,7 @@
                                         {% for val, lbl, cls in [('', '—', 'swatch-default'), ('danger', '🔴', 'swatch-danger'), ('success', '🟢', 'swatch-success'), ('primary', '🔵', 'swatch-primary')] %}
                                         <label class="cursor-pointer">
                                             <input type="radio" name="button_style" value="{{ val }}" class="sr-only peer" {% if val == '' %}checked{% endif %} />
-                                            <span class="inline-flex items-center justify-center w-6 h-6 rounded text-[10px] font-bold border peer-checked:ring-2 peer-checked:ring-primary peer-checked:border-primary border-white/10 hover:border-white/30 {{ cls }}">{{ lbl }}</span>
+                                            <span class="inline-flex items-center justify-center w-5 h-5 rounded text-[9px] font-bold border border-white/5 peer-checked:ring-1 peer-checked:ring-primary peer-checked:border-primary hover:border-white/20 {{ cls }}">{{ lbl }}</span>
                                         </label>
                                         {% endfor %}
                                     </div>
@@ -2803,7 +2919,7 @@
                             {% for val, lbl, cls in [('', '—', 'swatch-default'), ('danger', '🔴', 'swatch-danger'), ('success', '🟢', 'swatch-success'), ('primary', '🔵', 'swatch-primary')] %}
                             <label class="cursor-pointer">
                                 <input type="radio" name="{{ f.b }}_button_style" value="{{ val }}" class="sr-only peer" {% if cur_style == val %}checked{% endif %} />
-                                <span class="inline-flex items-center justify-center w-6 h-6 rounded text-[10px] font-bold border peer-checked:ring-2 peer-checked:ring-primary peer-checked:border-primary border-white/10 hover:border-white/30 {{ cls }}">{{ lbl }}</span>
+                                <span class="inline-flex items-center justify-center w-5 h-5 rounded text-[9px] font-bold border border-white/5 peer-checked:ring-1 peer-checked:ring-primary peer-checked:border-primary hover:border-white/20 {{ cls }}">{{ lbl }}</span>
                             </label>
                             {% endfor %}
                         </div>
@@ -3445,6 +3561,22 @@
         } catch (e) { showToast('danger', 'Ошибка: ' + e.message); }
     }
 
+    // Те же свотчи, что и в серверном шаблоне: без них перерисованная карточка
+    // теряла выбранный цвет, и следующее сохранение затирало оформление.
+    function planStyleSwatches(plan) {
+        const current = plan.button_style || '';
+        return [
+            ['', '—', 'swatch-default'],
+            ['danger', '🔴', 'swatch-danger'],
+            ['success', '🟢', 'swatch-success'],
+            ['primary', '🔵', 'swatch-primary'],
+        ].map(([val, lbl, cls]) => `
+            <label class="cursor-pointer">
+                <input type="radio" name="button_style" value="${val}" class="sr-only peer" ${current === val ? 'checked' : ''} />
+                <span class="inline-flex items-center justify-center w-5 h-5 rounded text-[9px] font-bold border border-white/5 peer-checked:ring-1 peer-checked:ring-primary peer-checked:border-primary hover:border-white/20 ${cls}">${lbl}</span>
+            </label>`).join('');
+    }
+
     function renderPlanCard(plan, csrfToken) {
         const traffic = plan.traffic_limit_gb || '∞';
         const hwid = plan.hwid_limit || '∞';
@@ -3472,16 +3604,16 @@
                         </div>
                     </div>
                 </div>
-                <div class="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-white/5">
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-2 mt-4 pt-4 border-t border-white/5">
                     <button type="button"
                         onclick="document.getElementById('view-plan-${plan.plan_id}').classList.add('hidden'); document.getElementById('edit-plan-${plan.plan_id}').classList.remove('hidden')"
-                        class="px-4 py-1.5 rounded-lg bg-white/5 text-white font-bold text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-1 border border-white/10">
+                        class="px-2 py-1.5 rounded-lg bg-white/5 text-white font-bold text-[10px] uppercase tracking-normal whitespace-nowrap hover:bg-white/10 transition-all flex items-center justify-center gap-1 border border-white/10">
                         <span class="material-symbols-outlined text-sm">edit</span> Изменить
                     </button>
                     <form action="/delete-plan/${plan.plan_id}" method="post" data-confirm="Удалить тариф '${plan.plan_name}'?" class="w-full">
                         <input type="hidden" name="csrf_token" value="${csrfToken}" />
                         <button type="submit"
-                            class="w-full px-4 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-[10px] font-bold uppercase tracking-widest hover:bg-red-500/20 transition-all flex items-center justify-center gap-1 border border-red-500/10">
+                            class="w-full px-2 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-[10px] font-bold uppercase tracking-normal whitespace-nowrap hover:bg-red-500/20 transition-all flex items-center justify-center gap-1 border border-red-500/10">
                             <span class="material-symbols-outlined text-sm">delete</span> Удалить
                         </button>
                     </form>
@@ -3506,7 +3638,12 @@
                         <input type="number" name="hwid_limit" value="${plan.hwid_limit || ''}" placeholder="HWID"
                             class="bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 text-white text-[11px] focus:ring-1 focus:ring-primary/40 focus:outline-none" />
                     </div>
-                    <div class="grid grid-cols-2 gap-2 mt-auto pt-2">
+                    <div class="space-y-1.5">
+                        <div class="flex justify-center gap-1 items-center flex-wrap">${planStyleSwatches(plan)}</div>
+                        <input type="text" name="icon_emoji_id" value="${plan.icon_emoji_id || ''}" placeholder="Emoji ID"
+                            class="w-full bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-[10px] focus:ring-1 focus:ring-primary/40 focus:outline-none" />
+                    </div>
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-2 mt-auto pt-2">
                         <button type="submit"
                             class="px-4 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/70 text-[10px] font-bold uppercase tracking-widest hover:bg-primary/20 hover:text-white hover:border-primary/30 transition-all">ОК</button>
                         <button type="button"
@@ -3517,6 +3654,40 @@
             </div>
         </div>`;
     }
+
+    // ===== ПРОВЕРКА ОТПРАВКИ ПОЧТЫ =====
+    // Письмо уходит на сервере с сохранёнными настройками, поэтому кнопка
+    // честно предупреждает: сначала сохраните форму.
+    document.getElementById('btn-smtp-test')?.addEventListener('click', async function () {
+        const input = document.getElementById('smtp-test-email');
+        const result = document.getElementById('smtp-test-result');
+        const email = (input?.value || '').trim();
+        const report = (text, ok) => {
+            result.textContent = text;
+            result.className = 'text-[10px] ' + (ok ? 'text-emerald-400' : 'text-red-400');
+            result.classList.remove('hidden');
+        };
+        if (!email) return report('Укажите адрес, куда отправить проверку', false);
+
+        this.disabled = true;
+        const label = this.innerHTML;
+        this.innerHTML = 'Отправка…';
+        try {
+            const formData = new FormData();
+            formData.append('email', email);
+            formData.append('csrf_token', document.querySelector('input[name="csrf_token"]')?.value);
+            const resp = await fetch('/settings/smtp-test', {
+                method: 'POST', body: formData, credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const res = await resp.json().catch(() => ({ ok: false, error: 'Некорректный ответ сервера' }));
+            report(res.ok ? ('Письмо отправлено на ' + email) : (res.error || 'Не удалось отправить'), !!res.ok);
+        } catch (e) {
+            report('Ошибка сети: ' + e.message, false);
+        }
+        this.disabled = false;
+        this.innerHTML = label;
+    });
 
     // ===== ОБРАБОТКА SSH ЦЕЛЕЙ =====
     // Аналогичная логика для SSH целей, чтобы избежать reloadContent

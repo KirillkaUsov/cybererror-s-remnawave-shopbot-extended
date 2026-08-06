@@ -1703,7 +1703,7 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
     def logs_history():
         try:
             lines_count = int(request.args.get('lines', 50))
-            lines_count = min(lines_count, 200) # Принудительное ограничение
+            lines_count = min(lines_count, 800) # Принудительное ограничение
             offset = int(request.args.get('offset', 0))
         except ValueError: return jsonify({'ok': False, 'error': 'Некорректные параметры'})
 

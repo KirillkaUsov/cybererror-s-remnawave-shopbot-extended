@@ -376,7 +376,7 @@
                             <label
                                 class="block text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold mb-4 ml-1">Выберите
                                 количество дней</label>
-                            <div class="grid grid-cols-4 gap-4">
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                                 {% for day in [1, 3, 5, 10] %}
                                 <label class="relative cursor-pointer group">
                                     <input type="radio" name="expiring_days" value="{{ day }}" {{ 'checked' if day==3
@@ -1978,9 +1978,9 @@
 
                             <button type="button" id="btn-load-more-logs" onclick="loadMoreLogsHistory()"
                                 class="ml-1 p-1.5 rounded-lg hover:bg-white/5 text-white/30 hover:text-primary transition-all flex items-center gap-1"
-                                title="Загрузить +200 строк истории">
+                                title="Загрузить +800 строк истории">
                                 <span class="material-symbols-outlined text-sm">history</span>
-                                <span class="text-[9px] font-bold">+200</span>
+                                <span class="text-[9px] font-bold">+800</span>
                             </button>
 
                             <div class="flex items-center gap-1 border-l border-white/10 ml-2 pl-2">
@@ -2989,7 +2989,7 @@
         }
 
         window.loadMoreLogsHistory = function () {
-            loadHistory(200);
+            loadHistory(800);
         };
 
         logsContainer.addEventListener('scroll', () => {

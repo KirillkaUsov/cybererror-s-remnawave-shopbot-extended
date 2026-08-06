@@ -305,6 +305,7 @@ def update_key(
     tag: str | None = None,
     description: str | None = None,
     comment_key: str | None = None,
+    is_pinned: bool | None = None,
 ) -> bool:
     return database.update_key_fields(
         key_id,
@@ -320,6 +321,7 @@ def update_key(
         tag=tag,
         description=description,
         comment_key=comment_key,
+        is_pinned=is_pinned,
     )
 
 
@@ -343,6 +345,7 @@ _LEGACY_FORWARDERS = (
     "create_plan",
     "create_support_ticket",
     "deduct_from_balance",
+    "detach_referrals_from_user",
     "deduct_from_referral_balance",
     "delete_host",
     "delete_key_by_id",
@@ -443,6 +446,7 @@ _LEGACY_FORWARDERS = (
     "update_ticket_subject",
     "update_ticket_thread_info",
     "update_user_stats",
+    "update_user_app_theme",
 
     "get_all_ssh_targets",
     "get_ssh_target",

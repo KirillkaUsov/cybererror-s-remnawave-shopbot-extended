@@ -43,7 +43,7 @@ from shop_bot.data_manager.remnawave_repository import (
     update_key, get_key_by_email
 )
 import shop_bot.data_manager.remnawave_repository as rw_repo
-from shop_bot.data_manager.database import get_seller_user, get_device_tiers, get_host
+from shop_bot.data_manager.database import get_seller_user, get_device_tiers, get_host, APP_THEMES, DEFAULT_APP_THEME
 from shop_bot.modules import remnawave_api
 from shop_bot.modules import device_addon
 from shop_bot.modules import fortune_wheel
@@ -286,6 +286,7 @@ def _process_template_placeholders(html: str, user_id: int, webapp_settings: dic
         "{{ webapp_logo }}": context_data.get("webapp_logo", ""),
         "{{ webapp_icon }}": context_data.get("webapp_icon", ""),
         "{{ user_id }}": str(user_id),
+        "{{ user_app_theme }}": context_data.get("user_app_theme") or DEFAULT_APP_THEME,
         # В полноэкранном режиме Telegram рисует свои контролы поверх страницы —
         # резервируем место сверху через ту же переменную, что использует вся вёрстка.
         # Запасной отступ для клиентов, которые ещё не сообщают свои
@@ -338,6 +339,7 @@ def _process_key_data(key: dict, number: int | None = None) -> dict:
     
     # 2. Days left & Detailed remaining
     delta = expire_dt - now
+    is_active = delta.total_seconds() > 0
     days_left = delta.days
     if days_left < 0:
         days_left = 0
@@ -436,12 +438,15 @@ def _process_key_data(key: dict, number: int | None = None) -> dict:
     # Safety: Created Date String
     created_date_str = created_dt.strftime("%d.%m.%Y")
 
-    if days_left > 5:
+    # Считаем по факту оставшегося времени, а не по целым дням: у подписки,
+    # которой осталось меньше суток, days_left == 0, и она ошибочно попадала
+    # в «Истекла».
+    if is_active and days_left > 5:
         # статус относится к подписке — женский род
         status_text = "Бессрочная" if is_unlimited else "Активна"
         status_color = "text-emerald-500"
         status_bg = "bg-emerald-500/10"
-    elif days_left > 0:
+    elif is_active:
         status_text = "Истекает"
         status_color = "text-yellow-500"
         status_bg = "bg-yellow-500/10"
@@ -473,6 +478,8 @@ def _process_key_data(key: dict, number: int | None = None) -> dict:
         "status_text": status_text,
         "status_color": status_color,
         "status_bg": status_bg,
+        "is_active": is_active,
+        "is_pinned": bool(key.get('is_pinned')),
         "comment_key": key.get('comment_key') or "",
         "host_name": key.get('host_name') or "",
         "device_addon": _host_sells_devices(key.get('host_name')),
@@ -700,6 +707,9 @@ async def _render_main_page(user_id: int):
     context = {
         "webapp_logo": webapp_settings.get("webapp_logo") or "",
         "webapp_icon": webapp_settings.get("webapp_icon") or "",
+        # Палитра подставляется в разметку, а не выставляется скриптом:
+        # иначе первый кадр успевает мигнуть цветом по умолчанию.
+        "user_app_theme": (user or {}).get("app_theme") or DEFAULT_APP_THEME,
     }
 
     content = _process_template_placeholders(content, user_id, webapp_settings, context)
@@ -872,9 +882,6 @@ class PasswordResetVerifyRequest(BaseModel):
     email: str
     code: str
     new_password: str
-
-# Stores dict: { "email@bot.local": {"code": "123456", "expires": float_timestamp} }
-PASSWORD_RESET_TOKENS = {}
 
 class SyncTgRequest(BaseModel):
     token: str
@@ -1247,23 +1254,136 @@ def _validate_password(password: str) -> str | None:
         return "Пароль слишком простой — используйте разные символы"
     return None
 
+VERIFY_PURPOSE = "verify_email"
+RESET_PURPOSE = "password_reset"
+
+
+def _verification_required() -> bool:
+    return (get_setting("email_verification_required") or "").strip().lower() in ("1", "true", "on", "yes")
+
+
+def _code_ttl_minutes() -> int:
+    from shop_bot.data_manager import database
+    return max(1, database.EMAIL_CODE_TTL_SECONDS // 60)
+
+
+async def _deliver_code(email: str, purpose: str, code: str, telegram_id: int | None) -> tuple[bool, str, str]:
+    """Отправляет код письмом, а если почта не настроена — в Telegram.
+
+    Возвращает (успех, куда доставлено, текст ошибки).
+    """
+    from shop_bot.modules import mailer
+
+    minutes = _code_ttl_minutes()
+    if mailer.is_configured():
+        try:
+            if purpose == VERIFY_PURPOSE:
+                await mailer.send_verification_code(email, code, minutes)
+            else:
+                await mailer.send_password_reset_code(email, code, minutes)
+            return True, "email", ""
+        except mailer.MailError as e:
+            logger.error("[WEBAPP] - Письмо на %s не ушло: %s", email, e)
+            # Дальше пробуем Telegram: лучше доставить хоть как-то.
+        except Exception as e:
+            logger.error("[WEBAPP] - Ошибка отправки письма на %s: %s", email, e)
+
+    # Аккаунты с синтетическим id (999XXXXXXX) не привязаны к Telegram —
+    # отправлять туда нечего.
+    if telegram_id and not str(telegram_id).startswith("999"):
+        title = "Подтверждение почты" if purpose == VERIFY_PURPOSE else "Восстановление пароля"
+        sent = await _send_telegram_message(
+            telegram_id,
+            f"🔐 <b>{title}</b>\n\nВаш код:\n<code>{code}</code>\n\n"
+            f"<i>Код действителен {minutes} мин. Если вы ничего не запрашивали, "
+            f"проигнорируйте это сообщение.</i>",
+        )
+        if sent:
+            return True, "telegram", ""
+
+    return False, "", "Отправить код некуда: почта не настроена, Telegram не привязан"
+
+
 @app.post("/api/auth/email/register")
 async def api_email_register(req: EmailAuthRequest):
     from shop_bot.data_manager import database
-    existing = database.get_user_by_email(req.email)
+    from shop_bot.modules import mailer
+
+    email = (req.email or "").strip()
+    if not mailer.is_valid_email(email):
+        return {"ok": False, "error": "Введите корректный адрес почты"}
+
+    existing = database.get_user_by_email(email)
     if existing:
         return {"ok": False, "error": "Email уже зарегистрирован"}
-        
+
     pw_err = _validate_password(req.password)
     if pw_err:
         return {"ok": False, "error": pw_err}
-    user = database.create_user_by_email(req.email, passwords.hash_password(req.password))
+    user = database.create_user_by_email(email, passwords.hash_password(req.password))
     if not user:
         return {"ok": False, "error": "Ошибка при регистрации"}
-        
+
     token = str(uuid.uuid4())
     database.update_user_auth_token(user['telegram_id'], token)
-    return {"ok": True, "token": token}
+
+    # Письмо — вежливость, а не условие регистрации: если SMTP молчит,
+    # аккаунт уже создан и человек войдёт, просто без отметки о подтверждении.
+    code = database.issue_email_code(email, VERIFY_PURPOSE)
+    delivered, channel, _ = await _deliver_code(email, VERIFY_PURPOSE, code, user['telegram_id'])
+
+    return {
+        "ok": True,
+        "token": token,
+        "verification_sent": delivered,
+        "verification_channel": channel,
+        "verification_required": _verification_required(),
+    }
+
+
+@app.post("/api/auth/email/verify/request")
+async def api_email_verify_request(req: PasswordResetRequest):
+    """Повторная отправка кода подтверждения."""
+    from shop_bot.data_manager import database
+
+    email = (req.email or "").strip()
+    user = database.get_user_by_email(email)
+    if not user:
+        return {"ok": False, "error": "Email не найден"}
+    if user.get("email_verified"):
+        return {"ok": False, "error": "Почта уже подтверждена"}
+
+    wait = database.seconds_until_email_code_resend(email, VERIFY_PURPOSE)
+    if wait:
+        return {"ok": False, "error": f"Следующий код можно запросить через {wait} с"}
+
+    code = database.issue_email_code(email, VERIFY_PURPOSE)
+    delivered, channel, error = await _deliver_code(email, VERIFY_PURPOSE, code, user['telegram_id'])
+    if not delivered:
+        return {"ok": False, "error": error}
+    return {"ok": True, "channel": channel, "ttl_minutes": _code_ttl_minutes()}
+
+
+@app.post("/api/auth/email/verify")
+async def api_email_verify(req: PasswordResetCheckRequest):
+    """Подтверждение адреса кодом из письма."""
+    from shop_bot.data_manager import database
+
+    email = (req.email or "").strip()
+    user = database.get_user_by_email(email)
+    if not user:
+        return {"ok": False, "error": "Email не найден"}
+    if user.get("email_verified"):
+        return {"ok": True, "already": True}
+
+    ok, reason = database.check_email_code(email, VERIFY_PURPOSE, req.code, consume=True)
+    if not ok:
+        return {"ok": False, "error": reason}
+
+    database.set_email_verified(email, True)
+    logger.info("[WEBAPP] - Почта %s подтверждена", email)
+    return {"ok": True}
+
 
 @app.post("/api/auth/email/login")
 async def api_email_login(req: EmailAuthRequest):
@@ -1282,81 +1402,85 @@ async def api_email_login(req: EmailAuthRequest):
         database.update_user_password(req.email, passwords.hash_password(req.password))
         logger.info(f"[WEBAPP] - Пароль аккаунта {user['telegram_id']} переведён на хеш при входе")
 
+    # Требование подтверждения включается в панели. Аккаунты, заведённые до
+    # появления этой проверки, не запираем: у них email_verified = 0 просто
+    # потому, что подтверждать было нечем.
+    if _verification_required() and not user.get('email_verified'):
+        wait = database.seconds_until_email_code_resend(req.email, VERIFY_PURPOSE)
+        if not wait:
+            code = database.issue_email_code(req.email, VERIFY_PURPOSE)
+            await _deliver_code(req.email, VERIFY_PURPOSE, code, user['telegram_id'])
+        return {
+            "ok": False,
+            "error": "Подтвердите адрес почты — код отправлен",
+            "verification_required": True,
+            "email": req.email.strip(),
+        }
+
     token = str(uuid.uuid4())
     database.update_user_auth_token(user['telegram_id'], token)
     return {"ok": True, "token": token}
 
 @app.post("/api/auth/email/reset/request")
 async def api_email_reset_request(req: PasswordResetRequest):
+    """Код для смены пароля. Уходит письмом, а без настроенного SMTP — в Telegram."""
     from shop_bot.data_manager import database
-    user = database.get_user_by_email(req.email)
+
+    email = (req.email or "").strip()
+    user = database.get_user_by_email(email)
     if not user:
         return {"ok": False, "error": "Email не найден"}
-        
-    if str(user['telegram_id']).startswith("999"):
-        return {"ok": False, "error": "Аккаунт не синхронизирован с Telegram.\nОтправить сообщение невозможно!"}
 
-    import random
-    import time
-    code = str(random.randint(100000, 999999))
-    PASSWORD_RESET_TOKENS[req.email.lower().strip()] = {
-        "code": code,
-        "expires": time.time() + 600
-    }
-    
-    try:
-        success = await _send_telegram_message(
-            user['telegram_id'], 
-            f"🔐 <b>Восстановление пароля</b>\n\nВаш код для сброса безопасности:\n<code>{code}</code>\n\n<i>Код действителен 10 минут. Если вы не запрашивали сброс пароля, проигнорируйте это сообщение.</i>"
-        )
-        if not success:
-            return {"ok": False, "error": "Ошибка при отправке в Telegram. Возможно, вы заблокировали бота."}
-    except Exception as e:
-        logger.error(f"[WEBAPP] - Ошибка вызова _send_telegram_message для {req.email}: {e}")
-        return {"ok": False, "error": "Ошибка при отправке в Telegram. Возможно, вы заблокировали бота."}
+    wait = database.seconds_until_email_code_resend(email, RESET_PURPOSE)
+    if wait:
+        return {"ok": False, "error": f"Следующий код можно запросить через {wait} с"}
 
-    return {"ok": True}
+    code = database.issue_email_code(email, RESET_PURPOSE)
+    delivered, channel, error = await _deliver_code(email, RESET_PURPOSE, code, user['telegram_id'])
+    if not delivered:
+        return {"ok": False, "error": error or "Не удалось отправить код"}
+
+    return {"ok": True, "channel": channel, "ttl_minutes": _code_ttl_minutes()}
+
 
 @app.post("/api/auth/email/reset/check")
 async def api_email_reset_check(req: PasswordResetCheckRequest):
-    import time
-    email_lower = req.email.lower().strip()
-    if email_lower not in PASSWORD_RESET_TOKENS:
-        return {"ok": False, "error": "Код не запрашивался или истёк"}
-        
-    token_data = PASSWORD_RESET_TOKENS[email_lower]
-    if time.time() > token_data["expires"]:
-        return {"ok": False, "error": "Код устарел"}
-        
-    if token_data["code"] != req.code:
-        return {"ok": False, "error": "Неверный код"}
-        
+    """Промежуточная проверка кода — пароль здесь ещё не меняется, поэтому
+    код не гасим: его предъявят ещё раз на шаге сохранения."""
+    from shop_bot.data_manager import database
+
+    ok, reason = database.check_email_code(req.email, RESET_PURPOSE, req.code)
+    if not ok:
+        return {"ok": False, "error": reason}
     return {"ok": True}
+
 
 @app.post("/api/auth/email/reset/verify")
 async def api_email_reset_verify(req: PasswordResetVerifyRequest):
-    import time
-    email_lower = req.email.lower().strip()
-    if email_lower not in PASSWORD_RESET_TOKENS:
-        return {"ok": False, "error": "Код не запрашивался или истёк"}
-        
-    token_data = PASSWORD_RESET_TOKENS[email_lower]
-    if time.time() > token_data["expires"]:
-        del PASSWORD_RESET_TOKENS[email_lower]
-        return {"ok": False, "error": "Код устарел"}
-        
-    if token_data["code"] != req.code:
-        return {"ok": False, "error": "Неверный код"}
-        
     from shop_bot.data_manager import database
+
+    email = (req.email or "").strip()
     pw_err = _validate_password(req.new_password)
     if pw_err:
         return {"ok": False, "error": pw_err}
-    if not database.update_user_password(req.email, passwords.hash_password(req.new_password)):
+
+    ok, reason = database.check_email_code(email, RESET_PURPOSE, req.code, consume=True)
+    if not ok:
+        return {"ok": False, "error": reason}
+
+    if not database.update_user_password(email, passwords.hash_password(req.new_password)):
         return {"ok": False, "error": "Ошибка базы данных"}
-        
-    del PASSWORD_RESET_TOKENS[email_lower]
+
+    # Пароль сменили — прежняя сессия больше не считается доверенной.
+    user = database.get_user_by_email(email)
+    if user:
+        database.update_user_auth_token(user['telegram_id'], str(uuid.uuid4()))
+    # Доступ к почтовому ящику подтверждён самим фактом получения кода.
+    if user and not user.get('email_verified'):
+        database.set_email_verified(email, True)
+    logger.info("[WEBAPP] - Пароль для %s изменён по коду, старые сессии сброшены", email)
     return {"ok": True}
+
 
 @app.post("/api/auth/sync-tg")
 async def api_sync_tg(req: SyncTgRequest):
@@ -2251,6 +2375,47 @@ class CommentRequest(BaseModel):
     key_id: int
     comment: str
 
+class KeyPinRequest(BaseModel):
+    user_id: int
+    key_id: int
+    pinned: bool
+
+class UserThemeRequest(BaseModel):
+    user_id: int
+    theme: str
+
+@app.post("/api/key/pin")
+async def api_key_pin(req: KeyPinRequest, auth: dict = Depends(webapp_user)):
+    """Закрепление подписки — закреплённые идут первыми в списке."""
+    req.user_id = session_user_id(auth)
+    try:
+        user = get_user(req.user_id)
+        if not user or user.get('is_banned'):
+            return {"ok": False, "error": "Access denied"}
+        from shop_bot.data_manager.remnawave_repository import get_key_by_id
+        key = get_key_by_id(req.key_id)
+        if not key or key.get("user_id") != req.user_id:
+            return {"ok": False, "error": "Ключ не найден"}
+        if not rw_repo.update_key(req.key_id, is_pinned=req.pinned):
+            return {"ok": False, "error": "Не удалось обновить закрепление"}
+        return {"ok": True, "pinned": req.pinned}
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка закрепления ключа {req.key_id}: {e}")
+        return {"ok": False, "error": "Внутренняя ошибка сервера"}
+
+@app.post("/api/user/theme")
+async def api_user_theme(req: UserThemeRequest, auth: dict = Depends(webapp_user)):
+    """Цветовая схема веб-аппа, выбранная пользователем."""
+    req.user_id = session_user_id(auth)
+    if req.theme not in APP_THEMES:
+        return {"ok": False, "error": "Неизвестная тема"}
+    user = get_user(req.user_id)
+    if not user or user.get("is_banned"):
+        return {"ok": False, "error": "Access denied"}
+    if not rw_repo.update_user_app_theme(req.user_id, req.theme):
+        return {"ok": False, "error": "Не удалось сохранить тему"}
+    return {"ok": True, "theme": req.theme}
+
 @app.post("/api/key/devices")
 async def api_key_devices(req: KeyActionRequest, auth: dict = Depends(webapp_user)):
     req.user_id = session_user_id(auth)
@@ -2949,6 +3114,36 @@ async def api_support_send(req: SupportMessageSendRequest, auth: dict = Depends(
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка отправки сообщения в поддержку для {req.user_id}: {e}")
         return {"ok": False, "error": str(e)}
+
+
+class SupportTicketCloseRequest(BaseModel):
+    user_id: int
+    ticket_id: int
+
+
+@app.post("/api/support/close")
+async def api_support_close(req: SupportTicketCloseRequest, auth: dict = Depends(webapp_user)):
+    """Закрытие тикета самим пользователем — раньше это умела только админка."""
+    req.user_id = session_user_id(auth)
+    try:
+        user = get_user(req.user_id)
+        if not user or user.get('is_banned'):
+            return {"ok": False, "error": "Access denied"}
+
+        from shop_bot.data_manager.remnawave_repository import get_ticket, set_ticket_status
+        ticket = get_ticket(req.ticket_id)
+        if not ticket or ticket.get('user_id') != req.user_id:
+            return {"ok": False, "error": "Тикет не найден"}
+        if ticket.get('status') != 'open':
+            return {"ok": False, "error": "Тикет уже закрыт"}
+        if not set_ticket_status(req.ticket_id, 'closed'):
+            return {"ok": False, "error": "Не удалось закрыть тикет"}
+
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка закрытия тикета {req.ticket_id} для {req.user_id}: {e}")
+        return {"ok": False, "error": "Внутренняя ошибка сервера"}
+
 
 class TrialRequest(BaseModel):
     user_id: int
