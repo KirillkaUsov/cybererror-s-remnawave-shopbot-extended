@@ -3851,6 +3851,16 @@ def create_webhook_app(bot_controller_instance):
                  return jsonify({'ok': False, 'error': 'Не указан хост'}), 400
             flash('Не указан хост для обновления Remnawave-настроек.', 'danger')
             return redirect(url_for('settings_page', tab='hosts'))
+
+        # Пустая форма раньше давала «настройки обновлены», хотя не менялось
+        # ничего: поля, которых нет в запросе, до базы просто не доходят.
+        if not (base_url or api_token or squad_uuid):
+            message = 'Поле пустое — менять нечего.'
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'ok': False, 'error': message}), 400
+            flash(message, 'warning')
+            return redirect(url_for('settings_page', tab='hosts'))
+
         ok = update_host_remnawave_settings(
             host_name,
             remnawave_base_url=base_url or None,

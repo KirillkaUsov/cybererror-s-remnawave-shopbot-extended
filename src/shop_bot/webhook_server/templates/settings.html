@@ -1796,6 +1796,39 @@
                             </div>
                         </form>
 
+                        <!-- Токен Remnawave -->
+                        {# Сам токен в разметку не выводим: страница попадает в кэш браузера
+                           и в менеджер паролей. Показываем только хвост, чтобы было понятно,
+                           какой из токенов сейчас стоит. #}
+                        <form action="{{ url_for('update_host_remnawave_route') }}" method="post"
+                            class="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col justify-between group/tile">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                            <input type="hidden" name="host_name" value="{{ host.host_name }}" />
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="material-symbols-outlined text-primary text-sm">key</span>
+                                <label class="text-white/70 text-[10px] font-bold uppercase tracking-wider">Токен
+                                    Remnawave</label>
+                            </div>
+                            <div class="space-y-2 mt-auto">
+                                <p class="text-[10px] text-white/40 ml-1">
+                                    {% if host.get('remnawave_api_token') %}
+                                    Сейчас: <span class="font-mono text-white/60">••••{{
+                                        host.get('remnawave_api_token')[-4:] }}</span>
+                                    {% else %}
+                                    <span class="text-amber-400/80">Не задан — хост не работает</span>
+                                    {% endif %}
+                                </p>
+                                <input type="password" name="remnawave_api_token" value="" autocomplete="off"
+                                    placeholder="Вставьте новый токен"
+                                    class="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:ring-1 focus:ring-primary/40 focus:outline-none transition-all" />
+                                <button type="submit"
+                                    class="group w-full py-2 rounded-lg bg-primary/10 border border-primary/20 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-primary/20 active:scale-95 transition-all duration-300 shadow-lg shadow-black/20 flex items-center justify-center gap-2">
+                                    <span class="material-symbols-outlined text-sm">save</span>
+                                    Заменить
+                                </button>
+                            </div>
+                        </form>
+
                         <!-- Rename Host -->
                         <form action="{{ url_for('rename_host_route') }}" method="post"
                             class="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col justify-between group/tile">
