@@ -16,6 +16,7 @@ from shop_bot.data_manager import backup_manager
 
 from shop_bot.modules import remnawave_api
 from shop_bot.bot import keyboards
+from shop_bot.config import plural
 
 CHECK_INTERVAL_SECONDS = 300
 NOTIFY_BEFORE_HOURS = {72, 48, 24, 1}
@@ -37,21 +38,11 @@ _last_resource_collect_at: datetime | None = None
 _last_resource_alert_at: dict[tuple[str, str, str], datetime] = {}
 
 def format_time_left(hours: int) -> str:
+    """«3 дня» или «5 часов». Склонения — общие с остальным ботом."""
     if hours >= 24:
         days = hours // 24
-        if days % 10 == 1 and days % 100 != 11:
-            return f"{days} день"
-        elif 2 <= days % 10 <= 4 and (days % 100 < 10 or days % 100 >= 20):
-            return f"{days} дня"
-        else:
-            return f"{days} дней"
-    else:
-        if hours % 10 == 1 and hours % 100 != 11:
-            return f"{hours} час"
-        elif 2 <= hours % 10 <= 4 and (hours % 100 < 10 or hours % 100 >= 20):
-            return f"{hours} часа"
-        else:
-            return f"{hours} часов"
+        return f"{days} {plural(days, ('день', 'дня', 'дней'))}"
+    return f"{hours} {plural(hours, ('час', 'часа', 'часов'))}"
 
 async def send_subscription_notification(bot: Bot, user_id: int, key_id: int, time_left_hours: int, expiry_date: datetime) -> bool:
     """True — уведомление доставлено или доставлять его некому; False — сбой,
@@ -61,15 +52,15 @@ async def send_subscription_notification(bot: Bot, user_id: int, key_id: int, ti
         expiry_str = expiry_date.strftime('%d.%m.%Y в %H:%M')
         
         message = (
-            f"⚠️ <b>Подписка скоро закончится</b>\n\n"
-            f"⏳ <b>Осталось:</b> {time_text}\n"
-            f"🕙 <b>Истекает:</b> {expiry_str}\n\n"
-            f"Продлите подписку, чтобы не остаться без доступа к свободному интернету!"
+            f"⏳ <b>Подписка скоро закончится</b>\n\n"
+            f"<b>Осталось:</b> {time_text}\n"
+            f"<b>Действует до:</b> {expiry_str}\n\n"
+            f"Продлите её, чтобы доступ не прервался."
         )
         
         builder = InlineKeyboardBuilder()
-        builder.button(text="🛒 Перейти к тарифам", callback_data="buy_new_key")
-        builder.button(text="🔄 Продлить эту подписку", callback_data=f"extend_key_{key_id}")
+        builder.button(text="🛒 Купить подписку", callback_data="buy_new_key")
+        builder.button(text="➕ Продлить", callback_data=f"extend_key_{key_id}")
         builder.adjust(2)
         
         await bot.send_message(chat_id=user_id, text=message, reply_markup=builder.as_markup(), parse_mode='HTML')
@@ -540,12 +531,13 @@ async def _notify_wheel_ready(bot):
             uid = user.get("telegram_id")
             try:
                 tickets = rw_repo.database.get_wheel_tickets(uid)
-                extra = f"\nУ вас ещё {tickets} билет(ов) — можно крутить не дожидаясь суток." if tickets else ""
+                extra = (f"\nУ вас ещё {tickets} {plural(tickets, ('билет', 'билета', 'билетов'))}"
+                         " — можно крутить, не дожидаясь суток.") if tickets else ""
                 await bot.send_message(
                     chat_id=uid,
                     text=("🎰 <b>Колесо удачи снова доступно</b>\n\n"
                           f"Бесплатный прокрут восстановился.{extra}\n\n"
-                          "<i>Отключить напоминания можно в самом колесе.</i>"),
+                          "<i>Напоминания отключаются там же, в колесе.</i>"),
                     parse_mode="HTML",
                 )
                 rw_repo.database.mark_wheel_notified(uid, now.strftime("%Y-%m-%d %H:%M:%S"))

@@ -22,7 +22,8 @@ class BanMiddleware(BaseMiddleware):
 
         user_data = get_user(user.id)
         if user_data and user_data.get('is_banned'):
-            ban_message_text = "🚫 Вы заблокированы и не можете использовать этого бота."
+            ban_message_text = ("🚫 <b>Доступ закрыт</b>\n\n"
+                                "Ваш аккаунт заблокирован. Если это ошибка — напишите в поддержку.")
 
             try:
                 support = (get_setting("support_bot_username") or get_setting("support_user") or "").strip()
@@ -45,7 +46,7 @@ class BanMiddleware(BaseMiddleware):
                 else:
                     url = f"tg://resolve?domain={support}"
             if url:
-                kb_builder.button(text="🆘 Написать в поддержку", url=url)
+                kb_builder.button(text="🆘 Поддержка", url=url)
             else:
                 kb_builder.button(text="🆘 Поддержка", callback_data="show_help")
             ban_kb = kb_builder.as_markup()

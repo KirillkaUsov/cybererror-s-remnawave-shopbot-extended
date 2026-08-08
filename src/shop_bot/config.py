@@ -29,7 +29,7 @@ STATUS_NONE = "нет подписок"
 STATUS_ICONS = {STATUS_ACTIVE: "🟢", STATUS_EXPIRED: "🔴", STATUS_NONE: "⚪️"}
 
 
-def _plural(n: int, forms: tuple[str, str, str]) -> str:
+def plural(n: int, forms: tuple[str, str, str]) -> str:
     """«1 день», «2 дня», «5 дней»."""
     n = abs(int(n))
     if n % 10 == 1 and n % 100 != 11:
@@ -50,12 +50,12 @@ def get_profile_text(username, user_id, total_spent, total_months, vpn_status, v
     if vpn_status == STATUS_ACTIVE:
         text += f"<b>Осталось:</b> {vpn_remaining}\n"
     if total_months:
-        text += f"<b>Оплачено:</b> {total_months} {_plural(total_months, ('месяц', 'месяца', 'месяцев'))}\n"
+        text += f"<b>Оплачено:</b> {total_months} {plural(total_months, ('месяц', 'месяца', 'месяцев'))}\n"
 
     text += (
         f"\n<b>Баланс:</b> {main_balance:.0f} ₽\n"
         f"<b>Приглашено:</b> {referral_count} "
-        f"{_plural(referral_count, ('человек', 'человека', 'человек'))}\n"
+        f"{plural(referral_count, ('человек', 'человека', 'человек'))}\n"
         f"<b>Заработано:</b> {total_ref_earned:.2f} ₽"
     )
 
@@ -76,9 +76,9 @@ def get_profile_text(username, user_id, total_spent, total_months, vpn_status, v
 
 def get_vpn_active_text(days_left, hours_left):
     if days_left <= 0:
-        return f"{hours_left} {_plural(hours_left, ('час', 'часа', 'часов'))}"
-    return (f"{days_left} {_plural(days_left, ('день', 'дня', 'дней'))} "
-            f"{hours_left} {_plural(hours_left, ('час', 'часа', 'часов'))}")
+        return f"{hours_left} {plural(hours_left, ('час', 'часа', 'часов'))}"
+    return (f"{days_left} {plural(days_left, ('день', 'дня', 'дней'))} "
+            f"{hours_left} {plural(hours_left, ('час', 'часа', 'часов'))}")
 
 def _format_remaining_details(remaining: timedelta) -> str:
     total_seconds = int(remaining.total_seconds())
@@ -92,14 +92,14 @@ def _format_remaining_details(remaining: timedelta) -> str:
 
     parts = []
     if years > 0:
-        parts.append(f"{years} {_plural(years, ('год', 'года', 'лет'))}")
+        parts.append(f"{years} {plural(years, ('год', 'года', 'лет'))}")
     if days > 0:
-        parts.append(f"{days} {_plural(days, ('день', 'дня', 'дней'))}")
+        parts.append(f"{days} {plural(days, ('день', 'дня', 'дней'))}")
     # Часы и минуты рядом с годами не нужны — это шум, а не точность.
     if hours > 0 and years == 0:
-        parts.append(f"{hours} {_plural(hours, ('час', 'часа', 'часов'))}")
+        parts.append(f"{hours} {plural(hours, ('час', 'часа', 'часов'))}")
     if minutes > 0 and not parts:
-        parts.append(f"{minutes} {_plural(minutes, ('минута', 'минуты', 'минут'))}")
+        parts.append(f"{minutes} {plural(minutes, ('минута', 'минуты', 'минут'))}")
 
     return " ".join(parts) if parts else "меньше минуты"
 
