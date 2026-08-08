@@ -2088,7 +2088,7 @@ def get_admin_router() -> Router:
             await callback.answer("❌ Подписка не привязана к серверу", show_alert=True)
             return
 
-        await callback.answer("⏳ Пересоздаю...")
+        await callback.answer("⏳ Пересоздаю…")
 
         try:
             result = await revoke_subscription_on_host(client_uuid, host_name=host_name)
@@ -2316,7 +2316,7 @@ def get_admin_router() -> Router:
             update_setting("admin_telegram_ids", ids_str)
             await message.answer(f"✅ Пользователь {target_id} добавлен в администраторы.")
         except Exception as e:
-            await message.answer(f"❌ Ошибка при сохранении: {e}")
+            await message.answer(f"⚠️ Не сохранилось: {e}")
         await state.clear()
 
         try:
@@ -2404,7 +2404,7 @@ def get_admin_router() -> Router:
             update_setting("admin_telegram_ids", ids_str)
             await message.answer(f"✅ Пользователь {target_id} снят с администраторов.")
         except Exception as e:
-            await message.answer(f"❌ Ошибка при сохранении: {e}")
+            await message.answer(f"⚠️ Не сохранилось: {e}")
         await state.clear()
 
         try:
@@ -2476,7 +2476,7 @@ def get_admin_router() -> Router:
             user_id = int(key.get('user_id'))
         except Exception as e:
             logger.error(f"Неверный user_id для ключа #{key_id}: {key.get('user_id')}, err={e}")
-            await callback.message.answer("❌ Ошибка данных ключа: некорректный пользователь")
+            await callback.message.answer("⚠️ У ключа не проставлен владелец.")
             return
         host = key.get('host_name')
         email = key.get('key_email')
@@ -2856,7 +2856,7 @@ def get_admin_router() -> Router:
             else:
                 await message.answer("❌ Пользователь не найден или ошибка БД")
         except Exception as e:
-            await message.answer(f"❌ Ошибка начисления: {e}")
+            await message.answer(f"⚠️ Не начислилось: {e}")
         await state.clear()
         await show_admin_menu(message)
 
@@ -3011,7 +3011,7 @@ def get_admin_router() -> Router:
             else:
                 await message.answer("❌ Пользователь не найден или недостаточно средств")
         except Exception as e:
-            await message.answer(f"❌ Ошибка списания: {e}")
+            await message.answer(f"⚠️ Не списалось: {e}")
         await state.clear()
         await show_admin_menu(message)
 
@@ -3432,7 +3432,7 @@ def get_admin_router() -> Router:
             await callback.answer("Доступ только для админов", show_alert=True)
             return
         
-        await callback.answer("🔄 Получение данных...")
+        await callback.answer("🔄 Получение данных…")
         
 
         try:
@@ -3604,7 +3604,7 @@ def get_admin_router() -> Router:
             return
         
         host_name = (callback.data or '').split(':',1)[1]
-        await callback.answer("🔄 Подключение к хосту...")
+        await callback.answer("🔄 Подключение к хосту…")
         data = await asyncio.to_thread(resource_monitor.get_remote_metrics_for_host, host_name)
         
         try:
@@ -3734,7 +3734,7 @@ def get_admin_router() -> Router:
             await callback.answer("Цель не найдена", show_alert=True)
             return
         
-        await callback.answer("🔄 Подключение по SSH...")
+        await callback.answer("🔄 Подключение по SSH…")
         data = await asyncio.to_thread(resource_monitor.get_remote_metrics_for_target, tname)
         
         try:
@@ -3841,7 +3841,7 @@ def get_admin_router() -> Router:
             await callback.answer("Доступ только для админов", show_alert=True)
             return
         
-        await callback.answer("🔄 Получение детальной статистики...")
+        await callback.answer("🔄 Получение детальной статистики…")
         data = await asyncio.to_thread(resource_monitor.get_local_metrics)
         
         if not data.get('ok'):
