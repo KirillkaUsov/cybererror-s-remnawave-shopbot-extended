@@ -694,12 +694,36 @@ def is_valid_email(email: str) -> bool:
     return res
 # ===== Конец функции is_valid_email =====
 
+# Лимит Telegram на подпись к медиа. У обычного сообщения он 4096.
+CAPTION_LIMIT = 1024
+
+
+# ===== ОТПРАВКА С КАРТИНКОЙ, ЕСЛИ ОНА УМЕСТНА =====
+# Картинка раздела не должна стоить пользователю самого сообщения: длинный
+# текст в подпись не влезает, и Telegram отклоняет отправку целиком.
+async def answer_with_photo(message: types.Message, text: str, reply_markup=None, photo_path: str = None):
+    from aiogram.types import FSInputFile
+    if photo_path and os.path.exists(photo_path) and len(text) <= CAPTION_LIMIT:
+        return await message.answer_photo(photo=FSInputFile(photo_path), caption=text, reply_markup=reply_markup)
+    return await message.answer(text, reply_markup=reply_markup)
+# ===== Конец функции answer_with_photo =====
+
 # ===== УМНОЕ РЕДАКТИРОВАНИЕ СООБЩЕНИЯ =====
 # Обновляет текст, клавиатуру и медиа-файл в сообщении, либо отправляет новое при необходимости
 async def smart_edit_message(message: types.Message, text: str, reply_markup=None, photo_path: str = None):
     from aiogram.types import FSInputFile, InputMediaPhoto
     has_photo, want_photo = bool(message.photo), bool(photo_path and os.path.exists(photo_path or ""))
-    
+
+    # У подписи к фото лимит 1024 символа против 4096 у обычного текста. Если
+    # текст длиннее, Telegram отвечает "caption is too long", и раздел просто
+    # не открывается. Текст важнее картинки, поэтому картинку отбрасываем.
+    if want_photo and len(text) > CAPTION_LIMIT:
+        logger.info(
+            "Картинка раздела не показана: текст %d символов, в подпись влезает %d",
+            len(text), CAPTION_LIMIT,
+        )
+        want_photo = False
+
     if has_photo and want_photo:
         media = InputMediaPhoto(media=FSInputFile(photo_path), caption=text)
         try: return await message.edit_media(media=media, reply_markup=reply_markup)
@@ -733,11 +757,7 @@ async def show_main_menu(message: types.Message, edit_message: bool = False):
         logger.warning(f"Ошибка формирования динамического меню: {e}")
         keyboard = keyboards.create_main_menu_keyboard(user_keys, trial_available, is_admin_flag, balance)
     if edit_message: await smart_edit_message(message, text, keyboard, photo_path)
-    else:
-        if photo_path:
-            from aiogram.types import FSInputFile
-            await message.answer_photo(photo=FSInputFile(photo_path), caption=text, reply_markup=keyboard)
-        else: await message.answer(text, reply_markup=keyboard)
+    else: await answer_with_photo(message, text, keyboard, photo_path)
 # ===== Конец функции show_main_menu =====
 
 # ===== ЗАВЕРШЕНИЕ ОНБОРДИНГА =====
@@ -2600,9 +2620,13 @@ def get_user_router() -> Router:
             final_text = get_purchase_success_text("new", get_next_key_number(user_id) - 1, expiry_dt, result['connection_string'], email=candidate_email)
             ready_img = get_setting("key_ready_image")
             
-            if ready_img and os.path.exists(ready_img):
-                await message.answer_photo(photo=FSInputFile(ready_img), caption=final_text, reply_markup=keyboards.create_dynamic_key_info_keyboard(new_key_id, result['connection_string']))
-            else: await message.answer(text=final_text, reply_markup=keyboards.create_dynamic_key_info_keyboard(new_key_id, result['connection_string']))
+            # Здесь предыдущее сообщение уже удалено, а в тексте лежит ссылка
+            # подключения — потерять его из-за не влезшей подписи нельзя.
+            await answer_with_photo(
+                message, final_text,
+                keyboards.create_dynamic_key_info_keyboard(new_key_id, result['connection_string']),
+                ready_img,
+            )
         except Exception as e:
             logger.error(f"Ошибка создания пробного периода ({user_id} на {host_name}): {e}", exc_info=True)
             await smart_edit_message(message, "⚠️ <b>Произошла ошибка</b>\nНе удалось завершить оформление пробной подписки.")
