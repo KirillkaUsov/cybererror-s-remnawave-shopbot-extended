@@ -462,7 +462,10 @@ def create_device_tiers_keyboard(tiers: list[dict], host_name: str, plan_id: int
 
     builder = InlineKeyboardBuilder()
     base_icon = "🟢" if selected_tier_id == 0 else "⚪️"
-    builder.button(text=f"{base_icon} {base_devices} (включено)", callback_data="select_tier_0")
+    # Голое число не говорит, чего именно столько.
+    base_word = get_declension(base_devices, ['устройство', 'устройства', 'устройств'])
+    builder.button(text=f"{base_icon} {base_devices} {base_word} · входит в тариф",
+                   callback_data="select_tier_0")
     total_btns = 1
     for t in tiers:
         is_selected = (selected_tier_id == t['tier_id'])
@@ -470,7 +473,8 @@ def create_device_tiers_keyboard(tiers: list[dict], host_name: str, plan_id: int
         diff = t['device_count'] - base_devices
         if diff < 0: diff = 0
         total_price = diff * t['price'] * months
-        label = f"{icon} {t['device_count']} (+{total_price:.0f}₽)"
+        word = get_declension(t['device_count'], ['устройство', 'устройства', 'устройств'])
+        label = f"{icon} {t['device_count']} {word} · +{total_price:.0f} ₽"
         builder.button(text=label, callback_data=f"select_tier_{t['tier_id']}")
         total_btns += 1
     if selected_tier_id is not None:
