@@ -279,6 +279,20 @@ def initialize_db():
                 "CREATE INDEX IF NOT EXISTS idx_referral_pending_unpaid "
                 "ON referral_pending_bonuses(referrer_id, paid_at)")
 
+            # Баланс, перенесённый из старого бота. Ждёт человека так же, как
+            # реферальные связи: большинство владельцев до нового бота ещё не
+            # дошли. Хранится отдельно от users.balance, иначе повторный запуск
+            # переноса начислил бы деньги второй раз.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS balance_imports (
+                    telegram_id INTEGER PRIMARY KEY,
+                    amount REAL NOT NULL,
+                    source TEXT DEFAULT 'old_bot',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    applied_at TIMESTAMP
+                )
+            ''')
+
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS pending_transactions (
                     payment_id TEXT PRIMARY KEY,
@@ -5756,3 +5770,34 @@ def credit_referrer(referrer_id: int, amount: float, source_user_id: int | None 
         add_to_referral_balance_all(referrer_id, float(amount))
         return "paid"
     return "skipped"
+
+
+# ===== ПЕРЕНЕСЁННЫЕ БАЛАНСЫ =====
+
+def get_pending_balance_import(telegram_id: int) -> float:
+    """Сколько денег из старого бота ждёт этого человека."""
+    row = _fetch_row(
+        "SELECT amount FROM balance_imports WHERE telegram_id = ? AND applied_at IS NULL",
+        (int(telegram_id),), "")
+    return float(row["amount"]) if row else 0.0
+
+
+def settle_balance_import(telegram_id: int) -> float:
+    """Зачисляет перенесённый баланс. Возвращает зачисленную сумму.
+
+    Помечаем выданным только после успешного пополнения: иначе при сбое деньги
+    исчезнут молча, а повторить будет нечем — запись уже закрыта.
+    """
+    telegram_id = int(telegram_id)
+    amount = get_pending_balance_import(telegram_id)
+    if amount <= 0:
+        return 0.0
+    if not add_to_balance(telegram_id, amount):
+        logging.warning("Перенесённый баланс %.2f для %s не зачислен: нет пользователя",
+                        amount, telegram_id)
+        return 0.0
+    _exec(
+        "UPDATE balance_imports SET applied_at = ? WHERE telegram_id = ? AND applied_at IS NULL",
+        (get_msk_time().replace(tzinfo=None).replace(microsecond=0), telegram_id), "")
+    logging.info("Зачислен перенесённый баланс %.2f пользователю %s", amount, telegram_id)
+    return amount

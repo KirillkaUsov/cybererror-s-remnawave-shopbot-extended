@@ -58,6 +58,7 @@ from shop_bot.data_manager.remnawave_repository import (
     get_imported_referrer,
     mark_referral_import_applied,
     settle_pending_referral_bonuses,
+    settle_balance_import,
     get_referral_balance_all,
     get_referral_balance,
     get_all_users,
@@ -905,6 +906,18 @@ def get_user_router() -> Router:
         register_user_if_not_exists(user_id, username, referrer_id)
         if imported_referrer:
             mark_referral_import_applied(user_id)
+
+        # Баланс из старого бота ждал человека — отдаём при первом заходе.
+        try:
+            moved = settle_balance_import(user_id)
+            if moved > 0:
+                await message.answer(
+                    "💳 <b>Ваш баланс перенесён</b>\n\n"
+                    f"Зачислено: <b>{moved:.2f} ₽</b>\n"
+                    "Это деньги с вашего счёта в прошлой версии бота."
+                )
+        except Exception as e:
+            logger.warning(f"Не удалось зачислить перенесённый баланс для {user_id}: {e}")
 
         # Пока человека не было в боте, его рефералы могли что-то купить.
         try:

@@ -395,6 +395,8 @@ _LEGACY_FORWARDERS = (
     "get_recent_transactions",
     "get_referral_balance",
     "get_imported_referrer",
+    "get_pending_balance_import",
+    "settle_balance_import",
     "get_pending_referral_total",
     "get_referral_balance_all",
     "get_referral_count",
