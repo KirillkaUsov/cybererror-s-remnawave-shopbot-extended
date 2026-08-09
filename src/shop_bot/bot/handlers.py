@@ -54,6 +54,10 @@ from shop_bot.data_manager.remnawave_repository import (
     update_promo_code_status,
     record_key_from_payload,
     add_to_referral_balance_all,
+    credit_referrer,
+    get_imported_referrer,
+    mark_referral_import_applied,
+    settle_pending_referral_bonuses,
     get_referral_balance_all,
     get_referral_balance,
     get_all_users,
@@ -504,12 +508,17 @@ async def create_pending_payment(user_id: int, amount: float, payment_method: st
 # ===== Конец функции create_pending_payment =====
 
 def _referrer_is_payable(referrer_id) -> bool:
-    """Начисляем рефереру, только если он существует и не забанен."""
+    """Можно ли вообще начислять этому рефереру.
+
+    Отсутствие в базе — не повод отказывать: человека могли пригласить в
+    старом боте, и до нового он ещё не дошёл. Такому бонус копится
+    (credit_referrer отложит его), а вот забаненному не копится ничего.
+    """
     try:
         referrer = get_user(int(referrer_id))
     except (TypeError, ValueError):
         return False
-    return bool(referrer) and not referrer.get('is_banned')
+    return not (referrer and referrer.get('is_banned'))
 
 
 async def create_yookassa_payment_async(payload: dict, idempotence_key: str, shop_id: str, secret_key: str, timeout_seconds: int = 30) -> dict:
@@ -881,8 +890,33 @@ def get_user_router() -> Router:
                         logger.info(f"Пользователь {user_id} пришел по реферальной ссылке от {referrer_id}")
             except (IndexError, ValueError):
                 logger.warning(f"Получен некорректный реферальный код: {command.args}")
-                
+
+        # Связь из старого бота срабатывает, только если человек пришёл без
+        # ссылки: побеждает тот, кто успел первым. Проверку «реферер есть в
+        # базе» здесь не делаем — его может не быть ещё месяц, а связь всё
+        # равно верная, она из нашей же старой базы.
+        imported_referrer = None
+        if referrer_id is None and (not user_data or not user_data.get('referred_by')):
+            imported_referrer = get_imported_referrer(user_id)
+            if imported_referrer:
+                referrer_id = imported_referrer
+                logger.info(f"Пользователю {user_id} проставлен реферер {referrer_id} из старого бота")
+
         register_user_if_not_exists(user_id, username, referrer_id)
+        if imported_referrer:
+            mark_referral_import_applied(user_id)
+
+        # Пока человека не было в боте, его рефералы могли что-то купить.
+        try:
+            settled, entries = settle_pending_referral_bonuses(user_id)
+            if settled > 0:
+                await message.answer(
+                    "🤝 <b>Вас ждал реферальный бонус</b>\n\n"
+                    f"Начислено на баланс: <b>{settled:.2f} ₽</b>\n"
+                    f"Это накопилось с покупок ваших приглашённых, пока вы не заходили."
+                )
+        except Exception as e:
+            logger.warning(f"Не удалось выплатить отложенные бонусы для {user_id}: {e}")
         logger.info(f"Старт: Пользователь {user_id} (@{username}) зашел в бота. Реферер: {referrer_id}")
 
         if referrer_id:
@@ -4079,9 +4113,13 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
                     
                     if float(reward) > 0:
                         ref_old_balance = get_balance(int(ref_id))
-                        if add_to_balance(int(ref_id), float(reward)):
+                        outcome = credit_referrer(int(ref_id), float(reward), uid, 'пополнение баланса')
+                        if outcome == 'held':
+                            logger.info(
+                                "Рефералка: бонус %.2f для %s отложен — он ещё не заходил в бота",
+                                float(reward), ref_id)
+                        if outcome == 'paid':
                             ref_new_balance = get_balance(int(ref_id))
-                            add_to_referral_balance_all(int(ref_id), float(reward))
                             ref_user = get_user(int(ref_id)) or {}
                             ref_meta = {
                                 "action": "referral_bonus",
@@ -4243,9 +4281,13 @@ async def process_successful_payment(bot: Bot | None, metadata: dict) -> bool:
                     
                     if float(reward) > 0:
                         ref_old_balance = get_balance(int(ref_id))
-                        if add_to_balance(int(ref_id), float(reward)):
+                        outcome = credit_referrer(int(ref_id), float(reward), uid, 'покупка подписки')
+                        if outcome == 'held':
+                            logger.info(
+                                "Рефералка: бонус %.2f для %s отложен — он ещё не заходил в бота",
+                                float(reward), ref_id)
+                        if outcome == 'paid':
                             ref_new_balance = get_balance(int(ref_id))
-                            add_to_referral_balance_all(int(ref_id), float(reward))
                             buyer_username = (u_data.get('username') if u_data else None) or f"@{uid}"
                             ref_user = get_user(int(ref_id)) or {}
                             ref_meta = {

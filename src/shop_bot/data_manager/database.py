@@ -245,6 +245,40 @@ def initialize_db():
                 )
             ''')
 
+            # Связи «кто кого привёл», перенесённые из старого бота. Лежат
+            # отдельно от users, потому что приглашённый может дойти до нового
+            # бота через месяц — а связь должна дождаться его, а не пропасть.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS referral_imports (
+                    telegram_id INTEGER PRIMARY KEY,
+                    referrer_id INTEGER NOT NULL,
+                    source TEXT DEFAULT 'old_bot',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    applied_at TIMESTAMP
+                )
+            ''')
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_referral_imports_ref ON referral_imports(referrer_id)")
+
+            # Бонус, который некому отдать: пригласивший ещё не заходил в
+            # новый бот, строки в users у него нет. Раньше такие начисления
+            # просто исчезали — add_to_balance возвращает False, и весь блок
+            # начисления пропускался.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS referral_pending_bonuses (
+                    entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    referrer_id INTEGER NOT NULL,
+                    amount REAL NOT NULL,
+                    source_user_id INTEGER,
+                    reason TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    paid_at TIMESTAMP
+                )
+            ''')
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_referral_pending_unpaid "
+                "ON referral_pending_bonuses(referrer_id, paid_at)")
+
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS pending_transactions (
                     payment_id TEXT PRIMARY KEY,
@@ -5614,3 +5648,111 @@ def get_dashboard_user_groups() -> dict:
     
     return groups
 # ===================================================
+
+
+# ===== ПЕРЕНЕСЁННЫЕ РЕФЕРАЛЬНЫЕ СВЯЗИ =====
+# Старый бот знал, кто кого привёл. Новый узнаёт об этом только в момент, когда
+# приглашённый нажмёт /start — а это может случиться через месяц. Поэтому связи
+# лежат заранее, и применяются, когда человек наконец дойдёт.
+
+def get_imported_referrer(telegram_id: int) -> int | None:
+    """Кто привёл этого человека по данным старого бота."""
+    row = _fetch_row(
+        "SELECT referrer_id FROM referral_imports WHERE telegram_id = ?",
+        (int(telegram_id),), "")
+    if not row:
+        return None
+    try:
+        referrer_id = int(row["referrer_id"])
+    except (TypeError, ValueError):
+        return None
+    return referrer_id if referrer_id != int(telegram_id) else None
+
+
+def mark_referral_import_applied(telegram_id: int) -> None:
+    _exec(
+        "UPDATE referral_imports SET applied_at = ? WHERE telegram_id = ? AND applied_at IS NULL",
+        (get_msk_time().replace(tzinfo=None).replace(microsecond=0), int(telegram_id)), "")
+
+
+def add_pending_referral_bonus(referrer_id: int, amount: float,
+                               source_user_id: int | None = None,
+                               reason: str = "") -> bool:
+    """Откладывает начисление до появления пригласившего в боте."""
+    if float(amount) <= 0:
+        return False
+    cursor = _exec(
+        "INSERT INTO referral_pending_bonuses (referrer_id, amount, source_user_id, reason) "
+        "VALUES (?, ?, ?, ?)",
+        (int(referrer_id), float(amount), source_user_id, reason),
+        f"Не удалось отложить реферальный бонус для {referrer_id}")
+    if cursor is not None:
+        logging.info(
+            "Реферальный бонус %.2f для %s отложен до его регистрации (%s)",
+            float(amount), referrer_id, reason or "без причины")
+    return cursor is not None
+
+
+def get_pending_referral_total(referrer_id: int) -> float:
+    row = _fetch_row(
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM referral_pending_bonuses "
+        "WHERE referrer_id = ? AND paid_at IS NULL",
+        (int(referrer_id),), "")
+    return float(row["total"]) if row else 0.0
+
+
+def settle_pending_referral_bonuses(referrer_id: int) -> tuple[float, int]:
+    """Выплачивает всё, что накопилось, пока человека не было в боте.
+
+    Возвращает (сумма, количество начислений). Помечаем выплаченными только
+    после успешного пополнения баланса — иначе при сбое деньги пропадут молча.
+    """
+    referrer_id = int(referrer_id)
+    rows = _fetch_list(
+        "SELECT entry_id, amount FROM referral_pending_bonuses "
+        "WHERE referrer_id = ? AND paid_at IS NULL",
+        (referrer_id,), "")
+    if not rows:
+        return 0.0, 0
+
+    total = round(sum(float(r["amount"]) for r in rows), 2)
+    if total <= 0:
+        return 0.0, 0
+    if not add_to_balance(referrer_id, total):
+        logging.warning("Отложенные бонусы для %s остались неоплаченными: нет пользователя", referrer_id)
+        return 0.0, 0
+
+    add_to_referral_balance_all(referrer_id, total)
+    now = get_msk_time().replace(tzinfo=None).replace(microsecond=0)
+    placeholders = ",".join("?" for _ in rows)
+    _exec(
+        f"UPDATE referral_pending_bonuses SET paid_at = ? WHERE entry_id IN ({placeholders})",
+        [now] + [r["entry_id"] for r in rows], "")
+    logging.info("Выплачено отложенных реферальных бонусов: %.2f для %s (%d начислений)",
+                 total, referrer_id, len(rows))
+    return total, len(rows)
+
+
+def credit_referrer(referrer_id: int, amount: float, source_user_id: int | None = None,
+                    reason: str = "") -> str:
+    """Начисляет бонус пригласившему либо откладывает его до регистрации.
+
+    Возвращает 'paid', 'held' или 'skipped'. Забаненным не начисляем и не
+    копим: бан — это решение, а не временное состояние.
+    """
+    try:
+        referrer_id = int(referrer_id)
+    except (TypeError, ValueError):
+        return "skipped"
+    if float(amount) <= 0:
+        return "skipped"
+
+    referrer = get_user(referrer_id)
+    if referrer and referrer.get("is_banned"):
+        return "skipped"
+    if not referrer:
+        return "held" if add_pending_referral_bonus(referrer_id, amount, source_user_id, reason) else "skipped"
+    if add_to_balance(referrer_id, float(amount)):
+        add_to_referral_balance_all(referrer_id, float(amount))
+        return "paid"
+    return "skipped"
