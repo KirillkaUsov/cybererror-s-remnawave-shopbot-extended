@@ -42,6 +42,7 @@ from shop_bot.modules import remnawave_api
 from shop_bot.modules import support_text
 from shop_bot.bot import handlers
 from shop_bot.bot import keyboards
+from shop_bot.bot import texts
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from shop_bot.support_bot_controller import SupportBotController
 from shop_bot.data_manager import speedtest_runner
@@ -232,6 +233,59 @@ def create_webhook_app(bot_controller_instance):
         if hours: parts.append(f"{hours}ч.")
         if minutes or not parts: parts.append(f"{minutes}мин")
         return " ".join(parts)
+
+    def _notify_key_granted(user_id: int, host_name: str, expiry_ms: int | None,
+                            result: dict | None, hwid_limit: int | None) -> None:
+        """Сообщает человеку, что ему открыли подписку из панели.
+
+        Один текст на оба режима выдачи: раньше он был скопирован в два роута
+        и уже начал расходиться.
+        """
+        if not user_id:
+            return
+        try:
+            bot = _bot_controller.get_bot_instance()
+            if not bot:
+                return
+
+            if expiry_ms:
+                msk = timezone(timedelta(hours=3), name='MSK')
+                expiry_text = datetime.fromtimestamp(expiry_ms / 1000, tz=msk).strftime('%d.%m.%Y, %H:%M')
+            else:
+                expiry_text = "без ограничения"
+
+            # Показываем то, что реально записалось на хосте; если он лимит не
+            # вернул — то, что просили.
+            actual_hwid = (result or {}).get('hwid_device_limit')
+            if actual_hwid is None:
+                actual_hwid = hwid_limit
+            if actual_hwid is None:
+                devices_text = "сколько даёт тариф"
+            elif int(actual_hwid) <= 0:
+                devices_text = "без ограничения"
+            else:
+                devices_text = str(int(actual_hwid))
+
+            connection = (result or {}).get('connection_string')
+            text = texts.admin_granted(
+                html_escape.escape(host_name),
+                expiry_text,
+                devices_text,
+                html_escape.escape(connection) if connection else None,
+            )
+            kb = InlineKeyboardBuilder()
+            kb.button(text="🔑 Мои подписки", callback_data="manage_keys")
+            markup = kb.as_markup()
+
+            loop = current_app.config.get('EVENT_LOOP')
+            send = bot.send_message(chat_id=user_id, text=text, parse_mode='HTML',
+                                    disable_web_page_preview=True, reply_markup=markup)
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(send, loop)
+            else:
+                asyncio.run(send)
+        except Exception as e:
+            logger.warning(f"Не удалось сообщить пользователю {user_id} о выданной подписке: {e}")
 
 
     def _handle_promo_after_payment(metadata: dict) -> None:
@@ -2330,31 +2384,8 @@ def create_webhook_app(bot_controller_instance):
         flash(('Ключ добавлен.' if new_id else 'Ошибка при добавлении ключа.'), 'success' if new_id else 'danger')
 
 
-        try:
-            bot = _bot_controller.get_bot_instance()
-            if bot and new_id:
-                text = (
-                    '🔐 <b>Ваш ключ готов!</b>\n\n'
-                    '<b>Информация о ключе:</b>\n'
-                    f'🛰 Сервер: <code>{host_name}</code>\n'
-                    '📃 Статус: <b>Активен</b>\n'
-                    '👤 Выдан: Администратором через панель\n'
-                    f"📅 Истекает: <b>{datetime.fromtimestamp(expiry_ms/1000, tz=timezone(timedelta(hours=3), name='MSK')).strftime('%Y-%m-%d %H:%M') if expiry_ms else '∞'}</b>\n"
-                    f"⏳ Осталось: <b>{_get_time_remaining_str(expiry_ms)}</b>\n"
-                )
-                if result and result.get('connection_string'):
-                    cs = html_escape.escape(result['connection_string'])
-                    text += f"\n<b>Подключение:</b>\n<pre><code>{cs}</code></pre>"
-                loop = current_app.config.get('EVENT_LOOP')
-                if loop and loop.is_running():
-                    asyncio.run_coroutine_threadsafe(
-                        bot.send_message(chat_id=user_id, text=text, parse_mode='HTML', disable_web_page_preview=True),
-                        loop
-                    )
-                else:
-                    asyncio.run(bot.send_message(chat_id=user_id, text=text, parse_mode='HTML', disable_web_page_preview=True))
-        except Exception as e:
-            logger.warning(f"Не удалось уведомить пользователя о новом ключе: {e}")
+        if new_id:
+            _notify_key_granted(user_id, host_name, expiry_ms, result, None)
         return redirect(request.referrer or url_for('admin_keys_page'))
 
     @flask_app.route('/admin/keys/create-ajax', methods=['POST'])
@@ -2409,6 +2440,16 @@ def create_webhook_app(bot_controller_instance):
             except Exception:
                 pass
 
+        # Поле формы важнее тарифа: администратор задаёт лимит устройств
+        # осознанно и уже после того, как выбрал тариф. Пустое поле оставляет
+        # значение тарифа, ноль означает «без ограничения».
+        hwid_raw = (request.form.get('hwid_limit') or '').strip()
+        if hwid_raw:
+            try:
+                hwid_limit = max(0, int(hwid_raw))
+            except ValueError:
+                return jsonify({"ok": False, "error": "invalid_hwid"}), 400
+
         if mode == 'personal':
             try:
                 user_id = int(request.form.get('user_id'))
@@ -2450,31 +2491,7 @@ def create_webhook_app(bot_controller_instance):
                 return jsonify({"ok": False, "error": "db_failed"}), 500
 
 
-            try:
-                bot = _bot_controller.get_bot_instance()
-                if bot and key_id:
-                    text = (
-                        '🔐 <b>Ваш ключ готов!</b>\n\n'
-                        '<b>Информация о ключе:</b>\n'
-                        f'🛰 Сервер: <code>{host_name}</code>\n'
-                        '📃 Статус: <b>Активен</b>\n'
-                        '👤 Выдан: Администратором через панель\n'
-                        f"📅 Истекает: <b>{datetime.fromtimestamp(expiry_ms/1000, tz=timezone(timedelta(hours=3), name='MSK')).strftime('%Y-%m-%d %H:%M') if expiry_ms else '∞'}</b>\n"
-                        f"⏳ Осталось: <b>{_get_time_remaining_str(expiry_ms)}</b>\n"
-                    )
-                    if result and result.get('connection_string'):
-                        cs = html_escape.escape(result['connection_string'])
-                        text += f"\n<b>Подключение:</b>\n<pre><code>{cs}</code></pre>"
-                    loop = current_app.config.get('EVENT_LOOP')
-                    if loop and loop.is_running():
-                        asyncio.run_coroutine_threadsafe(
-                            bot.send_message(chat_id=user_id, text=text, parse_mode='HTML', disable_web_page_preview=True),
-                            loop
-                        )
-                    else:
-                        asyncio.run(bot.send_message(chat_id=user_id, text=text, parse_mode='HTML', disable_web_page_preview=True))
-            except Exception as e:
-                logger.warning(f"Не удалось уведомить пользователя (ajax): {e}")
+            _notify_key_granted(user_id, host_name, expiry_ms, result, hwid_limit)
 
             return jsonify({
                 "ok": True,

@@ -955,6 +955,9 @@ async def create_or_update_key_on_host(
             'subscription_url': subscription_url,
             'traffic_limit_bytes': user_payload.get('trafficLimitBytes'),
             'traffic_limit_strategy': user_payload.get('trafficLimitStrategy'),
+            # Панель показывает это число человеку, поэтому берём то, что
+            # реально записалось на хосте, а не то, что мы просили.
+            'hwid_device_limit': user_payload.get('hwidDeviceLimit'),
             'expiry_timestamp_ms': expiry_ts_ms,
             'connection_string': subscription_url,
         }

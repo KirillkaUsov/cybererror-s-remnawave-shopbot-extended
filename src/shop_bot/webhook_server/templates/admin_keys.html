@@ -126,6 +126,19 @@
                 </div>
             </div>
 
+            <div class="relative group/input">
+                <label class="block text-white/60 text-[10px] uppercase font-bold tracking-wider mb-1.5 ml-1">
+                    Устройств <span class="text-white/30 lowercase font-normal normal-case">(HWID)</span>
+                </label>
+                <div class="relative">
+                    <span
+                        class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-white/20 text-sm">devices</span>
+                    <input id="hwid_limit" name="hwid_limit" type="number" min="0" step="1" placeholder="из тарифа"
+                        class="w-full bg-black/30 border border-white/10 rounded-xl pl-10 pr-3 py-2.5 text-sm text-center font-mono text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all" />
+                </div>
+                <p class="text-[9px] text-white/30 mt-1 ml-1">Пусто — как в тарифе, 0 — без ограничения</p>
+            </div>
+
             <div class="mode-section mode-personal col-span-1 md:col-span-2">
                 <label class="block text-white/60 text-[10px] uppercase font-bold tracking-wider mb-1.5 ml-1">Дата
                     истечения <span id="expiry_days_label"
@@ -582,9 +595,18 @@
             const hwidInput = document.getElementById('host_hwid_limit');
             const gbInput = document.getElementById('host_traffic_gb');
 
+            const planHwid = (opt && opt.getAttribute('data-hwid') && opt.getAttribute('data-hwid') !== '0')
+                ? opt.getAttribute('data-hwid') : '';
+
             if (priceEl) priceEl.textContent = (opt && opt.value) ? `${Number(opt.getAttribute('data-price') || 0).toFixed(0)} ₽` : '— ₽';
-            if (hwidInput) hwidInput.value = (opt && opt.getAttribute('data-hwid') && opt.getAttribute('data-hwid') !== '0') ? opt.getAttribute('data-hwid') : '—';
+            if (hwidInput) hwidInput.value = planHwid || '—';
             if (gbInput) gbInput.value = (opt && opt.getAttribute('data-traffic-gb') && opt.getAttribute('data-traffic-gb') !== '0') ? Number(opt.getAttribute('data-traffic-gb')).toFixed(2) : '—';
+
+            // Подсказываем, что подставится, если поле оставить пустым.
+            const hwidOverride = document.getElementById('hwid_limit');
+            if (hwidOverride) {
+                hwidOverride.placeholder = planHwid ? `из тарифа: ${planHwid}` : 'из тарифа';
+            }
         }
 
         function applyPlanDefaults() {
