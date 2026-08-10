@@ -144,6 +144,56 @@ def register_node_routes(app, login_required, get_common_template_data):
         common_data = get_common_template_data()
         return render_template('node.html', ssh_targets=ssh_targets, **common_data)
 
+    @app.route('/upload-ssh-key', methods=['POST'])
+    @login_required
+    def upload_ssh_key_route():
+        """Принимает приватный ключ и отдаёт путь к нему.
+
+        Кнопка «загрузить ключ» в панели звала этот адрес с самого начала, а
+        обработчика не было: приходила страница 404, разбор JSON падал, и
+        пользователь видел «сетевая ошибка».
+        """
+        file = request.files.get('file')
+        if not file or not file.filename:
+            return jsonify({'ok': False, 'error': 'Файл не выбран'}), 400
+
+        raw = file.read(64 * 1024)          # ключей больше 64 КБ не бывает
+        if file.read(1):
+            return jsonify({'ok': False, 'error': 'Файл слишком большой для ключа'}), 400
+
+        try:
+            head = raw.decode('utf-8', errors='strict').lstrip()
+        except UnicodeDecodeError:
+            return jsonify({'ok': False, 'error': 'Это не текстовый ключ'}), 400
+
+        # Публичный ключ по ошибке кладут чаще, чем приватный, — и потом долго
+        # ищут, почему SSH не пускает.
+        if head.startswith(('ssh-rsa', 'ssh-ed25519', 'ecdsa-sha2')):
+            return jsonify({'ok': False,
+                            'error': 'Это публичный ключ (.pub). Нужен приватный — файл без расширения'}), 400
+        if 'PRIVATE KEY' not in head[:200]:
+            return jsonify({'ok': False,
+                            'error': 'Не похоже на приватный ключ: нет строки BEGIN … PRIVATE KEY'}), 400
+
+        keys_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'keys')
+        os.makedirs(keys_dir, exist_ok=True)
+        os.chmod(keys_dir, 0o700)
+
+        safe = re.sub(r'[^A-Za-z0-9._-]', '_', os.path.basename(file.filename))[:40] or 'id_key'
+        path = os.path.join(keys_dir, f"{uuid.uuid4().hex[:8]}_{safe}")
+        try:
+            with open(path, 'wb') as fh:
+                fh.write(raw)
+            # SSH откажется брать ключ, который читают все: «UNPROTECTED PRIVATE KEY FILE».
+            os.chmod(path, 0o600)
+        except OSError as e:
+            logger.error(f"Не удалось сохранить SSH-ключ: {e}")
+            return jsonify({'ok': False, 'error': 'Не удалось сохранить файл на сервере'}), 500
+
+        logger.info(f"SSH-ключ сохранён: {path}")
+        return jsonify({'ok': True, 'path': path})
+
     @app.route('/admin/ssh-targets/create', methods=['POST'], endpoint='create_ssh_target_route')
     @app.route('/node/ssh-targets/create', methods=['POST'])
     @login_required

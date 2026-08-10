@@ -13,3 +13,4 @@ logs/
 media/
 src/modules/
 .env
+keys/
