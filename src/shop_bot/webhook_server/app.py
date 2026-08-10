@@ -801,6 +801,21 @@ def create_webhook_app(bot_controller_instance):
         return render_template('partials/dashboard_trials.html', recent_trials=recent_trials)
 
 
+    @flask_app.route('/dashboard/growth.json')
+    @login_required
+    def dashboard_growth_json():
+        """Сравнение текущего месяца с прошлым: покупки, приток, простаивающие."""
+        from shop_bot.data_manager.database import get_growth_stats
+        try:
+            # Серия по дням здесь не нужна: графики притока на дашборде уже есть,
+            # не хватало именно сравнения месяцев.
+            stats = get_growth_stats(days=1)
+        except Exception as e:
+            logger.error(f"Не удалось посчитать динамику: {e}")
+            return jsonify({'ok': False}), 500
+        stats.pop('series', None)
+        return jsonify({'ok': True, **stats})
+
     @flask_app.route('/dashboard/charts.json')
     @login_required
     def dashboard_charts_json():

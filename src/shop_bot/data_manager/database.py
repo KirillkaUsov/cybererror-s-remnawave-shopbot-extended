@@ -5930,3 +5930,88 @@ def user_has_telegram(user: dict) -> bool:
         return False
     linked = user.get("tg_linked")
     return linked is None or bool(linked)
+
+
+# ===== ПРИТОК =====
+
+def _month_bounds(offset: int = 0) -> tuple[str, str]:
+    """Начало и конец месяца со смещением: 0 — текущий, -1 — прошлый."""
+    now = get_msk_time().replace(tzinfo=None)
+    year, month = now.year, now.month + offset
+    while month < 1:
+        month += 12
+        year -= 1
+    while month > 12:
+        month -= 12
+        year += 1
+    start = datetime(year, month, 1)
+    end = datetime(year + (month == 12), (month % 12) + 1, 1)
+    return start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _idle_users_at(moment: str) -> int:
+    """Сколько зарегистрированных не имели действующей подписки в этот момент."""
+    ms = int(datetime.strptime(moment, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+    row = _fetch_row(
+        "SELECT COUNT(*) AS c FROM users u WHERE u.registration_date <= ? "
+        "AND NOT EXISTS (SELECT 1 FROM vpn_keys k WHERE k.user_id = u.telegram_id "
+        "AND COALESCE(k.created_at, '') <= ? AND COALESCE(k.expire_at, 0) > ?)",
+        (moment, moment, ms), "")
+    return int(row["c"]) if row else 0
+
+
+def get_growth_stats(days: int = 60) -> dict:
+    """Приток по дням и сравнение текущего месяца с прошлым.
+
+    «Без подписки» за прошлый месяц считается на его конец, а не «сейчас»:
+    иначе прошлый месяц сравнивался бы с сегодняшним днём и разница всегда
+    выходила бы в его пользу.
+    """
+    now = get_msk_time().replace(tzinfo=None)
+    since = (now - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+
+    rows = _fetch_list(
+        "SELECT substr(registration_date, 1, 10) AS d, COUNT(*) AS n FROM users "
+        "WHERE substr(registration_date, 1, 10) >= ? GROUP BY d", (since,), "")
+    by_day = {r["d"]: int(r["n"]) for r in rows}
+
+    series = []
+    for i in range(days):
+        day = (now - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+        series.append({"date": day, "users": by_day.get(day, 0)})
+
+    this_start, this_end = _month_bounds(0)
+    prev_start, prev_end = _month_bounds(-1)
+
+    def paid_in(start: str, end: str) -> int:
+        row = _fetch_row(
+            "SELECT COUNT(*) AS c FROM transactions WHERE status = 'paid' "
+            "AND created_date >= ? AND created_date < ?", (start, end), "")
+        return int(row["c"]) if row else 0
+
+    def joined_in(start: str, end: str) -> int:
+        row = _fetch_row(
+            "SELECT COUNT(*) AS c FROM users WHERE registration_date >= ? AND registration_date < ?",
+            (start, end), "")
+        return int(row["c"]) if row else 0
+
+    purchases_now, purchases_prev = paid_in(this_start, this_end), paid_in(prev_start, prev_end)
+    joined_now, joined_prev = joined_in(this_start, this_end), joined_in(prev_start, prev_end)
+
+    idle_now = _idle_users_at(now.strftime("%Y-%m-%d %H:%M:%S"))
+    idle_prev = _idle_users_at(prev_end)
+
+    def growth(now_v: int, prev_v: int) -> float | None:
+        if not prev_v:
+            return None            # делить не на что — покажем «сравнить не с чем»
+        return round((now_v - prev_v) / prev_v * 100, 1)
+
+    return {
+        "series": series,
+        "purchases": {"now": purchases_now, "prev": purchases_prev,
+                      "growth": growth(purchases_now, purchases_prev)},
+        "joined": {"now": joined_now, "prev": joined_prev,
+                   "growth": growth(joined_now, joined_prev)},
+        "idle": {"now": idle_now, "prev": idle_prev, "delta": idle_now - idle_prev},
+        "has_prev": bool(purchases_prev or joined_prev or idle_prev),
+    }

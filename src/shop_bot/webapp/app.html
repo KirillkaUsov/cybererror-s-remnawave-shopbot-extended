@@ -757,6 +757,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 /* движение — украшение, а не смысл: если система просит покоя, выключаем */
 @media(prefers-reduced-motion:reduce){
   *,*:before,*:after{animation-duration:.01ms !important;animation-delay:0ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+  /* Единственное исключение: прокрут барабана. Без движения приз подменяется
+     на месте и это читается как сбой, а не как бережное отношение к глазам —
+     длительность JS уже сократил до 900 мс. */
+  .reel__strip.is-moving{transition-duration:var(--reel-time,900ms) !important}
 }
 
 /* две колонки в кабинете — только когда каждой хватает места: на 1000–1199 px
@@ -1658,6 +1662,17 @@ const REEL_CARD_H = 76;
 const REEL_VISIBLE = 3;
 const REEL_RUNWAY = 34;          /* сколько карточек пролетает до нужной */
 const REEL_TIME_MS = 4200;
+const REEL_TIME_REDUCED_MS = 900;
+/* Барабан — не украшение, а показ результата. Общее правило ниже обнуляет все
+   анимации при «уменьшить движение», и барабан переставал крутиться вовсе:
+   приз молча подменялся на месте, что выглядит поломкой. Сокращаем прокрут,
+   а не выключаем его. */
+function reelDuration(){
+  try{
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? REEL_TIME_REDUCED_MS : REEL_TIME_MS;
+  }catch(e){ return REEL_TIME_MS; }
+}
 
 const PRIZE_FACE = {
   days:          {icon:'📅', note:'добавятся к подписке'},
@@ -1705,9 +1720,6 @@ function reelSpinTo(prizes, winner){
   const strip = $('wheelStrip');
   const reel = $('wheelReel');
   if(!strip) return Promise.resolve();
-  /* высоту карточки берём из вёрстки: на низких экранах она ужимается
-     медиазапросом, и фиксированное число промахнулось бы мимо приза */
-  const cardH = Math.round(reel.querySelector('.reel__card')?.getBoundingClientRect().height) || REEL_CARD_H;
 
   const cards = [];
   for(let i = 0; i < REEL_RUNWAY; i++) cards.push(reelFiller(prizes));
@@ -1719,21 +1731,43 @@ function reelSpinTo(prizes, winner){
   strip.classList.remove('is-moving');
   strip.style.transform = 'translateY(0)';
   strip.innerHTML = cards.map(reelCardHtml).join('');
-  void strip.offsetHeight;                       /* сбрасываем анимацию */
+
+  /* высоту карточки меряем уже по новой ленте: на низких экранах она ужимается
+     медиазапросом, и фиксированное число промахнулось бы мимо приза */
+  const cardH = Math.round(strip.querySelector('.reel__card')?.getBoundingClientRect().height) || REEL_CARD_H;
+  const time = reelDuration();
 
   reel.classList.add('is-spinning');
-  strip.style.setProperty('--reel-time', REEL_TIME_MS + 'ms');
-  strip.classList.add('is-moving');
-  /* Считаем от позиции самой карточки, а не от длины ленты: окно — вторая
-     строка сверху, поэтому нужную карточку доводим до неё, вычтя одну.
-     Раньше здесь стояла длина ленты, и барабан вставал на карточку после
-     выигрыша — показывал один приз, а начислялся другой. */
-  strip.style.transform = `translateY(-${(winnerIndex - 1) * cardH}px)`;
+  strip.style.setProperty('--reel-time', time + 'ms');
 
-  return new Promise(resolve => setTimeout(() => {
-    reel.classList.remove('is-spinning');
-    resolve();
-  }, REEL_TIME_MS + 120));
+  return new Promise(resolve => {
+    /* Два кадра, а не void offsetHeight в том же такте. WebKit внутри Telegram
+       считает стиль один раз за задачу: класс с transition и новое значение
+       transform приходили к нему вместе, переход не начинался — лента прыгала
+       к призу мгновенно. Между кадрами браузер успевает зафиксировать начальное
+       положение, и переход действительно запускается. */
+    requestAnimationFrame(() => {
+      strip.classList.add('is-moving');
+      requestAnimationFrame(() => {
+        /* Считаем от позиции самой карточки, а не от длины ленты: окно — вторая
+           строка сверху, поэтому нужную карточку доводим до неё, вычтя одну. */
+        strip.style.transform = `translateY(-${(winnerIndex - 1) * cardH}px)`;
+      });
+    });
+
+    /* Ждём событие, а не только таймер: если переход почему-то не стартовал,
+       таймер всё равно доведёт до конца и барабан не зависнет. */
+    let done = false;
+    const finish = () => {
+      if(done) return;
+      done = true;
+      strip.removeEventListener('transitionend', finish);
+      reel.classList.remove('is-spinning');
+      resolve();
+    };
+    strip.addEventListener('transitionend', finish);
+    setTimeout(finish, time + 400);
+  });
 }
 
 /* ===== Уведомления =====

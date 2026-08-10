@@ -73,6 +73,34 @@
     {% set _stats_html %}{% include 'partials/dashboard_stats.html' %}{% endset %}{{ _stats_html|strip_bom }}
 </section>
 
+<!-- ===== СЕКЦИЯ: Месяц к месяцу ===== -->
+<!-- Графики притока рядом показывают дни; здесь ответ на другой вопрос —
+     стало ли лучше, чем в прошлом месяце -->
+<section class="mb-8">
+    <div class="bg-[#0d0c12]/80 border border-white/10 rounded-[1.4rem] shadow-2xl shadow-black/30 backdrop-blur-2xl overflow-hidden">
+        <div class="relative overflow-hidden border-b border-white/10 bg-gradient-to-br from-primary/[0.07] via-white/[0.025] to-transparent">
+            <div class="absolute -top-14 -right-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="relative z-10 px-5 py-3.5 flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-primary/10 border border-primary/15 flex items-center justify-center text-primary shadow-lg shadow-primary/5 shrink-0">
+                    <span class="material-symbols-outlined text-lg">trending_up</span>
+                </div>
+                <div>
+                    <h3 class="text-sm font-black text-white tracking-tight leading-tight">Этот месяц против прошлого</h3>
+                    <p class="text-[9px] font-bold text-white/30 uppercase tracking-[0.18em] mt-0.5" id="growth-period">Считаем…</p>
+                </div>
+            </div>
+        </div>
+        <div class="p-5">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="growth-tiles">
+                <div class="rounded-2xl bg-black/25 border border-white/[0.07] p-4 h-[104px] animate-pulse"></div>
+                <div class="rounded-2xl bg-black/25 border border-white/[0.07] p-4 h-[104px] animate-pulse"></div>
+                <div class="rounded-2xl bg-black/25 border border-white/[0.07] p-4 h-[104px] animate-pulse"></div>
+            </div>
+        </div>
+    </div>
+</section>
+<!-- ===== Конец секции ===== -->
+
 <!-- ===== СЕКЦИЯ: Проверка скорости SSH ===== -->
 <section class="mb-8">
     <div class="bg-[#0d0c12]/80 border border-white/10 rounded-[1.4rem] shadow-2xl shadow-black/30 backdrop-blur-2xl overflow-hidden relative z-20">
@@ -849,6 +877,55 @@
             refreshCharts();
         };
 
+        /* ===== Месяц к месяцу =====
+           Рост показываем только когда есть с чем сравнивать: делить на ноль
+           нельзя, а «+100%» от пустого прошлого месяца — враньё. */
+        const MONTHS_RU = ['январь','февраль','март','апрель','май','июнь',
+                           'июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+
+        const growthTile = (label, value, hint, delta, goodWhenDown) => {
+            let badge = '<span class="text-[10px] font-bold text-white/25">сравнить не с чем</span>';
+            if (delta !== null && delta !== undefined) {
+                const better = goodWhenDown ? delta < 0 : delta > 0;
+                const flat = delta === 0;
+                const tone = flat ? 'text-white/40' : (better ? 'text-primary' : 'text-red-400/90');
+                const arrow = flat ? 'remove' : (delta > 0 ? 'arrow_upward' : 'arrow_downward');
+                const shown = typeof delta === 'number' && !Number.isInteger(delta)
+                    ? Math.abs(delta).toFixed(1) + '%' : Math.abs(delta);
+                badge = `<span class="inline-flex items-center gap-0.5 ${tone} text-xs font-black tabular-nums">
+                    <span class="material-symbols-outlined text-sm leading-none">${arrow}</span>${shown}</span>`;
+            }
+            return `<div class="rounded-2xl bg-black/25 border border-white/[0.07] p-4 flex flex-col justify-between min-h-[104px]">
+                <p class="text-[9px] font-black text-white/30 uppercase tracking-[0.18em]">${label}</p>
+                <div class="flex items-end justify-between gap-2 mt-2">
+                    <span class="text-2xl font-black text-white tabular-nums leading-none">${value}</span>
+                    ${badge}
+                </div>
+                <p class="text-[10px] text-white/25 mt-1.5">${hint}</p>
+            </div>`;
+        };
+
+        const refreshGrowth = async () => {
+            const d = await fetchJSON(`{{ url_for('dashboard_growth_json') }}`);
+            const box = document.getElementById('growth-tiles');
+            if (!d || !d.ok || !box) return;
+
+            const now = new Date();
+            const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const label = document.getElementById('growth-period');
+            if (label) label.textContent = `${MONTHS_RU[now.getMonth()]} против ${MONTHS_RU[prev.getMonth()]}`;
+
+            box.innerHTML = [
+                growthTile('Покупок', d.purchases.now,
+                           `в прошлом месяце — ${d.purchases.prev}`, d.purchases.growth, false),
+                growthTile('Новых людей', d.joined.now,
+                           `в прошлом месяце — ${d.joined.prev}`, d.joined.growth, false),
+                growthTile('Без подписки', d.idle.now,
+                           `на конец прошлого месяца — ${d.idle.prev}`,
+                           d.has_prev ? d.idle.delta : null, true),
+            ].join('');
+        };
+
         const refreshCharts = async () => {
             const data = await fetchJSON(`{{ url_for('dashboard_charts_json') }}?period=${currentIncomePeriod}`);
             if (!data) return;
@@ -857,6 +934,7 @@
                 initMainChart('newUsersChart', 'Новые пользователи', data.users);
                 initMainChart('newKeysChart', 'Новые ключи', data.keys);
                 initIncomeChart(data.income);
+                refreshGrowth();
             } else {
                 const update = (id, obj) => {
                     const chart = window.dashCharts[id];
