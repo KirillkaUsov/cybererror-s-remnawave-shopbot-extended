@@ -3053,22 +3053,13 @@ def create_webhook_app(bot_controller_instance):
     @flask_app.route('/admin/balance')
     @login_required
     def admin_balance_page():
-        try:
-            user_id = request.args.get('user_id', type=int)
-        except Exception:
-            user_id = None
-        user = None
-        balance = None
-        referrals = []
+        # Отдельной страницы баланса больше нет — баланс правится в карточке
+        # пользователя. Шаблона admin_balance.html в проекте не осталось, и
+        # раньше этот адрес отвечал только пятисоткой.
+        user_id = request.args.get('user_id', type=int)
         if user_id:
-            try:
-                user = get_user(user_id)
-                balance = get_balance(user_id)
-                referrals = get_referrals_for_user(user_id)
-            except Exception:
-                pass
-        common_data = get_common_template_data()
-        return render_template('admin_balance.html', user=user, balance=balance, referrals=referrals, **common_data)
+            return redirect(url_for('users_page', q=str(user_id)))
+        return redirect(url_for('users_page'))
 
     @flask_app.route('/support')
     @login_required

@@ -163,7 +163,10 @@
             backdrop-filter: blur(20px);
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             padding: 1rem;
-            margin: -1.5rem -1.5rem 1rem -1.5rem;
+            /* шапка растягивается на всю ширину поверх отступов <main>,
+               а там ровно p-4: при -1.5rem она вылезала за экран
+               и страницу можно было сдвинуть вбок */
+            margin: -1rem -1rem 1rem -1rem;
         }
 
         .dark .mobile-app-header {

@@ -99,23 +99,23 @@
 
                 <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
                     {% for res in [
-                    {'l': 'Отправлено', 'id': 'result-sent', 'icon': 'check_circle', 'color': 'primary'},
+                    {'l': 'Доставлено', 'id': 'result-sent', 'icon': 'check_circle', 'color': 'primary'},
                     {'l': 'Заблокировали бота', 'id': 'result-blocked-bot', 'icon': 'block', 'color': 'red-400'},
-                    {'l': 'Заблокированные users (Телеграме)', 'id': 'result-deactivated', 'icon': 'person_off',
+                    {'l': 'Аккаунт удалён', 'id': 'result-deactivated', 'icon': 'person_off',
                     'color':
                     'orange-400'},
-                    {'l': 'Добавили в ЧС (У нас)', 'id': 'result-added-to-banned', 'icon': 'playlist_add', 'color':
+                    {'l': 'Добавлено в чёрный список', 'id': 'result-added-to-banned', 'icon': 'playlist_add', 'color':
                     'yellow-500'},
-                    {'l': 'Сняли с ЧС (У нас)', 'id': 'result-removed-from-banned', 'icon': 'playlist_remove', 'color':
+                    {'l': 'Снято с чёрного списка', 'id': 'result-removed-from-banned', 'icon': 'playlist_remove', 'color':
                     'green-400'},
-                    {'l': 'Всего в ЧС (У нас)', 'id': 'stat-banned-count', 'icon': 'groups', 'color': 'white/40'}
+                    {'l': 'Всего в чёрном списке', 'id': 'stat-banned-count', 'icon': 'groups', 'color': 'white/40'}
                     ] %}
                     <div class="bg-black/20 border border-white/5 rounded-2xl p-4 flex flex-col gap-2 relative">
                         <div class="flex items-center gap-2">
                             <span class="material-symbols-outlined text-{{ res.color }} text-sm">{{ res.icon }}</span>
                             <p class="text-white/40 text-[9px] uppercase font-bold tracking-wider">{{ res.l }}</p>
                             {% if res.id == 'stat-banned-count' %}
-                            <button type="button" id="btn-delete-banned-users" title="Удалить всех из БД"
+                            <button type="button" id="btn-delete-banned-users" title="Удалить всех из чёрного списка вместе с их записями в базе"
                                 class="ml-auto text-red-500 hover:text-red-400 hover:scale-110 transition-transform flex items-center justify-center">
                                 <span class="material-symbols-outlined text-sm">delete</span>
                             </button>
@@ -279,7 +279,7 @@
                         <button type="button" id="btn-clear-banned"
                             class="px-4 py-2 rounded-xl bg-red-500/10 hover:border-red-500 text-red-400 text-[10px] font-bold uppercase tracking-widest border border-red-500/20 transition-all flex items-center gap-2">
                             <span class="material-symbols-outlined text-sm">delete_sweep</span>
-                            Очистить список ЧС
+                            Очистить чёрный список
                         </button>
                     </div>
 
@@ -3637,7 +3637,7 @@
             btnDeleteBanned.addEventListener('click', async function () {
                 if (!await window.showConfirm({
                     title: 'Удаление пользователей',
-                    message: 'Вы уверены, что хотите полностью удалить из базы данных всех пользователей, добавленных в список "В ЧС (У нас)"? Это действие необратимо.',
+                    message: 'Вы уверены, что хотите полностью удалить из базы данных всех пользователей, из чёрного списка? Это действие необратимо.',
                     type: 'danger',
                     confirmText: 'Удалить'
                 })) return;
@@ -3769,7 +3769,7 @@
                                     btn.innerHTML = '<span class="material-symbols-outlined text-base">send</span> Отправить рассылку';
 
                                     window.showToast('success',
-                                        `Рассылка завершена! Отправлено: ${progress.sent}, Добавлено в ЧС: ${progress.added_to_banned || 0}, Снято с ЧС: ${progress.removed_from_banned || 0}`);
+                                        `Рассылка завершена! Отправлено: ${progress.sent}, добавлено в чёрный список: ${progress.added_to_banned || 0}, снято: ${progress.removed_from_banned || 0}`);
 
                                     loadStats();
                                     document.getElementById('broadcast-text').value = '';
@@ -3802,7 +3802,7 @@
 
                     btn.disabled = false;
                     btn.innerHTML = '<span class="material-symbols-outlined text-base">send</span> Отправить рассылку';
-                    window.showToast('success', `Рассылка завершена! Отправлено: ${data.results.sent}, Добавлено в ЧС: ${data.results.added_to_banned || 0}`);
+                    window.showToast('success', `Рассылка завершена! Отправлено: ${data.results.sent}, добавлено в чёрный список: ${data.results.added_to_banned || 0}`);
                     loadStats();
                     document.getElementById('broadcast-text').value = '';
                     buttons = [];

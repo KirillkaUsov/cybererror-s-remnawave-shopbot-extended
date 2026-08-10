@@ -323,7 +323,12 @@
 
         <!-- Remnawave Section -->
         <div class="relative overflow-visible bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/[0.08] rounded-2xl shadow-2xl backdrop-blur-xl">
-            <div class="absolute -right-20 -top-20 w-72 h-72 bg-blue-500/[0.04] rounded-full blur-3xl pointer-events-none"></div>
+            <!-- карточке нужен overflow-visible ради выпадающих меню внутри,
+                 поэтому подсветку обрезаем отдельным слоем — иначе она
+                 вылезала за правый край страницы -->
+            <div class="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+                <div class="absolute -right-20 -top-20 w-72 h-72 bg-blue-500/[0.04] rounded-full blur-3xl"></div>
+            </div>
             <div class="relative">
                 <div id="remna-hosts-header"
                     class="flex items-center justify-between cursor-pointer select-none px-5 py-4 hover:bg-white/[0.02] transition-all duration-300 group">
@@ -362,8 +367,10 @@
 
         <!-- SSH Section -->
         <div>
-            <div class="flex items-center justify-between mb-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-white/[0.04] to-white/[0.01] border border-white/[0.08] shadow-xl backdrop-blur-md">
-                <div class="flex items-center gap-3.5">
+            <!-- на телефоне четыре кнопки рядом с заголовком не влезают в строку
+                 и уезжали за правый край: разрешаем ряду переноситься -->
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-white/[0.04] to-white/[0.01] border border-white/[0.08] shadow-xl backdrop-blur-md">
+                <div class="flex items-center gap-3.5 min-w-0">
                     <div class="relative">
                         <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-primary border border-primary/15 shadow-lg shadow-primary/10">
                             <span class="material-symbols-outlined text-xl">terminal</span>
@@ -375,7 +382,7 @@
                         <p class="text-[9px] text-white/25 uppercase tracking-[0.15em] font-semibold mt-0.5">Удалённое управление</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2.5">
+                <div class="flex flex-wrap items-center justify-end gap-2.5 ml-auto">
                     <button onclick="toggleSshTargetsPrivacy()" id="btn-toggle-ssh-privacy"
                         class="w-9 h-9 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/35 hover:text-white/70 flex items-center justify-center transition-all duration-300" title="Скрыть/показать имя и адрес">
                         <span class="material-symbols-outlined text-sm">visibility_off</span>
@@ -2435,7 +2442,10 @@
         if (cachedObj) {
             count = (cachedObj.hosts?.length || 0) + (cachedObj.ssh_targets?.length || 0);
         }
-        btn.innerHTML = `<span class="material-symbols-outlined text-sm">delete_history</span> Сбросить кеш (${count})`;
+        /* подпись обязана остаться в hidden sm:inline: без него кнопка
+           на телефоне вырастала и выталкивала соседей за край экрана */
+        btn.innerHTML = `<span class="material-symbols-outlined text-sm">delete_history</span>` +
+            `<span class="hidden sm:inline">Сбросить кеш</span> <span class="cache-count-text">(${count})</span>`;
     }
 
     let sshTargetsPrivacyEnabled = false;

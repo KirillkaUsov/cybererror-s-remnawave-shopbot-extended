@@ -13,9 +13,11 @@
     <div class="lg:col-span-2 space-y-6">
         <!-- Button Grid -->
         <div class="bg-white/5 border border-white/10 rounded-lg p-6">
-            <div class="flex items-center justify-between mb-4">
+            <!-- «Добавить» и «Предпросмотр» рядом с заголовком не влезают
+                 в узкое окно и уезжали за край карточки -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <h3 class="text-white font-bold">Кнопки</h3>
-                <div class="flex gap-2">
+                <div class="flex flex-wrap gap-2">
                     <button type="button" id="add-button-btn"
                         class="px-3 py-1.5 rounded-lg bg-primary/20 text-primary text-sm font-medium hover:bg-primary/30 flex items-center gap-1">
                         <span class="material-symbols-outlined text-base">add</span> Добавить

@@ -2409,7 +2409,13 @@
 
         document.getElementById('udm-detach-referrals')?.addEventListener('click', async function () {
             const uid = document.getElementById('udm-trial-toggle')?.getAttribute('data-user-id');
-            if (!uid || !confirm('Отвязать всех рефералов от этого пользователя? Сами аккаунты останутся на месте.')) return;
+            if (!uid) return;
+            const ok = await showCustomConfirm({
+                title: 'Отвязать рефералов?',
+                text: 'Пользователь перестанет считаться пригласившим. Сами аккаунты останутся на месте, начисленные бонусы не отменяются.',
+                okText: 'Да, отвязать'
+            });
+            if (!ok) return;
 
             const data = await apiRequest(
                 `{{ url_for('detach_user_referrals_route', user_id=0) }}`.replace('/0/', `/${uid}/`),

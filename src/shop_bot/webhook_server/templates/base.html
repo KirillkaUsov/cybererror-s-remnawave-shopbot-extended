@@ -836,6 +836,42 @@
             cursor: not-allowed;
         }
 
+        /* Подсказка вместо браузерной: родная ждёт секунду, в каждом
+           браузере выглядит по-своему и на телефоне не показывается
+           вовсе — а половина кнопок панели подписана только значком. */
+        .ui-tip {
+            position: fixed;
+            top: -999px;
+            left: 0;
+            z-index: 200;
+            max-width: 17rem;
+            padding: .4rem .6rem;
+            border-radius: .6rem;
+            border: 1px solid rgba(255, 255, 255, .1);
+            background: rgba(20, 21, 26, .98);
+            backdrop-filter: blur(12px);
+            box-shadow: 0 12px 28px -10px rgba(0, 0, 0, .7);
+            color: rgba(255, 255, 255, .82);
+            font-size: .76rem;
+            line-height: 1.35;
+            white-space: pre-line;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(3px);
+            transition: opacity .13s ease, transform .13s ease;
+        }
+
+        .ui-tip.is-open {
+            opacity: 1;
+            transform: none;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .ui-tip {
+                transition: none;
+            }
+        }
+
         /* Выбор файла */
         input[type="file"]::-webkit-file-upload-button,
         input[type="file"]::file-selector-button {
@@ -934,18 +970,23 @@
                 </script>
                 <div class="px-6 py-5 flex items-center justify-between border-b border-white/5 relative h-[72px] flex-shrink-0">
                     <a href="{{ url_for('dashboard_page') }}"
-                        class="flex items-center gap-3 hover:opacity-90 transition-opacity sidebar-brand-link">
+                        class="flex items-center gap-2.5 hover:opacity-90 transition-opacity sidebar-brand-link">
                         <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo"
                             class="h-8 w-auto object-contain drop-shadow-md flex-shrink-0"
                             onerror="this.style.display='none'" />
+                        {# в боковой панели на название остаётся около сотни точек:
+                           при text-lg название из 13 букв уже обрывалось многоточием #}
                         <h1 id="brand-title"
-                            class="text-lg font-bold text-white tracking-wide whitespace-nowrap overflow-hidden text-ellipsis sidebar-text"
+                            class="text-base font-bold text-white tracking-wide whitespace-nowrap overflow-hidden text-ellipsis sidebar-text"
                             data-refresh-part="brand">{{ brand_title or 'Admin Panel' }}</h1>
                     </a>
                     <div class="flex items-center gap-1">
                         <div class="sidebar-header-actions transition-opacity duration-300 flex items-center gap-1">
+                            {# в выдвижной панели на телефоне рядом уже стоит крестик,
+                               и вдвоём они съедали место у названия — карандаш
+                               оставляем там, где панель закреплена #}
                             <button type="button" id="brand-edit"
-                                class="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/5 transition-all"
+                                class="hidden lg:flex w-8 h-8 rounded-lg items-center justify-center text-white/40 hover:text-white hover:bg-white/5 transition-all"
                                 title="Сменить название">
                                 <span class="material-symbols-outlined text-[20px]">edit</span>
                             </button>
@@ -2580,6 +2621,118 @@
                         }
                     }).observe(document.body, { childList: true, subtree: true });
                 });
+            })();
+
+            /* ===== ПОДСКАЗКИ ВМЕСТО ЖЁЛТОГО ЯРЛЫКА БРАУЗЕРА =====
+               Текст забираем из title в data-tip: пока title висит на
+               элементе, браузер рисует поверх нашей подсказки свою. Тот
+               же текст уходит в aria-label, если подписи у элемента нет,
+               иначе кнопки-значки останутся немыми для чтения с экрана. */
+            (function () {
+                let tip = null, host = null, hideTimer = null;
+
+                function ensure() {
+                    if (tip) return tip;
+                    tip = document.createElement('div');
+                    tip.className = 'ui-tip';
+                    tip.setAttribute('role', 'tooltip');
+                    document.body.appendChild(tip);
+                    return tip;
+                }
+
+                /* у кнопки со значком textContent — это имя лигатуры
+                   («edit», «delete»), читалке экрана оно ничего не говорит */
+                function visibleText(el) {
+                    const copy = el.cloneNode(true);
+                    copy.querySelectorAll('.material-symbols-outlined').forEach(s => s.remove());
+                    return (copy.textContent || '').trim();
+                }
+
+                function textOf(el) {
+                    /* title мог смениться уже после первого показа —
+                       у кнопок «Запустить / Остановить» так и происходит */
+                    const own = el.getAttribute('title');
+                    if (own !== null) {
+                        el.removeAttribute('title');
+                        if (own.trim()) {
+                            el.dataset.tip = own;
+                            if (!el.getAttribute('aria-label') && !visibleText(el)) {
+                                el.setAttribute('aria-label', own);
+                            }
+                        } else {
+                            delete el.dataset.tip;
+                        }
+                    }
+                    return el.dataset.tip || '';
+                }
+
+                function place(el) {
+                    const r = el.getBoundingClientRect();
+                    const t = tip.getBoundingClientRect();
+                    const gap = 8;
+                    let top = r.top - t.height - gap;
+                    if (top < gap) top = r.bottom + gap;
+                    let left = r.left + r.width / 2 - t.width / 2;
+                    left = Math.max(gap, Math.min(left, window.innerWidth - t.width - gap));
+                    tip.style.top = Math.round(top) + 'px';
+                    tip.style.left = Math.round(left) + 'px';
+                }
+
+                function show(el, touch) {
+                    const text = textOf(el);
+                    if (!text) return;
+                    host = el;
+                    ensure().textContent = text;
+                    /* сначала за экраном: размер подсказки нужен, чтобы её поставить */
+                    tip.style.top = '-999px';
+                    tip.style.left = '0';
+                    tip.classList.add('is-open');
+                    requestAnimationFrame(() => { if (host === el) place(el); });
+                    clearTimeout(hideTimer);
+                    /* на телефоне указатель не уводят — подсказка гаснет сама */
+                    if (touch) hideTimer = setTimeout(hide, 2200);
+                }
+
+                function hide() {
+                    host = null;
+                    clearTimeout(hideTimer);
+                    if (tip) tip.classList.remove('is-open');
+                }
+
+                document.addEventListener('pointerover', e => {
+                    const el = e.target.closest && e.target.closest('[title], [data-tip]');
+                    if (!el) { if (host) hide(); return; }
+                    if (el === host) return;
+                    hide();
+                    show(el, e.pointerType === 'touch');
+                });
+
+                document.addEventListener('pointerout', e => {
+                    if (host && !host.contains(e.relatedTarget)) hide();
+                });
+
+                document.addEventListener('focusin', e => {
+                    const el = e.target.closest && e.target.closest('[title], [data-tip]');
+                    if (el && el.matches(':focus-visible')) show(el);
+                });
+                document.addEventListener('focusout', () => hide());
+
+                document.addEventListener('click', e => {
+                    if (host && host.contains(e.target)) {
+                        /* подпись у кнопки могла смениться прямо по нажатию */
+                        setTimeout(() => {
+                            if (!host) return;
+                            const text = textOf(host);
+                            if (text) { tip.textContent = text; place(host); } else hide();
+                        }, 0);
+                        return;
+                    }
+                    hide();
+                });
+
+                window.addEventListener('scroll', hide, true);
+                window.addEventListener('resize', hide);
+                document.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
             })();
 
             /* ===== ДИАЛОГИ ВМЕСТО confirm/alert/prompt ===== */

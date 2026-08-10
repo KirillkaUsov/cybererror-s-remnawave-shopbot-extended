@@ -14,7 +14,9 @@
 
 <!-- ===== ЗАГОЛОВОК СТРАНИЦЫ ===== -->
 <!-- Название раздела и краткое подзаголовок -->
-<div class="mb-8 flex items-center justify-between">
+<!-- на узком экране кнопка сохранения сжималась и подпись в ней обрезалась,
+     поэтому строке разрешено переноситься, а кнопке — нет -->
+<div class="mb-8 flex flex-wrap items-center justify-between gap-4">
     <div class="space-y-1">
         <h2 class="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
             Настройки
@@ -26,7 +28,7 @@
     </div>
 
     <button type="button" id="save-all-settings-btn"
-        class="group relative px-6 py-2.5 rounded-xl bg-primary/10 border border-primary/20 text-white font-bold text-xs uppercase tracking-widest hover:bg-primary/20 active:scale-95 transition-all duration-300 shadow-lg shadow-black/20 flex items-center gap-2 overflow-hidden">
+        class="group relative shrink-0 px-6 py-2.5 rounded-xl bg-primary/10 border border-primary/20 text-white font-bold text-xs uppercase tracking-widest hover:bg-primary/20 active:scale-95 transition-all duration-300 shadow-lg shadow-black/20 flex items-center gap-2 overflow-hidden">
         <span class="material-symbols-outlined text-xl group-hover:rotate-12 transition-transform">save</span>
         <span>Сохранить изменения</span>
     </button>
@@ -428,7 +430,7 @@
                                         <span
                                             class="material-symbols-outlined text-[10px] opacity-40 cursor-help hover:text-white/60 transition-colors">info</span>
                                         <span
-                                            class="absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 rounded-xl border border-white/[0.08] bg-[#091a12] p-2.5 text-[10px] normal-case tracking-normal text-white/60 shadow-xl opacity-0 transition-opacity pointer-events-none group-hover:opacity-100">
+                                            class="absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 rounded-xl border border-white/[0.08] bg-[#0d0c12] p-2.5 text-[10px] normal-case tracking-normal text-white/60 shadow-xl opacity-0 transition-opacity pointer-events-none group-hover:opacity-100">
                                             UUID <span class="text-primary font-bold">внутреннего сквада</span> из панели
                                             <span class="text-primary font-bold">Remnawave</span>. Пробные ключи уйдут в
                                             него, а не в сквад хоста. Пусто — как у хоста.
