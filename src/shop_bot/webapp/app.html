@@ -122,8 +122,14 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
    transform (даже нулевой), а он делает её точкой отсчёта для панели
    оплаты с position:fixed — та уезжала бы под экран. Движение берут на
    себя карточки внутри. */
-.view.is-active{display:block;animation:view-in .22s var(--ease) both}
+.view.is-active{display:block;animation:view-in .19s var(--ease) both}
 @keyframes view-in{from{opacity:0}to{opacity:1}}
+/* Уходящий экран гаснет, и только потом на его место встаёт новый. Раньше
+   старый пропадал в тот же кадр, и переход читался как мигание: пусто —
+   и снизу подъезжает другое содержимое. Прозрачность и здесь без сдвига,
+   причина та же, что у view-in. */
+.view.is-leaving{display:block;pointer-events:none;animation:view-out .11s var(--ease) both}
+@keyframes view-out{from{opacity:1}to{opacity:0}}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 /* Содержимое экрана подъезжает снизу двумя-тремя ступенями. Раньше экран
@@ -146,6 +152,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
    возникающая по ходу заполнения формы, тормозит ответ интерфейса */
 .pop-in{animation:pop-in .2s var(--ease) backwards}
 @keyframes pop-in{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
+/* и обратно: то, что перестаёт быть нужным, гаснет, а не исчезает в кадре */
+.pop-out{animation:pop-out .13s var(--ease) both;pointer-events:none}
+@keyframes pop-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(3px) scale(.99)}}
 @keyframes swap-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 
 /* списки проявляются лесенкой — только там, где содержимое перерисовывается
@@ -241,7 +250,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .trial-banner__body b{display:block;font-size:14px;font-weight:600}
 .trial-banner__body span{display:block;font-size:12.5px;color:var(--dim);margin-top:2px}
 
-.subs-list{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+/* Карточки в ряду тянутся по самой высокой, а кнопки прижаты к низу — и у
+   подписки без «Докупить устройства» посреди карточки зияла дыра в сотню
+   точек. Пусть каждая карточка будет ровно своего роста. */
+.subs-list{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));align-items:start}
 .subs-empty{max-width:520px;margin:0 auto}
 .sub-card{display:flex;flex-direction:column;gap:13px}
 .sub-card__top{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -721,10 +733,13 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   /* поддержка: список слева, переписка справа — как в почтовом клиенте */
   .support-layout{display:grid;grid-template-columns:322px minmax(0,1fr);gap:26px;min-height:0}
   #supportListView{display:flex !important;flex-direction:column;min-height:0}
-  #supportHistory{flex:1;min-height:0;overflow-y:auto;padding-right:2px}
+  /* список обращений — такая же панель, как переписка справа: раньше он
+     висел в пустоте голыми строками, и две колонки выглядели из разных мест */
+  #supportHistory{flex:1;min-height:0;overflow-y:auto;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);padding:10px}
   /* переписка живёт в такой же панели, как и пустое состояние справа */
   #supportThreadView{min-height:0;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);padding:14px 18px 0;overflow:hidden}
-  .support-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:320px;border-style:dashed;border-color:var(--line-2);color:var(--dim);gap:10px}
+  /* пунктир на панели в полэкрана читался как незаконченная вёрстка */
+  .support-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:320px;color:var(--dim);gap:10px}
   .support-empty .icon{width:30px;height:30px;color:var(--faint)}
   .thread-back{display:none}
   /* шапка переписки не спорит с общим заголовком раздела */
@@ -1152,15 +1167,37 @@ let supportPollTimer = null;
 let paymentPollTimer = null;
 
 const $ = id => document.getElementById(id);
+/* Блоки, которые сменяют друг друга на одном месте: список обращений и
+   переписка, поле ввода и диктофон, две кнопки пробного периода. Уходящий
+   такой блок обязан покинуть поток сразу — иначе оба стоят в потоке те
+   доли секунды, что длится угасание, и раздел подпрыгивает по высоте.
+   Появление у них при этом остаётся плавным. */
+const NO_EXIT_ANIM = new Set([
+  'supportHead', 'supportListView', 'supportThreadView', 'supportEmpty',
+  'threadComposer', 'threadRecorder', 'threadClosed', 'recPreview',
+  'trialActivateBtn', 'trialLinkBtn', 'deviceSelector', 'deviceNote',
+]);
 const toggle = (id, hidden) => {
   const el = $(id);
   if(!el) return;
   const wasHidden = el.classList.contains('is-hidden');
-  el.classList.toggle('is-hidden', !!hidden);
+  clearTimeout(el.__hideTimer);
+  el.classList.remove('pop-out');
   /* display:none анимировать нельзя, поэтому проявляем в момент показа.
      Раньше баннеры, кнопки и значки просто возникали — отсюда ощущение, что
      анимаций местами нет вовсе. */
-  if(wasHidden && !hidden){
+  if(hidden){
+    if(wasHidden || motionOff() || NO_EXIT_ANIM.has(id)){ el.classList.add('is-hidden'); return; }
+    /* сначала гаснет, и только потом уходит из потока */
+    el.classList.add('pop-out');
+    el.__hideTimer = setTimeout(() => {
+      el.classList.add('is-hidden');
+      el.classList.remove('pop-out');
+    }, 130);
+    return;
+  }
+  el.classList.remove('is-hidden');
+  if(wasHidden){
     el.classList.remove('pop-in');
     void el.offsetWidth;
     el.classList.add('pop-in');
@@ -1174,6 +1211,40 @@ function swapIn(el, html){
   el.classList.remove('swap-in');
   void el.offsetWidth;   /* без принудительного пересчёта анимация не перезапустится */
   el.classList.add('swap-in');
+}
+/* Заполнение блока пришедшими данными. Проявляем только там, где до этого
+   висел скелетон или было пусто: перерисовку по нажатию трогать нельзя —
+   каталог моргал бы на каждый выбор тарифа, а это раздражает сильнее,
+   чем отсутствие анимации. */
+function fillLoaded(el, html){
+  if(!el) return;
+  const wasLoading = !!el.querySelector('.skeleton') || !el.childElementCount;
+  el.innerHTML = html;
+  if(wasLoading && !motionOff()) swapIn(el);
+}
+/* Раздел дозагрузился ровно тогда, когда из него пропал скелетон. Ловим это
+   одним наблюдателем на всё приложение: помечать вручную полсотни мест, где
+   содержимое вставляется через innerHTML, пришлось бы вечно — и каждое новое
+   место снова оказалось бы без анимации. Перерисовка по нажатию сюда не
+   попадает: там скелетона нет. */
+function watchSkeletons(){
+  if(motionOff()) return;
+  new MutationObserver(records => {
+    const done = new Set();
+    for(const r of records){
+      const host = r.target;
+      if(done.has(host) || !host.querySelectorAll) continue;
+      const hadSkeleton = Array.from(r.removedNodes).some(n =>
+        n.nodeType === 1 && (n.classList?.contains('skeleton') || n.querySelector?.('.skeleton')));
+      if(!hadSkeleton) continue;
+      done.add(host);
+      /* часть блока ещё грузится — дождёмся последнего */
+      if(host.querySelector('.skeleton')) continue;
+      /* у списков с лесенкой карточки уже подъезжают сами */
+      if(host.classList.contains('stagger') || !host.childElementCount) continue;
+      swapIn(host);
+    }
+  }).observe(document.body, { childList:true, subtree:true });
 }
 function esc(v){ return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 /* строка, безопасно вставляемая как JS-аргумент внутрь HTML-атрибута */
@@ -1349,15 +1420,47 @@ function setActiveNav(name){
    было бы странно. */
 const scrollMemory = {};
 const SCROLL_FORGET = ['catalog'];
+/* Смена экрана в два шага: старый гаснет, потом встаёт новый. Оба экрана
+   лежат в общем потоке, поэтому показать их одновременно нельзя — страница
+   выросла бы вдвое; отсюда именно очередь, а не наложение.
+   Задержка чисто зрительная: запросы уходят сразу, не дожидаясь её. */
+const VIEW_OUT_MS = 95;
+let viewSwapTimer = null;
+function swapView(name){
+  const to = $('view-' + name);
+  if(!to) return;
+  clearTimeout(viewSwapTimer);
+  /* хвост незаконченного перехода: два экрана в потоке разом не оставляем */
+  document.querySelectorAll('.view.is-leaving').forEach(v => v.classList.remove('is-leaving', 'is-active'));
+  const from = document.querySelector('.view.is-active');
+  const finish = () => {
+    if(from) from.classList.remove('is-leaving', 'is-active');
+    to.classList.add('is-active');
+    restoreScroll(name);
+  };
+  /* при выключенном движении меняем сразу: даже нулевая задержка оставила бы
+     кадр, в котором ни один экран не показан */
+  if(!from || from === to || motionOff()){ finish(); return; }
+  from.classList.add('is-leaving');
+  viewSwapTimer = setTimeout(finish, VIEW_OUT_MS);
+}
+function motionOff(){
+  try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; }
+}
+function restoreScroll(name){
+  const scroller = $('scroller');
+  if(!scroller) return;
+  scroller.scrollTop = SCROLL_FORGET.includes(name) ? 0 : (scrollMemory[name] || 0);
+}
 function showScreen(name){
   haptic();
   const prev = currentScreen;
   const scroller = $('scroller');
   if(prev !== name) scrollMemory[prev] = scroller.scrollTop;
-  document.querySelectorAll('.view').forEach(v => v.classList.toggle('is-active', v.id === 'view-' + name));
+  /* подсветка в меню и загрузка данных — сразу: ждать анимацию незачем */
   setActiveNav(name);
-  if(prev !== name) scroller.scrollTop = SCROLL_FORGET.includes(name) ? 0 : (scrollMemory[name] || 0);
   currentScreen = name;
+  if(prev !== name) swapView(name); else restoreScroll(name);
   if(name !== 'support'){ stopTicketPoll(); setChatMode(false); }
   if(name === 'profile') loadProfile();
   if(name === 'support' && prev !== 'support'){ resetSupportView(); loadSupportHistory(); }
@@ -1417,7 +1520,10 @@ function keyCardHtml(k){
       ${metaCell('Трафик', esc(k.traffic_display||'—'))}
       ${metaCell('Устройства', esc(k.hwid_display||'—'))}
     </div>
-    ${k.is_unlimited ? '' : `<div class="sub-card__bar"><div class="sub-card__bar-fill" style="width:${progress}%"></div></div>`}
+    <!-- полоса стоит и у бессрочной подписки, целиком закрашенная: без неё
+         карточка становилась на четыре точки ниже соседних, и в ряду
+         одинаковые строки не совпадали по высоте -->
+    <div class="sub-card__bar"><div class="sub-card__bar-fill" style="width:${k.is_unlimited ? 100 : progress}%"></div></div>
     ${k.comment_key ? `<div class="sub-card__note">📝&nbsp;${esc(k.comment_key)}</div>` : ''}
     <div class="sub-card__link"><svg class="icon icon--xs" style="color:var(--faint)"><use href="#ic-link"/></svg><code>${esc(k.sub_url || 'Ссылка ещё готовится — обновите экран через минуту')}</code></div>
     <div class="sub-card__actions">
@@ -1523,11 +1629,11 @@ async function loadDevices(k){
     if(!d.ok) throw new Error(d.error || 'Не удалось получить список устройств');
     renderDevices(d.devices || []);
   }catch(e){
-    $('deviceList').innerHTML = `<p class="empty-hint">${esc(e.message)}</p>`;
+    fillLoaded($('deviceList'), `<p class="empty-hint">${esc(e.message)}</p>`);
   }
 }
 function renderDevices(list){
-  if(!list.length){ $('deviceList').innerHTML = '<p class="empty-hint">Нет активных устройств</p>'; return; }
+  if(!list.length){ fillLoaded($('deviceList'), '<p class="empty-hint">Нет активных устройств</p>'); return; }
   $('deviceList').innerHTML = list.map(d => {
     const label = d.deviceModel || d.platform || d.os || d.appName || 'Устройство';
     const bits = [d.platform, d.ip, d.updatedAt ? fmtRelative(d.updatedAt) : null].filter(Boolean);
@@ -1584,12 +1690,12 @@ async function openAddon(id){
     const d = await api('/api/device-addon', { method:'POST', headers: JSON_H, body: JSON.stringify({ user_id: USER_ID, key_id: k.key_id }) });
     if(!d.ok) throw new Error(d.error || 'Не удалось получить наборы устройств');
     renderAddon(k, d);
-  }catch(e){ $('addonBody').innerHTML = `<p class="empty-hint">${esc(e.message)}</p>`; }
+  }catch(e){ fillLoaded($('addonBody'), `<p class="empty-hint">${esc(e.message)}</p>`); }
 }
 function renderAddon(k, d){
   if(!d.available){
     $('addonSub').textContent = k.name || '';
-    $('addonBody').innerHTML = `<p class="empty-hint">${esc(d.note || 'Сейчас докупить устройства нельзя.')}</p>`;
+    fillLoaded($('addonBody'), `<p class="empty-hint">${esc(d.note || 'Сейчас докупить устройства нельзя.')}</p>`);
     return;
   }
   const days = Number(d.days_left || 0), cur = Number(d.current || 0);
@@ -1831,7 +1937,9 @@ function paintNotifyBadge(unread){
   const badge = $('notifyBadge');
   if(!badge) return;
   badge.textContent = unread > 99 ? '99+' : String(unread);
-  badge.classList.toggle('is-hidden', !unread);
+  /* через общий переключатель — значок появляется и гаснет так же,
+     как всё остальное, а не возникает в кадре */
+  toggle('notifyBadge', !unread);
 }
 
 async function loadNotifications(silent){
@@ -1841,7 +1949,7 @@ async function loadNotifications(silent){
     notifyItems = d.items || [];
     paintNotifyBadge(d.unread || 0);
     if(!silent) renderNotifications();
-  }catch(e){ if(!silent) $('notifyList').innerHTML = '<div class="empty">Не удалось загрузить</div>'; }
+  }catch(e){ if(!silent) fillLoaded($('notifyList'), '<div class="empty">Не удалось загрузить</div>'); }
 }
 
 async function openNotifications(){
@@ -2097,7 +2205,7 @@ async function openCatalog(action){
     if(!state.host && state.catalog[0]) selectHost(state.catalog[0].host_name);
     else renderCatalog();
   }catch(e){
-    $('planSelector').innerHTML = errorCard('Каталог недоступен', e.message);
+    fillLoaded($('planSelector'), errorCard('Каталог недоступен', e.message));
   }
 }
 function selectRenewKey(id){ state.selectedKeyForRenew = findKey(id); renderCatalog(); }
@@ -2130,7 +2238,7 @@ function renderHostDescription(h){
   requestAnimationFrame(() => toggle('hostDescriptionMore', body.scrollHeight - body.clientHeight < 4));
 }
 function renderCatalog(){
-  if(!state.catalog.length){ $('planSelector').innerHTML = '<div class="card empty"><h2>Тарифов пока нет</h2></div>'; return; }
+  if(!state.catalog.length){ fillLoaded($('planSelector'), '<div class="card empty"><h2>Тарифов пока нет</h2></div>'); return; }
   if(!state.host) state.host = state.catalog[0].host_name;
   const h = findHost();
   $('hostSelector').innerHTML = state.catalog.map(x => `<button class="chip ${x.host_name===h.host_name?'is-active':''}" onclick="selectHost(${arg(x.host_name)})">${esc(x.host_name)}${x.plans && x.plans[0] ? ' · от ' + money(x.plans[0].price) : ''}</button>`).join('');
@@ -2276,7 +2384,7 @@ async function openPayment(){
     state.methods = d.methods || [];
     state.balance = Number(d.balance || 0);
     renderPaymentMethods();
-  }catch(e){ $('paymentMethods').innerHTML = `<p class="sheet__sub">${esc(e.message)}</p>`; }
+  }catch(e){ fillLoaded($('paymentMethods'), `<p class="sheet__sub">${esc(e.message)}</p>`); }
 }
 function methodNote(m){
   if(m.id === 'pay_balance') return `На счёте ${money(state.balance)}`;
@@ -2392,7 +2500,7 @@ async function openTopup(){
       <span class="pay-method__icon">${paymentIcon(m.id)}</span>
       <span class="pay-method__body"><b>${esc(m.name)}</b><span>${esc(methodNote(m))}</span></span>
     </button>`).join('') || '<p class="sheet__sub">Нет доступных способов пополнения.</p>';
-  }catch(e){ $('topupMethods').innerHTML = `<p class="sheet__sub">${esc(e.message)}</p>`; }
+  }catch(e){ fillLoaded($('topupMethods'), `<p class="sheet__sub">${esc(e.message)}</p>`); }
 }
 function setTopupAmount(v){
   $('topupAmount').value = v;
@@ -2476,16 +2584,27 @@ async function loadProfile(){
     renderProfile();
     loadPrizes();
   }catch(e){
-    $('profileContent').innerHTML = errorCard('Профиль недоступен', e.message);
+    fillLoaded($('profileContent'), errorCard('Профиль недоступен', e.message));
   }
 }
 function statCard(label, value, note){
   return `<div class="stat"><div class="label">${esc(label)}</div><div class="stat-value">${value}</div><div class="stat-note">${esc(note)}</div></div>`;
 }
+/* Какой именно объект профиля уже разложен по разметке. Данные меняются
+   не втихую: везде, где они устарели, state.profile обнуляется и грузится
+   заново — значит сравнения по ссылке достаточно. */
+let renderedProfile = null;
 function renderProfile(){
   const p = state.profile;
   setAccountChip(p);
-  $('profileContent').innerHTML = `
+  const box = $('profileContent');
+  /* тот же профиль и разметка на месте — пересобирать нечего. Раньше кабинет
+     полностью перерисовывался на каждый заход, и лесенка карточек играла
+     поверх появления самого экрана: два движения одновременно и читались
+     как рывок. */
+  if(renderedProfile === p && box.childElementCount && !box.querySelector('.skeleton')) return;
+  renderedProfile = p;
+  box.innerHTML = `
     <div class="profile-grid">
       <div class="profile-col stagger">
         <div class="card balance-card">
@@ -3120,6 +3239,7 @@ function init(){
     try{ history.replaceState(null, '', location.pathname); }catch(e){}
   }
   buildNav();
+  watchSkeletons();
 
   const initial = (document.title || 'C').trim()[0] || 'C';
   $('brandFallbackMobile').textContent = initial;
