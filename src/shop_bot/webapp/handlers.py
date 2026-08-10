@@ -713,7 +713,14 @@ async def _render_main_page(user_id: int):
     }
 
     content = _process_template_placeholders(content, user_id, webapp_settings, context)
-    return HTMLResponse(content=content)
+    # Оболочка отдавалась вообще без указаний о кэше, и встроенный браузер
+    # Telegram держал у себя старую сборку: после выкладки человек продолжал
+    # видеть прежний кабинет. Разметка тут маленькая и собирается на лету —
+    # хранить её незачем, а данные всё равно приезжают отдельными запросами.
+    return HTMLResponse(content=content, headers={
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+    })
 
 
 LEGAL_DOCS = {"terms": "Пользовательское соглашение",
@@ -812,7 +819,10 @@ def _render_login_page() -> HTMLResponse:
         "webapp_logo": webapp_settings.get("webapp_logo") or "",
         "webapp_icon": webapp_settings.get("webapp_icon") or "",
     }
-    return HTMLResponse(content=_process_template_placeholders(content, 0, webapp_settings, context))
+    # страницу входа тоже не храним: причина та же, что у оболочки кабинета
+    return HTMLResponse(content=_process_template_placeholders(content, 0, webapp_settings, context),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                                 "Pragma": "no-cache"})
 
 
 @app.get("/", response_class=HTMLResponse)
