@@ -122,7 +122,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
    transform (даже нулевой), а он делает её точкой отсчёта для панели
    оплаты с position:fixed — та уезжала бы под экран. Движение берут на
    себя карточки внутри. */
-.view.is-active{display:block;animation:view-in .2s ease both}
+.view.is-active{display:block;animation:view-in .22s var(--ease) both}
 @keyframes view-in{from{opacity:0}to{opacity:1}}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
@@ -142,6 +142,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 /* мягкая подмена содержимого на месте: список перерисовывается, а не
    переключается рывком */
 .swap-in{animation:swap-in .24s var(--ease) backwards}
+/* появление скрытого элемента: короче, чем у экрана, — иначе кнопка,
+   возникающая по ходу заполнения формы, тормозит ответ интерфейса */
+.pop-in{animation:pop-in .2s var(--ease) backwards}
+@keyframes pop-in{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes swap-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 
 /* списки проявляются лесенкой — только там, где содержимое перерисовывается
@@ -171,6 +175,13 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .pill--danger{background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)}
 
 .card{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-lg);padding:16px}
+/* Отклик на нажатие. У кнопок он был, у карточек и строк списка — нет, и тап
+   по подписке ощущался как «не нажалось». Только для того, что реально
+   кликабельно, иначе проседала бы и статика. */
+.sub-card[onclick],.notify[onclick],[role="button"],.tile[onclick]{
+  transition:transform .13s var(--ease),border-color .13s var(--ease)}
+.sub-card[onclick]:active,.notify[onclick]:active,[role="button"]:active,.tile[onclick]:active{
+  transform:scale(.988)}
 .skeleton{min-height:150px;background:linear-gradient(90deg,rgba(236,238,242,.02),rgba(236,238,242,.055),rgba(236,238,242,.02));background-size:200% 100%;animation:shimmer 1.3s linear infinite}
 @keyframes shimmer{to{background-position:-200% 0}}
 
@@ -1141,7 +1152,20 @@ let supportPollTimer = null;
 let paymentPollTimer = null;
 
 const $ = id => document.getElementById(id);
-const toggle = (id, hidden) => $(id).classList.toggle('is-hidden', !!hidden);
+const toggle = (id, hidden) => {
+  const el = $(id);
+  if(!el) return;
+  const wasHidden = el.classList.contains('is-hidden');
+  el.classList.toggle('is-hidden', !!hidden);
+  /* display:none анимировать нельзя, поэтому проявляем в момент показа.
+     Раньше баннеры, кнопки и значки просто возникали — отсюда ощущение, что
+     анимаций местами нет вовсе. */
+  if(wasHidden && !hidden){
+    el.classList.remove('pop-in');
+    void el.offsetWidth;
+    el.classList.add('pop-in');
+  }
+};
 /* Подмена содержимого блока с коротким проявлением. Без неё скелетон
    сменяется данными мгновенным скачком — самое заметное «дёрганье» в
    разделах, которые грузятся по сети. */
@@ -2774,6 +2798,7 @@ async function openTicket(id){
   state.support.view = 'thread';
   $('threadMessages').innerHTML = '<div class="card skeleton"></div>';
   state.support.current = { ticket_id: id, subject: '', status: 'open', messages: [] };
+  threadSignature = '';
   applySupportPanes();
   swapIn($('supportThreadView'));   /* на телефоне переписка занимает весь экран */
   renderSupportList();
@@ -2863,6 +2888,7 @@ function initPlayers(root){
     video.addEventListener('ended', () => { box.classList.remove('is-playing'); video.currentTime = 0; });
   });
 }
+let threadSignature = '';
 function renderThread(scrollBottom){
   const t = state.support.current;
   $('threadTitle').textContent = t.subject || 'Обращение';
@@ -2871,6 +2897,17 @@ function renderThread(scrollBottom){
   pill.className = 'pill' + (open ? ' pill--ok' : '');
   pill.textContent = open ? 'Открыт' : 'Закрыт';
   const box = $('threadMessages');
+
+  /* Опрос идёт раз в 8 секунд и раньше каждый раз пересобирал список целиком:
+     пузыри пересоздавались, вложения перезагружались, выделенный текст слетал.
+     Считаем короткую подпись содержимого и молчим, пока она та же. */
+  const signature = t.status + '|' + (t.messages || []).map(m =>
+    (m.message_id ?? m.id ?? '') + ':' + (m.created_at || '') + ':' + ((m.media || []).length)).join(',');
+  if(signature === threadSignature && box.childElementCount){
+    if(scrollBottom) scrollThreadToBottom();
+    return;
+  }
+  threadSignature = signature;
   if(!t.messages || !t.messages.length){
     box.innerHTML = '<div class="card empty"><p>Сообщений пока нет — напишите первое ниже.</p></div>';
   } else {
