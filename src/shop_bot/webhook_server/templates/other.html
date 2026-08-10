@@ -403,6 +403,57 @@
                     </button>
                 </form>
 
+                <!-- ===== История рассылок ===== -->
+                <!-- Раньше итог жил в одном сообщении админу и терялся сразу после прочтения -->
+                <div class="mt-8">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="material-symbols-outlined text-primary text-lg">history</span>
+                        <h4 class="text-white font-bold text-sm tracking-tight">История рассылок</h4>
+                    </div>
+
+                    {% if broadcasts %}
+                    <div class="overflow-x-auto -mx-2 px-2">
+                        <table class="w-full text-left border-collapse min-w-[560px]">
+                            <thead>
+                                <tr class="text-[9px] uppercase tracking-widest text-white/30 font-black">
+                                    <th class="pb-2 pr-3 font-black">Когда</th>
+                                    <th class="pb-2 pr-3 font-black">Сообщение</th>
+                                    <th class="pb-2 pr-3 font-black text-right">В Telegram</th>
+                                    <th class="pb-2 pr-3 font-black text-right">В кабинет</th>
+                                    <th class="pb-2 font-black text-right">Пропущено</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-xs">
+                                {% for b in broadcasts %}
+                                <tr class="border-t border-white/5 align-top">
+                                    <td class="py-3 pr-3 text-white/50 whitespace-nowrap font-mono text-[11px]">
+                                        {{ (b.created_at or '')[:16] }}
+                                        {% if b.admin_name %}<span class="block text-white/25 font-sans">{{ b.admin_name }}</span>{% endif %}
+                                    </td>
+                                    <td class="py-3 pr-3 text-white/70 max-w-[340px]">
+                                        <span class="line-clamp-2">{{ b.preview or '—' }}</span>
+                                        {% if b.has_media %}<span class="text-white/30 text-[10px]">с вложением</span>{% endif %}
+                                        {% if b.status == 'running' %}<span class="text-yellow-500/80 text-[10px] block">идёт…</span>{% endif %}
+                                    </td>
+                                    <td class="py-3 pr-3 text-right font-mono text-emerald-400">{{ b.sent or 0 }}</td>
+                                    <td class="py-3 pr-3 text-right font-mono text-primary">{{ b.in_app or 0 }}</td>
+                                    <td class="py-3 text-right font-mono text-white/40">{{ b.skipped or 0 }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-[10px] text-white/25 mt-3">
+                        «В кабинет» — те, у кого нет Telegram или кто закрыл бота: сообщение лежит
+                        у них в уведомлениях личного кабинета.
+                    </p>
+                    {% else %}
+                    <div class="border border-dashed border-white/10 rounded-2xl py-10 text-center">
+                        <p class="text-white/30 text-xs">Рассылок ещё не было</p>
+                    </div>
+                    {% endif %}
+                </div>
+
                 <!-- Progress Container -->
                 <div id="broadcast-progress-container" class="mt-8 hidden animate-in fade-in zoom-in duration-500">
                     <div class="bg-black/40 border border-white/10 rounded-2xl p-6 backdrop-blur-md">

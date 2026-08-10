@@ -1616,6 +1616,57 @@ async def api_device_addon(req: DeviceAddonRequest, auth: dict = Depends(webapp_
         return {"ok": False, "error": "Не удалось получить наборы устройств"}
 
 
+# ===== ЯЩИК УВЕДОМЛЕНИЙ =====
+# У аккаунтов, заведённых через сайт, чата с ботом нет вовсе. Рассылка до них
+# не доходила и отчитывалась о сбое доставки — теперь она кладёт сообщение сюда.
+
+@app.get("/api/notifications")
+async def api_notifications(auth: dict = Depends(webapp_user)):
+    from shop_bot.data_manager import database
+    uid = session_user_id(auth)
+    try:
+        items = database.get_notifications(uid, limit=50)
+        return {
+            "ok": True,
+            "unread": database.count_unread_notifications(uid),
+            "items": [
+                {
+                    "id": n["notification_id"],
+                    "title": n["title"],
+                    "body": n["body"],
+                    "url": n["url"],
+                    "url_text": n["url_text"],
+                    "created_at": n["created_at"],
+                    "read": bool(n["read_at"]),
+                }
+                for n in items
+            ],
+        }
+    except Exception as e:
+        logger.error("[WEBAPP] - Не удалось получить уведомления для %s: %s", uid, e)
+        return {"ok": False, "error": "Не удалось загрузить уведомления"}
+
+
+@app.post("/api/notifications/read")
+async def api_notifications_read(request: Request, auth: dict = Depends(webapp_user)):
+    """Отмечает прочитанным одно уведомление или все сразу."""
+    from shop_bot.data_manager import database
+    uid = session_user_id(auth)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    notification_id = payload.get("id")
+    try:
+        changed = database.mark_notifications_read(
+            uid, int(notification_id) if notification_id else None)
+        return {"ok": True, "changed": changed,
+                "unread": database.count_unread_notifications(uid)}
+    except Exception as e:
+        logger.error("[WEBAPP] - Не удалось отметить уведомления для %s: %s", uid, e)
+        return {"ok": False, "error": "Не удалось обновить уведомления"}
+
+
 @app.get("/api/wheel/state")
 async def api_wheel_state(auth: dict = Depends(webapp_user)):
     """Состав колеса и готовность к прокруту."""

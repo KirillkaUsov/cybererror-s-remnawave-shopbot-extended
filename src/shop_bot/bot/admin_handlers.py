@@ -19,6 +19,10 @@ from shop_bot.data_manager import speedtest_runner
 from shop_bot.data_manager import resource_monitor
 from shop_bot.data_manager import remnawave_repository as rw_repo
 from shop_bot.data_manager.remnawave_repository import (
+    add_notification,
+    finish_broadcast,
+    start_broadcast,
+    user_has_telegram,
     get_all_users,
     get_setting,
     get_user,
@@ -3319,7 +3323,21 @@ def get_admin_router() -> Router:
         users = get_all_users()
         logger.info(f"Рассылка: Начинаем итерацию по {len(users)} пользователям.")
 
+        # В кабинет кладём текст сообщения: copy_message умеет копировать любое
+        # вложение, а ящику уведомлений нужно что-то читаемое.
+        preview = (original_message.text or original_message.caption or "").strip()
+        has_media = not original_message.text
+        if not preview:
+            preview = "Сообщение с вложением — откройте бота, чтобы посмотреть."
+
+        broadcast_id = start_broadcast(
+            admin_id=callback.from_user.id,
+            admin_name=callback.from_user.username or callback.from_user.full_name,
+            preview=preview, has_media=has_media,
+            button_text=button_text, button_url=button_url, total=len(users))
+
         sent_count = 0
+        in_app_count = 0
         failed_count = 0
         banned_count = 0
 
@@ -3328,6 +3346,17 @@ def get_admin_router() -> Router:
             if user.get('is_banned'):
                 banned_count += 1
                 continue
+
+            # Уведомление в кабинете получают все: для тех, у кого Telegram нет,
+            # это единственный канал, остальным остаётся как история.
+            add_notification(
+                user_id, "Сообщение от команды", preview,
+                url=button_url, url_text=button_text, broadcast_id=broadcast_id)
+
+            if not user_has_telegram(user):
+                in_app_count += 1
+                continue
+
             try:
                 await bot.copy_message(
                     chat_id=user_id,
@@ -3338,14 +3367,19 @@ def get_admin_router() -> Router:
                 sent_count += 1
                 await asyncio.sleep(0.1)
             except Exception as e:
-                failed_count += 1
-                logger.warning(f"Не удалось отправить сообщение рассылки пользователю {user_id}: {e}")
+                # Человек мог заблокировать бота или так и не открыть чат.
+                # Сообщение при этом уже лежит у него в кабинете.
+                in_app_count += 1
+                logger.info(f"Рассылка: {user_id} получит сообщение только в кабинете ({e})")
+
+        finish_broadcast(broadcast_id, sent_count, in_app_count, failed_count, banned_count)
 
         await callback.message.answer(
-            f"✅ Рассылка завершена!\n\n"
-            f"👍 Отправлено: {sent_count}\n"
-            f"👎 Не удалось отправить: {failed_count}\n"
-            f"🚫 Пропущено (забанены): {banned_count}"
+            f"✅ <b>Рассылка завершена</b>\n\n"
+            f"<b>Доставлено в Telegram:</b> {sent_count}\n"
+            f"<b>Только в кабинет:</b> {in_app_count}\n"
+            f"<b>Пропущено (забанены):</b> {banned_count}\n\n"
+            f"<i>История рассылок — в панели, раздел «Рассылки».</i>"
         )
         await show_admin_menu(callback.message)
 

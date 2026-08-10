@@ -279,6 +279,48 @@ def initialize_db():
                 "CREATE INDEX IF NOT EXISTS idx_referral_pending_unpaid "
                 "ON referral_pending_bonuses(referrer_id, paid_at)")
 
+            # История рассылок. Раньше итог существовал только в одном
+            # сообщении админу и терялся сразу после прочтения.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS broadcasts (
+                    broadcast_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    finished_at TIMESTAMP,
+                    admin_id INTEGER,
+                    admin_name TEXT,
+                    preview TEXT,
+                    has_media INTEGER DEFAULT 0,
+                    button_text TEXT,
+                    button_url TEXT,
+                    total INTEGER DEFAULT 0,
+                    sent INTEGER DEFAULT 0,
+                    in_app INTEGER DEFAULT 0,
+                    failed INTEGER DEFAULT 0,
+                    skipped INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'running'
+                )
+            ''')
+
+            # Ящик уведомлений внутри кабинета. Нужен тем, у кого Telegram нет
+            # вовсе: они заходят только через сайт, и рассылка до них раньше не
+            # доходила — их считали ошибкой доставки.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_notifications (
+                    notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    broadcast_id INTEGER,
+                    title TEXT,
+                    body TEXT,
+                    url TEXT,
+                    url_text TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    read_at TIMESTAMP
+                )
+            ''')
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_notifications_user "
+                "ON user_notifications(user_id, read_at, created_at)")
+
             # Баланс, перенесённый из старого бота. Ждёт человека так же, как
             # реферальные связи: большинство владельцев до нового бота ещё не
             # дошли. Хранится отдельно от users.balance, иначе повторный запуск
@@ -5801,3 +5843,90 @@ def settle_balance_import(telegram_id: int) -> float:
         (get_msk_time().replace(tzinfo=None).replace(microsecond=0), telegram_id), "")
     logging.info("Зачислен перенесённый баланс %.2f пользователю %s", amount, telegram_id)
     return amount
+
+
+# ===== РАССЫЛКИ И УВЕДОМЛЕНИЯ =====
+
+def start_broadcast(admin_id: int | None, admin_name: str, preview: str,
+                    has_media: bool, button_text: str | None, button_url: str | None,
+                    total: int) -> int | None:
+    """Открывает запись о рассылке. Итоги допишет finish_broadcast."""
+    cursor = _exec(
+        "INSERT INTO broadcasts (admin_id, admin_name, preview, has_media, "
+        "button_text, button_url, total) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (admin_id, admin_name, (preview or "")[:2000], 1 if has_media else 0,
+         button_text, button_url, int(total)),
+        "Не удалось начать запись о рассылке")
+    return cursor.lastrowid if cursor else None
+
+
+def finish_broadcast(broadcast_id: int, sent: int, in_app: int, failed: int,
+                     skipped: int, status: str = "done") -> None:
+    _exec(
+        "UPDATE broadcasts SET sent = ?, in_app = ?, failed = ?, skipped = ?, "
+        "status = ?, finished_at = ? WHERE broadcast_id = ?",
+        (sent, in_app, failed, skipped, status,
+         get_msk_time().replace(tzinfo=None).replace(microsecond=0), int(broadcast_id)),
+        "Не удалось записать итоги рассылки")
+
+
+def get_broadcasts(limit: int = 50) -> list[dict]:
+    return _fetch_list(
+        "SELECT * FROM broadcasts ORDER BY broadcast_id DESC LIMIT ?",
+        (int(limit),), "Не удалось получить историю рассылок")
+
+
+def add_notification(user_id: int, title: str, body: str,
+                     url: str | None = None, url_text: str | None = None,
+                     broadcast_id: int | None = None) -> bool:
+    cursor = _exec(
+        "INSERT INTO user_notifications (user_id, broadcast_id, title, body, url, url_text) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (int(user_id), broadcast_id, title, body, url, url_text),
+        f"Не удалось создать уведомление для {user_id}")
+    return cursor is not None
+
+
+def get_notifications(user_id: int, limit: int = 50) -> list[dict]:
+    return _fetch_list(
+        "SELECT notification_id, title, body, url, url_text, created_at, read_at "
+        "FROM user_notifications WHERE user_id = ? ORDER BY notification_id DESC LIMIT ?",
+        (int(user_id), int(limit)), "")
+
+
+def count_unread_notifications(user_id: int) -> int:
+    row = _fetch_row(
+        "SELECT COUNT(*) AS c FROM user_notifications WHERE user_id = ? AND read_at IS NULL",
+        (int(user_id),), "")
+    return int(row["c"]) if row else 0
+
+
+def mark_notifications_read(user_id: int, notification_id: int | None = None) -> int:
+    now = get_msk_time().replace(tzinfo=None).replace(microsecond=0)
+    if notification_id is None:
+        cursor = _exec(
+            "UPDATE user_notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL",
+            (now, int(user_id)), "")
+    else:
+        cursor = _exec(
+            "UPDATE user_notifications SET read_at = ? "
+            "WHERE user_id = ? AND notification_id = ? AND read_at IS NULL",
+            (now, int(user_id), int(notification_id)), "")
+    return cursor.rowcount if cursor else 0
+
+
+def user_has_telegram(user: dict) -> bool:
+    """Есть ли смысл вообще пытаться писать этому человеку в Telegram.
+
+    Аккаунты, заведённые только через сайт, получают синтетический id вида
+    999…: чата с ботом у них нет, и попытка отправки всегда кончалась ошибкой,
+    из-за чего рассылка отчитывалась о несуществующих сбоях.
+    """
+    try:
+        uid = int(user.get("telegram_id"))
+    except (TypeError, ValueError):
+        return False
+    if str(uid).startswith("999") and len(str(uid)) >= 10:
+        return False
+    linked = user.get("tg_linked")
+    return linked is None or bool(linked)

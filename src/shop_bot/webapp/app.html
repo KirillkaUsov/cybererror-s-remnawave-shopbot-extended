@@ -175,6 +175,14 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 @keyframes shimmer{to{background-position:-200% 0}}
 
 .empty{padding:36px 22px;text-align:center;border-style:dashed;border-color:var(--line-2)}
+.notify{padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg-elev);animation:rise .3s var(--ease) both}
+.notify + .notify{margin-top:9px}
+.notify--new{border-color:var(--accent-line);background:var(--accent-soft)}
+.notify__head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:5px}
+.notify__head b{font-size:14px}
+.notify__time{font-size:11px;color:var(--dim);white-space:nowrap}
+.notify__body{margin:0;font-size:13.5px;line-height:1.5;color:var(--dim);white-space:pre-wrap;overflow-wrap:anywhere}
+.notify__link{margin-top:9px}
 .empty__icon{width:36px;height:36px;margin:0 auto 14px;color:var(--faint)}
 .empty h2{font-size:16px;margin:0 0 8px}
 .empty p{font-size:13px;line-height:1.6;color:var(--dim);margin:0 0 18px}
@@ -781,6 +789,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 <symbol id="ic-chevron-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
 <symbol id="ic-chevron-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
 <symbol id="ic-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.4"/></symbol>
+<symbol id="ic-bell" viewBox="0 0 24 24"><path d="M18 15.5v-4a6 6 0 1 0-12 0v4l-1.6 2.2h15.2z"/><path d="M9.8 20.2a2.4 2.4 0 0 0 4.4 0"/></symbol>
 <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3Z"/></symbol>
 <symbol id="ic-send" viewBox="0 0 24 24"><path d="M4 12L20 4 13 20l-2-7-7-1Z"/></symbol>
 <symbol id="ic-paperclip" viewBox="0 0 24 24"><path d="M8 12l6-6a3 3 0 1 1 4 4l-8 8a5 5 0 1 1-7-7l7-7"/></symbol>
@@ -810,6 +819,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
       <span class="wheel-btn__face">🎰</span>
       <span class="wheel-btn__badge is-hidden" id="wheelBtnBadge">0</span>
       <span class="wheel-btn__dot is-hidden" id="wheelBtnDot"></span>
+    </button>
+    <button class="wheel-btn" id="notifyBtn" type="button" onclick="openNotifications()" title="Уведомления">
+      <span class="wheel-btn__face"><svg class="icon"><use href="#ic-bell"/></svg></span>
+      <span class="wheel-btn__badge is-hidden" id="notifyBadge">0</span>
     </button>
   </header>
 
@@ -1018,6 +1031,16 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
     <div class="sheet__sub" id="addonSub">Дата окончания не сдвинется — платите только за оставшиеся дни</div>
     <div id="addonBody"><div class="card skeleton" style="min-height:90px"></div></div>
     <button class="btn btn--ghost btn--block" style="margin-top:12px" onclick="closeModal('addonModal')">Закрыть</button>
+  </div>
+</div>
+
+<div class="modal" id="notifyModal" data-modal>
+  <div class="sheet">
+    <div class="sheet__handle"></div>
+    <h2>Уведомления</h2>
+    <div class="sheet__sub" id="notifySub">Сообщения от команды сервиса</div>
+    <div id="notifyList"><div class="card skeleton" style="min-height:120px"></div></div>
+    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('notifyModal')">Закрыть</button>
   </div>
 </div>
 
@@ -1711,6 +1734,70 @@ function reelSpinTo(prizes, winner){
     reel.classList.remove('is-spinning');
     resolve();
   }, REEL_TIME_MS + 120));
+}
+
+/* ===== Уведомления =====
+   Единственный канал для тех, у кого нет Telegram: аккаунт заведён через сайт,
+   чата с ботом нет, и рассылка раньше просто отчитывалась о сбое доставки. */
+let notifyItems = [];
+
+function notifyTime(raw){
+  if(!raw) return '';
+  const d = new Date(String(raw).replace(' ', 'T'));
+  if(isNaN(d)) return String(raw).slice(0, 16);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const time = d.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+  if(sameDay) return 'сегодня, ' + time;
+  return d.toLocaleDateString('ru-RU', {day:'numeric', month:'long'}) + ', ' + time;
+}
+
+function renderNotifications(){
+  const box = $('notifyList');
+  if(!notifyItems.length){
+    box.innerHTML = '<div class="empty">Пока ничего не приходило</div>';
+    $('notifySub').textContent = 'Сообщения от команды сервиса';
+    return;
+  }
+  box.innerHTML = notifyItems.map(n => {
+    const link = n.url ? '<a class="btn btn--ghost btn--sm notify__link" href="' + esc(n.url) + '" target="_blank" rel="noopener">'
+      + esc(n.url_text || 'Открыть') + '</a>' : '';
+    return '<article class="notify' + (n.read ? '' : ' notify--new') + '">'
+      + '<div class="notify__head"><b>' + esc(n.title || 'Сообщение') + '</b>'
+      + '<span class="notify__time">' + esc(notifyTime(n.created_at)) + '</span></div>'
+      + '<p class="notify__body">' + esc(n.body || '') + '</p>' + link + '</article>';
+  }).join('');
+}
+
+function paintNotifyBadge(unread){
+  const badge = $('notifyBadge');
+  if(!badge) return;
+  badge.textContent = unread > 99 ? '99+' : String(unread);
+  badge.classList.toggle('is-hidden', !unread);
+}
+
+async function loadNotifications(silent){
+  try{
+    const d = await api('/api/notifications');
+    if(!d.ok) return;
+    notifyItems = d.items || [];
+    paintNotifyBadge(d.unread || 0);
+    if(!silent) renderNotifications();
+  }catch(e){ if(!silent) $('notifyList').innerHTML = '<div class="empty">Не удалось загрузить</div>'; }
+}
+
+async function openNotifications(){
+  openModal('notifyModal');
+  $('notifyList').innerHTML = '<div class="card skeleton" style="min-height:120px"></div>';
+  await loadNotifications();
+  renderNotifications();
+  // Открыл ящик — значит прочитал. Отметку шлём после отрисовки, чтобы
+  // непрочитанные было видно хотя бы мгновение.
+  try{
+    await api('/api/notifications/read', {method:'POST', body: JSON.stringify({})});
+    paintNotifyBadge(0);
+    notifyItems.forEach(n => { n.read = true; });
+  }catch(e){}
 }
 
 async function openWheel(){
@@ -2971,6 +3058,7 @@ function init(){
 
   syncViewportHeight();
   refreshWheelButton();
+  loadNotifications(true);   /* только счётчик на колокольчике */
   /* переход мобильная ⇄ десктопная раскладка меняет схему панелей поддержки */
   MQ_DESKTOP.addEventListener('change', () => { if(currentScreen === 'support') applySupportPanes(); });
   window.addEventListener('resize', syncViewportHeight, { passive:true });

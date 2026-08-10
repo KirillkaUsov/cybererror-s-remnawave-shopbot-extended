@@ -282,8 +282,9 @@ def execute_ssh_command(host, port, username, password, command, timeout=10, key
 
 # ===== АСИНХРОННАЯ ОТПРАВКА РАССЫЛКИ =====
 # Выполняет рассылку сообщений пользователям с поддержкой медиа и кнопок
-async def send_broadcast_async(bot, users, text, media_path=None, media_type=None, buttons=None, mode='all', task_id=None, skip_banned=False):
+async def send_broadcast_async(bot, users, text, media_path=None, media_type=None, buttons=None, mode='all', task_id=None, skip_banned=False, broadcast_id=None):
     sent, failed, skipped, total = 0, 0, 0, len(users)
+    in_app = 0
     blocked_bot, deactivated = 0, 0
     added_to_banned, removed_from_banned = 0, 0
     
@@ -295,7 +296,7 @@ async def send_broadcast_async(bot, users, text, media_path=None, media_type=Non
     if task_id:
         with broadcast_lock:
             broadcast_progress[task_id] = {
-                'status': 'running', 'total': total, 'sent': 0, 'failed': 0, 'skipped': 0, 
+                'status': 'running', 'total': total, 'sent': 0, 'in_app': 0, 'failed': 0, 'skipped': 0, 
                 'blocked_bot': 0, 'deactivated': 0, 'added_to_banned': 0, 'removed_from_banned': 0,
                 'progress': 0, 'start_time': get_msk_time().isoformat()
             }
@@ -324,6 +325,25 @@ async def send_broadcast_async(bot, users, text, media_path=None, media_type=Non
                         broadcast_progress[task_id].update({'skipped': skipped, 'added_to_banned': added_to_banned, 'progress': int((index + 1) / total * 100)})
             continue
         
+        first_btn = (buttons or [{}])[0] if buttons else {}
+        try:
+            rw_repo.add_notification(
+                user_id, "Сообщение от команды", (text or "").strip() or "Сообщение с вложением",
+                url=first_btn.get('value') if first_btn.get('type') == 'url' else None,
+                url_text=first_btn.get('text'), broadcast_id=broadcast_id)
+        except Exception:
+            pass
+
+        # Аккаунт с сайта: чата с ботом нет, и попытка отправки всегда падала —
+        # такие люди попадали в «ошибки» и даже в список забаненных.
+        if not rw_repo.user_has_telegram(user):
+            in_app += 1
+            if task_id:
+                with broadcast_lock:
+                    if task_id in broadcast_progress:
+                        broadcast_progress[task_id].update({'in_app': in_app, 'progress': int((index + 1) / total * 100)})
+            continue
+
         try:
             keyboard = None
             if buttons:
@@ -421,6 +441,11 @@ async def send_broadcast_async(bot, users, text, media_path=None, media_type=Non
                 })
     
     save_broadcast_results(sent, failed, skipped, blocked_bot, deactivated, added_to_banned, removed_from_banned)
+    if broadcast_id:
+        try:
+            rw_repo.finish_broadcast(broadcast_id, sent, in_app, failed, skipped)
+        except Exception as e:
+            logger.warning("Не удалось записать итоги рассылки %s: %s", broadcast_id, e)
     # Сохраняем обновленный список забаненных
     save_banned_users_data(list(banned_set))
     
@@ -431,7 +456,7 @@ async def send_broadcast_async(bot, users, text, media_path=None, media_type=Non
         except Exception as e: logger.error(f"Не удалось удалить медиафайл {media_path}: {e}")
     
     return {
-        'sent': sent, 'failed': failed, 'skipped': skipped, 
+        'sent': sent, 'in_app': in_app, 'failed': failed, 'skipped': skipped, 
         'blocked_bot': blocked_bot, 'deactivated': deactivated,
         'added_to_banned': added_to_banned, 'removed_from_banned': removed_from_banned
     }
@@ -458,7 +483,13 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
             'unmeasured': db.count_wheel_spins(with_chance=False) - db.count_wheel_spins(),
             'reasons': fortune_wheel.REASON_TEXT,
         }
-        return render_template('other.html', webapp=webapp, ssh_targets=ssh_targets, wheel=wheel, **common_data)
+        try:
+            broadcasts = rw_repo.get_broadcasts(limit=30)
+        except Exception as e:
+            logger.warning("Не удалось получить историю рассылок: %s", e)
+            broadcasts = []
+        return render_template('other.html', webapp=webapp, ssh_targets=ssh_targets, wheel=wheel,
+                               broadcasts=broadcasts, **common_data)
     # ===== Конец роута other_page =====
 
     # ===== КОЛЕСО УДАЧИ: СЕКТОРА И НАСТРОЙКИ =====
@@ -1043,7 +1074,15 @@ def register_other_routes(flask_app, login_required, get_common_template_data):
             if not loop or not loop.is_running(): return jsonify({'ok': False, 'error': 'Цикл событий недоступен'}), 500
             
             task_id = str(uuid.uuid4())
-            asyncio.run_coroutine_threadsafe(send_broadcast_async(bot, all_users, text, media_path, media_type, buttons, mode, task_id, skip_banned), loop)
+            broadcast_id = rw_repo.start_broadcast(
+                admin_id=None, admin_name='панель',
+                preview=(text or '').strip() or 'Сообщение с вложением',
+                has_media=bool(media_path), button_text=(buttons or [{}])[0].get('text') if buttons else None,
+                button_url=(buttons or [{}])[0].get('value') if buttons else None,
+                total=len(all_users))
+            asyncio.run_coroutine_threadsafe(
+                send_broadcast_async(bot, all_users, text, media_path, media_type, buttons,
+                                     mode, task_id, skip_banned, broadcast_id), loop)
             return jsonify({'ok': True, 'task_id': task_id, 'total_users': len(all_users)})
         except Exception as e:
             logger.error(f"Ошибка запуска рассылки: {e}")
