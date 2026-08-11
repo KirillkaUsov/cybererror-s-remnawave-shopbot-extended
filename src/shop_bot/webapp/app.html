@@ -198,7 +198,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 /* пустое место рисуем такой же спокойной рамкой, как всё остальное: пунктир
    выбивался из набора и читался как незагруженный блок */
 .empty{padding:36px 22px;text-align:center;border:1px solid var(--line);border-radius:var(--r-lg)}
-.notify{padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg-elev);animation:rise .3s var(--ease) both}
+/* появление отдано лесенке контейнера (.stagger): своя анимация на каждом
+   сообщении играла поверх общей подмены содержимого — два движения на одном
+   и том же и оба короткие, читалось как дрожь */
+.notify{padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg-elev)}
 .notify + .notify{margin-top:9px}
 .notify--new{border-color:var(--accent-line);background:var(--accent-soft)}
 .notify__head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:5px}
@@ -415,8 +418,17 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
    а панель оплаты живёт фиксированной над таббаром */
 .buy-side{display:contents}
 .host-desc{padding:13px 14px}
-.host-desc__text{font-size:13px;line-height:1.6;color:var(--dim);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
-.host-desc.is-expanded .host-desc__text{display:block;-webkit-line-clamp:unset;overflow:visible}
+/* Раскрытие описания идёт по высоте. С -webkit-line-clamp текст открывался
+   мгновенным скачком, и всё, что ниже — плитки, тарифы, — прыгало сразу на
+   полсотни точек. Обрезку держит max-height, а вместо многоточия внизу мягкая
+   растушёвка: она и честнее показывает, что текст продолжается. Точную высоту
+   для раскрытия подставляет JS: без числа переход в none происходит рывком. */
+.host-desc__text{position:relative;font-size:13px;line-height:1.6;color:var(--dim);
+  max-height:6.4em;overflow:hidden;transition:max-height .3s var(--ease)}
+.host-desc__text::after{content:'';position:absolute;left:0;right:0;bottom:0;height:1.7em;opacity:0;
+  background:linear-gradient(rgba(0,0,0,0),var(--surface));transition:opacity .2s ease;pointer-events:none}
+.host-desc.is-clipped:not(.is-expanded) .host-desc__text::after{opacity:1}
+.host-desc.is-expanded .host-desc__text{max-height:var(--desc-full,none)}
 /* кнопка живёт вне обрезаемого текста — иначе её самой не видно */
 .host-desc__more{margin-top:8px;color:var(--accent);font-size:12.5px;font-weight:500;padding:2px 0}
 .host-desc__more:hover{color:var(--accent-hi)}
@@ -506,6 +518,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .bubble{max-width:min(84%,600px);padding:11px 14px 9px;border-radius:16px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
 .bubble.is-mine{align-self:flex-end;background:var(--accent-soft);border:1px solid var(--accent-line);border-bottom-right-radius:6px}
 .bubble.is-theirs{align-self:flex-start;background:var(--surface-2);border:1px solid var(--line);border-bottom-left-radius:6px}
+/* backwards, а не both: с both на пузыре навсегда остаётся transform, и он
+   становится точкой отсчёта для всего, что внутри с position:fixed */
+.bubble--new{animation:bubble-in .26s var(--ease) backwards}
+@keyframes bubble-in{from{opacity:0;transform:translateY(7px) scale(.98)}to{opacity:1;transform:none}}
 .bubble .who{font-size:11.5px;color:var(--accent);font-weight:600;margin-bottom:4px}
 .bubble .when{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:6px;text-align:right}
 .bubble-media{display:block;margin-top:8px;max-width:100%;border-radius:10px}
@@ -622,10 +638,16 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .modal.is-open{display:flex;animation:fade .2s ease both}
 .modal.is-open .sheet{animation:sheet-up .36s cubic-bezier(.32,.72,0,1) both}
-/* закрытие короче открытия: ждать ухода окна раздражает сильнее, чем его приход */
-.modal.is-closing{animation:fade .2s ease reverse both}
+/* закрытие короче открытия: ждать ухода окна раздражает сильнее, чем его приход.
+   У затемнения обязана быть своя раскадровка. Раньше тут стояло то же имя
+   fade, только reverse, — а браузер при смене одного лишь направления не
+   запускает анимацию заново, а разворачивает уже доигравшую. Она была давно
+   закончена, поэтому фон гас не плавно, а мгновенно на первом же кадре: окно
+   ещё уезжало вниз, а затемнения за ним уже не было. */
+.modal.is-closing{animation:fade-out .2s ease both}
 .modal.is-closing .sheet{animation:sheet-down .2s cubic-bezier(.4,0,1,1) both}
 @keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes fade-out{from{opacity:1}to{opacity:0}}
 @keyframes sheet-up{from{transform:translateY(100%)}to{transform:none}}
 @keyframes sheet-down{from{transform:none}to{transform:translateY(100%)}}
 .sheet{width:min(100%,520px);max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--line-2);border-bottom:0;border-radius:var(--r-xl) var(--r-xl) 0 0;background:var(--surface-2);padding:10px 18px calc(20px + var(--safe-b))}
@@ -1113,7 +1135,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <div class="sheet__handle"></div>
     <h2>Уведомления</h2>
     <div class="sheet__sub" id="notifySub">Сообщения от команды сервиса</div>
-    <div id="notifyList"><div class="card skeleton" style="min-height:120px"></div></div>
+    <div id="notifyList" class="stagger"><div class="card skeleton" style="min-height:120px"></div></div>
     <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('notifyModal')">Закрыть</button>
   </div>
 </div>
@@ -2026,7 +2048,10 @@ async function loadNotifications(silent){
 async function openNotifications(){
   openModal('notifyModal');
   $('notifyList').innerHTML = '<div class="card skeleton" style="min-height:120px"></div>';
-  await loadNotifications();
+  /* тихо: список рисуем сами и ровно один раз. Раньше loadNotifications
+     рисовала его сама, а следом он рисовался ещё раз — лесенка успевала
+     проиграть и тут же начиналась заново, прямо на глазах */
+  await loadNotifications(true);
   renderNotifications();
   // Открыл ящик — значит прочитал. Отметку шлём после отрисовки, чтобы
   // непрочитанные было видно хотя бы мгновение.
@@ -2292,18 +2317,60 @@ function selectHost(name){
   state.tier = { devices: Number(h && h.base_devices || 0), total_price: 0 };
   renderCatalog();
 }
-function selectPlan(id){ state.plan = (findHost().plans || []).find(p => Number(p.plan_id) === Number(id)); resetPromo(); renderCatalog(); }
-function selectTier(devices, price){ state.tier = { devices: Number(devices), total_price: Number(price||0) }; resetPromo(); renderCatalog(); }
+/* Выбор тарифа и набора устройств раньше собирал каталог заново целиком:
+   ленту локаций, описание, плитки, карточки. Меняется же ровно одна подсветка,
+   а перерисовка стоила дорого — раскрытое «Читать полностью» схлопывалось на
+   каждое нажатие, узлы под пальцем подменялись новыми, и нажатие отдавалось
+   рывком. Переставляем отметку на месте. Локацию это не касается: там правда
+   другие тарифы, описание и лимиты. */
+function markActive(boxId, sel){
+  const box = $(boxId);
+  if(!box) return;
+  box.querySelectorAll('.is-active').forEach(el => el.classList.remove('is-active'));
+  const next = box.querySelector(sel);
+  if(next) next.classList.add('is-active');
+}
+function selectPlan(id){
+  state.plan = (findHost().plans || []).find(p => Number(p.plan_id) === Number(id));
+  resetPromo();
+  markActive('planSelector', `[data-plan="${Number(id)}"]`);
+  updateCheckout();
+}
+function selectTier(devices, price){
+  state.tier = { devices: Number(devices), total_price: Number(price||0) };
+  resetPromo();
+  markActive('deviceSelector', `[data-tier="${Number(devices)}"]`);
+  updateCheckout();
+}
 function toggleDescription(){
   const el = $('hostDescription');
+  /* scrollHeight отдаёт высоту всего текста, не глядя на обрезку — это и есть
+     та отметка, до которой едет раскрытие */
+  el.style.setProperty('--desc-full', $('hostDescriptionText').scrollHeight + 'px');
   const on = el.classList.toggle('is-expanded');
   $('hostDescriptionMore').textContent = on ? 'Свернуть' : 'Читать полностью';
 }
+/* Отметка посчитана для текущей ширины: повернули телефон — строки
+   перекладываются, и раскрытое описание обрезалось бы по старому числу */
+window.addEventListener('resize', () => {
+  const el = $('hostDescription');
+  if(el && el.classList.contains('is-expanded'))
+    el.style.setProperty('--desc-full', $('hostDescriptionText').scrollHeight + 'px');
+});
 function renderHostDescription(h){
   const text = stripHtml(h.description);
   const box = $('hostDescription'), body = $('hostDescriptionText'), more = $('hostDescriptionMore');
   toggle('hostDescription', !text);
-  box.classList.remove('is-expanded');
+  /* Сворачиваем без перехода: у другой локации и описание другое, плавно
+     схлопывать чужой текст незачем — это выглядело бы как будто человек сам
+     нажал «Свернуть», да ещё и растягивало перестроение каталога на треть
+     секунды. Раскрытие по кнопке анимацию сохраняет. */
+  if(box.classList.contains('is-expanded')){
+    body.style.transition = 'none';
+    box.classList.remove('is-expanded');
+    void body.offsetWidth;
+    body.style.transition = '';
+  }
   more.textContent = 'Читать полностью';
   body.innerHTML = esc(text).replace(/\n/g,'<br>');
   if(!text) return;
@@ -2312,13 +2379,17 @@ function renderHostDescription(h){
      Мерить приходится с оглядкой: каталог рисуется до того, как экран
      доиграет переход, а у скрытого блока обе высоты нулевые — получалось,
      что описание обрезано, а развернуть его нечем. Ждём первый кадр, где
-     блок реально занимает место. */
+     блок реально занимает место. Если место уже есть — меряем тут же, не
+     откладывая: при смене локации лишний кадр означал, что кнопка возникает
+     после отрисовки и сдвигает вниз всё, что под ней. */
   let tries = 40;
   const measure = () => {
     if(!body.clientHeight && tries-- > 0){ requestAnimationFrame(measure); return; }
-    toggle('hostDescriptionMore', body.scrollHeight - body.clientHeight < 4);
+    const clipped = body.scrollHeight - body.clientHeight >= 4;
+    box.classList.toggle('is-clipped', clipped);
+    toggle('hostDescriptionMore', !clipped);
   };
-  requestAnimationFrame(measure);
+  if(body.clientHeight) measure(); else requestAnimationFrame(measure);
 }
 function renderCatalog(){
   if(!state.catalog.length){ fillLoaded($('planSelector'), '<div class="card empty"><h2>Тарифов пока нет</h2></div>'); return; }
@@ -2329,11 +2400,15 @@ function renderCatalog(){
   renderHostDescription(h);
   renderDeviceSelector(h);
 
-  $('planSelector').innerHTML = (h.plans || []).map(p => `<button class="plan ${state.plan && Number(state.plan.plan_id)===Number(p.plan_id)?'is-active':''}" onclick="selectPlan(${Number(p.plan_id)})">
+  /* Каталог собирается заново только при загрузке и при смене локации —
+     нажатия по тарифам сюда больше не приходят. Значит, содержимое правда
+     другое, и подменять его можно мягко: высота всё равно меняется, но
+     новые карточки хотя бы проявляются, а не подставляются встык. */
+  swapIn($('planSelector'), (h.plans || []).map(p => `<button class="plan ${state.plan && Number(state.plan.plan_id)===Number(p.plan_id)?'is-active':''}" data-plan="${Number(p.plan_id)}" onclick="selectPlan(${Number(p.plan_id)})">
     ${p.save ? `<span class="plan__save">−${esc(p.save)}%</span>` : ''}
     <span class="plan__copy"><span class="plan__term">${esc(p.plan_name || (p.months+' мес.'))}</span><span class="plan__per">${money(p.per_month || Number(p.price)/Math.max(1,Number(p.months||1)))} в месяц</span></span>
     <span class="plan__price">${money(p.price).replace(' ₽','')} <small>₽</small></span>
-  </button>`).join('');
+  </button>`).join(''));
   updateCheckout();
 }
 /* Наборы устройств есть только у хостов с device_mode = tiers. У остальных
@@ -2353,7 +2428,7 @@ function renderDeviceSelector(h){
     if(!state.tier || !tiers.some(t => Number(t.devices) === Number(state.tier.devices))){
       state.tier = { devices: Number(tiers[0].devices), total_price: 0 };
     }
-    $('deviceSelector').innerHTML = tiers.map(t => `<button class="device-opt ${state.tier && Number(state.tier.devices)===Number(t.devices)?'is-active':''}" onclick="selectTier(${Number(t.devices)},${Number(t.total_price||0)})"><b>${Number(t.devices)}</b><span>${t.total_price ? '+'+money(t.total_price)+'/мес' : 'вкл.'}</span></button>`).join('');
+    $('deviceSelector').innerHTML = tiers.map(t => `<button class="device-opt ${state.tier && Number(state.tier.devices)===Number(t.devices)?'is-active':''}" data-tier="${Number(t.devices)}" onclick="selectTier(${Number(t.devices)},${Number(t.total_price||0)})"><b>${Number(t.devices)}</b><span>${t.total_price ? '+'+money(t.total_price)+'/мес' : 'вкл.'}</span></button>`).join('');
     return;
   }
 
@@ -3001,6 +3076,7 @@ async function openTicket(id){
   $('threadMessages').innerHTML = '<div class="card skeleton"></div>';
   state.support.current = { ticket_id: id, subject: '', status: 'open', messages: [] };
   threadSignature = '';
+  threadSeen = new Set();   /* другая переписка — её первый показ не «новые» */
   applySupportPanes();
   swapIn($('supportThreadView'));   /* на телефоне переписка занимает весь экран */
   renderSupportList();
@@ -3091,6 +3167,10 @@ function initPlayers(root){
   });
 }
 let threadSignature = '';
+/* Список пузырей пересобирается целиком, поэтому «новое» приходится помнить
+   отдельно: без этого пришедшее сообщение просто возникало в кадре, а с
+   анимацией на всех .bubble вся переписка дёргалась бы на каждый ответ. */
+let threadSeen = new Set();
 function renderThread(scrollBottom){
   const t = state.support.current;
   $('threadTitle').textContent = t.subject || 'Обращение';
@@ -3113,12 +3193,20 @@ function renderThread(scrollBottom){
   if(!t.messages || !t.messages.length){
     box.innerHTML = '<div class="card empty"><p>Сообщений пока нет — напишите первое ниже.</p></div>';
   } else {
+    /* подъезжают только те пузыри, которых в прошлый раз не было: на первом
+       показе переписки анимацию берёт на себя сама панель */
+    const первыйПоказ = !threadSeen.size;
+    const были = threadSeen;
+    threadSeen = new Set();
     box.innerHTML = t.messages.map(m => {
       const mine = m.sender === 'user';
       const attachments = m.media || [];
       const media = attachments.map(mediaHtml).join('');
       const body = messageBody(m.content, attachments.length);
-      return `<div class="bubble ${mine?'is-mine':'is-theirs'}">${mine?'':'<div class="who">Поддержка</div>'}${body?esc(body).replace(/\n/g,'<br>'):''}${media}<div class="when">${fmtDateTime(m.created_at)}</div></div>`;
+      const key = String(m.message_id ?? m.id ?? m.created_at ?? '');
+      threadSeen.add(key);
+      const fresh = !первыйПоказ && !были.has(key) ? ' bubble--new' : '';
+      return `<div class="bubble ${mine?'is-mine':'is-theirs'}${fresh}">${mine?'':'<div class="who">Поддержка</div>'}${body?esc(body).replace(/\n/g,'<br>'):''}${media}<div class="when">${fmtDateTime(m.created_at)}</div></div>`;
     }).join('');
     initPlayers(box);
   }
