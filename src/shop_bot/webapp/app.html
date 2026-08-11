@@ -105,7 +105,8 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   min-height:calc(var(--topbar-h) + var(--safe-t));padding:var(--safe-t) var(--pad) 0;
   background:var(--bg-elev);border-bottom:1px solid var(--line);
 }
-.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto}
+.topbar__actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;margin-left:auto}
 .brand__mark{width:30px;height:30px;border-radius:9px;object-fit:cover;flex:0 0 auto}
 .brand__logo{display:none}
 .brand__fallback{display:grid;place-items:center;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font-weight:700}
@@ -194,7 +195,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .skeleton{min-height:150px;background:linear-gradient(90deg,rgba(236,238,242,.02),rgba(236,238,242,.055),rgba(236,238,242,.02));background-size:200% 100%;animation:shimmer 1.3s linear infinite}
 @keyframes shimmer{to{background-position:-200% 0}}
 
-.empty{padding:36px 22px;text-align:center;border-style:dashed;border-color:var(--line-2)}
+/* пустое место рисуем такой же спокойной рамкой, как всё остальное: пунктир
+   выбивался из набора и читался как незагруженный блок */
+.empty{padding:36px 22px;text-align:center;border:1px solid var(--line);border-radius:var(--r-lg)}
 .notify{padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg-elev);animation:rise .3s var(--ease) both}
 .notify + .notify{margin-top:9px}
 .notify--new{border-color:var(--accent-line);background:var(--accent-soft)}
@@ -288,6 +291,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .wheel-btn__dot{position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;
   background:var(--accent);border:2px solid var(--bg-elev);animation:wheel-pulse 1.9s var(--ease) infinite}
 @keyframes wheel-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+/* тот же намёк «есть что крутить», что и у кнопки в шапке */
+.sidenav__dot{margin-left:auto;width:8px;height:8px;border-radius:50%;flex:0 0 auto;
+  background:var(--accent);animation:wheel-pulse 1.9s var(--ease) infinite}
 .sidenav__count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:99px;
   background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:700;display:grid;place-items:center}
 
@@ -874,15 +880,21 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
       <span class="brand__mark brand__fallback" id="brandFallbackMobile">C</span>
       <span class="brand__title">{{ panel_brand_title }}</span>
     </div>
-    <button class="wheel-btn is-hidden" id="wheelBtn" type="button" onclick="openWheel()" title="Колесо удачи">
-      <span class="wheel-btn__face"><svg class="icon"><use href="#ic-wheel"/></svg></span>
-      <span class="wheel-btn__badge is-hidden" id="wheelBtnBadge">0</span>
-      <span class="wheel-btn__dot is-hidden" id="wheelBtnDot"></span>
-    </button>
-    <button class="wheel-btn" id="notifyBtn" type="button" onclick="openNotifications()" title="Уведомления">
-      <span class="wheel-btn__face"><svg class="icon"><use href="#ic-bell"/></svg></span>
-      <span class="wheel-btn__badge is-hidden" id="notifyBadge">0</span>
-    </button>
+    <!-- обе кнопки живут в одной группе у правого края: раньше они были
+         прямыми детьми шапки с justify-content:space-between, и рулетка
+         вставала где придётся — её место зависело от длины названия, а при
+         появлении и скрытии колокольчик прыгал -->
+    <div class="topbar__actions">
+      <button class="wheel-btn is-hidden" id="wheelBtn" type="button" onclick="openWheel()" title="Колесо удачи">
+        <span class="wheel-btn__face"><svg class="icon"><use href="#ic-wheel"/></svg></span>
+        <span class="wheel-btn__badge is-hidden" id="wheelBtnBadge">0</span>
+        <span class="wheel-btn__dot is-hidden" id="wheelBtnDot"></span>
+      </button>
+      <button class="wheel-btn" id="notifyBtn" type="button" onclick="openNotifications()" title="Уведомления">
+        <span class="wheel-btn__face"><svg class="icon"><use href="#ic-bell"/></svg></span>
+        <span class="wheel-btn__badge is-hidden" id="notifyBadge">0</span>
+      </button>
+    </div>
   </header>
 
   <nav class="sidenav">
@@ -894,7 +906,10 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <div class="sidenav__section label">Меню</div>
     <div id="sidenavLinks" style="display:contents"></div>
     <div class="sidenav__spacer"></div>
-    <button class="sidenav__link is-hidden" type="button" id="wheelNavLink" onclick="openWheel()"><svg class="icon"><use href="#ic-wheel"/></svg><span>Колесо удачи</span><span class="sidenav__count is-hidden" id="wheelNavCount">0</span></button>
+    <!-- на широком экране шапки нет, а колокольчик жил только в ней: до
+         уведомлений с компьютера было не добраться вовсе -->
+    <button class="sidenav__link" type="button" id="notifyNavLink" onclick="openNotifications()"><svg class="icon"><use href="#ic-bell"/></svg><span>Уведомления</span><span class="sidenav__count is-hidden" id="notifyNavCount">0</span></button>
+    <button class="sidenav__link is-hidden" type="button" id="wheelNavLink" onclick="openWheel()"><svg class="icon"><use href="#ic-wheel"/></svg><span>Колесо удачи</span><span class="sidenav__count is-hidden" id="wheelNavCount">0</span><span class="sidenav__dot is-hidden" id="wheelNavDot"></span></button>
     <button class="sidenav__link" type="button" data-nav="help" onclick="showScreen('help')"><svg class="icon"><use href="#ic-shield"/></svg><span>Подключение</span></button>
     <div class="sidenav__foot">
       <button class="sidenav__user" type="button" onclick="showScreen('profile')" title="Кабинет">
@@ -1205,6 +1220,9 @@ const NO_EXIT_ANIM = new Set([
   'supportHead', 'supportListView', 'supportThreadView', 'supportEmpty',
   'threadComposer', 'threadRecorder', 'threadClosed', 'recPreview',
   'trialActivateBtn', 'trialLinkBtn', 'deviceSelector', 'deviceNote',
+  /* исчезают из ряда кнопок и из столбца меню: пока доигрывает затухание,
+     они держат своё место и двигают соседей */
+  'wheelBtn', 'wheelNavLink',
 ]);
 const toggle = (id, hidden) => {
   const el = $(id);
@@ -1981,12 +1999,18 @@ function renderNotifications(){
 }
 
 function paintNotifyBadge(unread){
-  const badge = $('notifyBadge');
-  if(!badge) return;
-  badge.textContent = unread > 99 ? '99+' : String(unread);
-  /* через общий переключатель — значок появляется и гаснет так же,
-     как всё остальное, а не возникает в кадре */
-  toggle('notifyBadge', !unread);
+  const text = unread > 99 ? '99+' : String(unread);
+  /* счётчиков два: колокольчик в шапке телефона и строка бокового меню на
+     широком экране. Видно всегда только один — вторая раскладка спрятана
+     целиком, — но заполнять надо оба, иначе на компьютере число не появится */
+  ['notifyBadge', 'notifyNavCount'].forEach(id => {
+    const el = $(id);
+    if(!el) return;
+    el.textContent = text;
+    /* через общий переключатель — значок появляется и гаснет так же,
+       как всё остальное, а не возникает в кадре */
+    toggle(id, !unread);
+  });
 }
 
 async function loadNotifications(silent){
@@ -2200,7 +2224,8 @@ async function toggleWheelNotify(on){
     toast(on ? 'Буду напоминать' : 'Напоминать не буду');
   }catch(e){ toast(e.message, true); }
 }
-/* кнопка в шапке: счётчик билетов, точка — когда созрел бесплатный прокрут */
+/* вход в рулетку — кнопка в шапке на телефоне и строка бокового меню на
+   компьютере: счётчик билетов, точка — когда созрел бесплатный прокрут */
 async function refreshWheelButton(known){
   try{
     const d = known || await api('/api/wheel/state');
@@ -2215,7 +2240,9 @@ async function refreshWheelButton(known){
       $('wheelBtnBadge').textContent = tickets > 99 ? '99+' : tickets;
       $('wheelNavCount').textContent = tickets > 99 ? '99+' : tickets;
     }
-    toggle('wheelBtnDot', !(!tickets && (d.can_spin || (d.pending || []).length)));
+    const hint = !tickets && (d.can_spin || (d.pending || []).length);
+    toggle('wheelBtnDot', !hint);
+    toggle('wheelNavDot', !hint);
   }catch(e){ toggle('wheelBtn', true); toggle('wheelNavLink', true); }
 }
 
