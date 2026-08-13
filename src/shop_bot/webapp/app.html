@@ -93,9 +93,6 @@ body{
   background:radial-gradient(130% 55% at 50% -12%,rgba(var(--accent-rgb),.05),transparent 62%),var(--bg);
   color:var(--text);font-family:var(--font);font-size:15px;line-height:1.45;
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
-  /* Табличные цифры на весь кабинет: остаток дней и суммы пересчитываются
-     на месте, а не дёргают строку каждый раз, когда «1» сменяется «8». */
-  font-variant-numeric:tabular-nums;
 }
 button,input,textarea{font:inherit;color:inherit}
 button{cursor:pointer;background:none;border:0}
@@ -109,14 +106,6 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
 ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.19);background-clip:padding-box}
 ::-webkit-scrollbar-track{background:transparent}
-/* Отбивки между блоками сведены к трём ступеням. Раньше они стояли прямо
-   в разметке атрибутами style восемью разными значениями от 8 до 18 точек,
-   выбранными поштучно, и вертикальный ритм не складывался. */
-.mt-0{margin-top:0}
-.mt-1{margin-top:9px}
-.mt-2{margin-top:12px}
-.mt-3{margin-top:18px}
-.mb-2{margin-bottom:12px}
 .is-hidden{display:none !important}
 ::selection{background:rgba(var(--accent-rgb),.28)}
 
@@ -301,10 +290,18 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
    точек. Пусть каждая карточка будет ровно своего роста. */
 .subs-list{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));align-items:start}
 .subs-empty{max-width:520px;margin:0 auto}
-.sub-card{display:flex;flex-direction:column;gap:13px}
+.sub-card{container-type:inline-size;display:flex;flex-direction:column;gap:13px}
 .sub-card__top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .sub-card__name{font-size:19px;font-weight:700;letter-spacing:-.015em;overflow-wrap:anywhere}
 .sub-card__meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;padding:13px;border-radius:var(--r-md);background:rgba(255,255,255,.025);border:1px solid var(--line)}
+/* ── Табличные цифры ────────────────────────────────────────────────────
+   Только там, где число пересчитывается на месте или стоит в столбце: в
+   табличном наборе «1» занимает полную ширину знакоместа, и отдельно
+   стоящее «12» распадается на «1 2». Раньше правило висело на body и
+   портило все числа подряд, включая счётчики устройств. */
+.meta-value,.plan__price,.plan__per,.checkout-bar__total b,.checkout-bar__total s,
+.pay-total b,.balance-card__value,.stat-card b,.wheel-odds__row b,
+.label,.section-label,.field-label,code,kbd,.mono{font-variant-numeric:tabular-nums}
 .meta-value{display:block;font-size:14px;font-weight:600;margin-top:4px;overflow-wrap:anywhere}
 .sub-card__bar{height:4px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
 /* полосу растим масштабом, а не шириной: работает при любом проценте */
@@ -315,6 +312,13 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .sub-card__link code{min-width:0;flex:1;font-family:var(--mono);font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* прижимаем действия к низу — в сетке карточки выравниваются по одной линии */
 .sub-card__actions{display:flex;flex-direction:column;gap:8px;margin-top:auto}
+/* Бок о бок группы кнопок встают, только когда карточка правда широкая:
+   двум группам нужно 240 + 190 точек, чтобы ни одна не сминалась. */
+@container (min-width:560px){
+  .sub-card__actions{flex-direction:row;flex-wrap:wrap;align-items:flex-start}
+  .sub-card__actions .btn--block{width:auto;flex:1 1 190px}
+  .sub-card__actions .btn-row{flex:1 1 240px}
+}
 /* подписи не переносим: кнопка копирования на пару секунд меняет текст,
    и строка не должна от этого прыгать */
 .link-actions .btn{white-space:nowrap}
@@ -490,7 +494,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .device-opt b{display:block;font-size:17px;font-weight:600;color:var(--text)}
 .device-opt span{display:block;font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .device-opt.is-active{border-color:var(--accent-line);background:var(--accent-soft)}
-.plan-grid{display:grid;gap:15px 10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+/* Бейдж скидки висит на 9 точек выше карточки: без запаса сверху он
+   упирался в метку раздела и читался как оторвавшийся элемент. */
+.plan-grid{display:grid;gap:15px 10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));padding-top:11px}
 .plan{position:relative;display:flex;align-items:center;gap:14px;padding:15px;border-radius:var(--r-md);border:1px solid var(--line);background:rgba(255,255,255,.027);text-align:left}
 .plan.is-active{border-color:var(--accent-line);background:var(--accent-soft)}
 .plan__copy{min-width:0;flex:1}
@@ -817,9 +823,6 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   .btn:active{transform:none}
 
   .subs-list{grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px}
-  .sub-card__actions{flex-direction:row;flex-wrap:wrap}
-  .sub-card__actions .btn--block{width:auto;flex:1 1 190px}
-  .sub-card__actions .btn-row{flex:1 1 200px}
 
   .chip-row{flex-wrap:wrap;overflow:visible;padding-bottom:0}
   .buy-grid{grid-template-columns:minmax(0,1fr) 342px;gap:34px;align-items:start}
@@ -912,6 +915,17 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   .buy-grid{grid-template-columns:minmax(0,1fr) 372px}
   .support-layout{grid-template-columns:360px minmax(0,1fr)}
 }
+
+/* ── Отбивки ────────────────────────────────────────────────────────────
+   Три ступени вместо восьми значений, выбранных поштучно. Объявлены в самом
+   конце листа намеренно: у многих блоков отбивка задана сокращённой записью
+   margin, а она обнуляет margin-top. Вес селекторов одинаковый, поэтому
+   решает порядок, и утилиты обязаны идти последними. */
+.mt-0{margin-top:0}
+.mt-1{margin-top:9px}
+.mt-2{margin-top:12px}
+.mt-3{margin-top:18px}
+.mb-2{margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -1699,8 +1713,8 @@ function keyCardHtml(k){
      наверх поднимаем локацию, а порядковый номер уходит в метку. Если
      человек назвал подписку сам, ведёт его название. */
   const автоимя = /^Подписка\s*[№#]/.test(k.name || '');
-  const заголовок = автоимя ? (k.subtitle || k.name) : k.name;
-  const метка = автоимя ? (k.subtitle ? k.name : '') : (k.subtitle || '');
+  const заголовок = hostLabel(автоимя ? (k.subtitle || k.name) : k.name);
+  const метка = hostLabel(автоимя ? (k.subtitle ? k.name : '') : (k.subtitle || ''));
   return `<article class="card sub-card">
     <div class="sub-card__top">
       <span class="label">${esc(метка)}</span>
@@ -2268,7 +2282,7 @@ function renderWheelChoice(prize, keys){
     <div class="wheel-keys">${(keys || []).map(k => `
       <button class="wheel-key" onclick="claimWheelDays(${Number(k.key_id)},${Number(prize.spin_id) || 0})">
         <span class="wheel-card__icon"><svg class="icon"><use href="#ic-gift"/></svg></span>
-        <span class="wheel-key__main"><b>${esc(k.host_name || 'Подписка')}</b><span>действует до ${esc(k.expiry_text || '—')}</span></span>
+        <span class="wheel-key__main"><b>${esc(hostLabel(k.host_name) || 'Подписка')}</b><span>действует до ${esc(k.expiry_text || '—')}</span></span>
         <svg class="icon icon--sm" style="color:var(--faint)"><use href="#ic-chevron-right"/></svg>
       </button>`).join('')}</div>
     <button class="btn btn--ghost btn--block" style="margin-top:10px" onclick="wheelChooseLater()">Решить позже</button>`);
@@ -2440,6 +2454,13 @@ async function openCatalog(action){
   }
 }
 function selectRenewKey(id){ state.selectedKeyForRenew = findKey(id); renderCatalog(); }
+/* Флаги-эмодзи в названиях локаций приходят из настроек бота. В Telegram
+   они рисуются всегда, а в обычном браузере на Windows шрифта флагов нет
+   вовсе: эмодзи разваливается на пару букв («ЕU», «US») мелким кеглем и
+   выглядит как сломанный символ. В вебе показываем название без флага,
+   страна и так названа словом. В самом боте флаги остаются. */
+const ФЛАГ = /^(?:[\u{1F1E6}-\u{1F1FF}]{2}|[\u{1F3F4}][\u{E0060}-\u{E007F}]+)[\uFE0F\u200D]*\s*/u;
+function hostLabel(name){ return String(name == null ? '' : name).replace(ФЛАГ, '').trim(); }
 function findHost(){ return state.catalog.find(h => h.host_name === state.host) || state.catalog[0]; }
 function resetPromo(){ state.promoPreview = null; $('promoInput').value=''; $('promoResult').textContent=''; }
 function selectHost(name){
@@ -2527,7 +2548,7 @@ function renderCatalog(){
   if(!state.catalog.length){ fillLoaded($('planSelector'), '<div class="card empty"><h2>Тарифов пока нет</h2></div>'); return; }
   if(!state.host) state.host = state.catalog[0].host_name;
   const h = findHost();
-  $('hostSelector').innerHTML = state.catalog.map(x => `<button class="chip ${x.host_name===h.host_name?'is-active':''}" onclick="selectHost(${arg(x.host_name)})">${esc(x.host_name)}${x.plans && x.plans[0] ? ' · от ' + money(x.plans[0].price) : ''}</button>`).join('');
+  $('hostSelector').innerHTML = state.catalog.map(x => `<button class="chip ${x.host_name===h.host_name?'is-active':''}" onclick="selectHost(${arg(x.host_name)})">${esc(hostLabel(x.host_name))}${x.plans && x.plans[0] ? ' · от ' + money(x.plans[0].price) : ''}</button>`).join('');
 
   renderHostDescription(h);
   renderDeviceSelector(h);
@@ -2596,7 +2617,7 @@ function updateCheckout(){
   const base = total();
   const final = state.promoPreview ? state.promoPreview.newPrice : base;
   const devices = Number(state.tier && state.tier.devices || 0);
-  let lines = checkoutLine('Локация', esc(h && h.host_name || '—'))
+  let lines = checkoutLine('Локация', esc(hostLabel(h && h.host_name) || '—'))
     + checkoutLine('Тариф', esc(state.plan.plan_name || months() + ' мес.') + ' · ' + money(state.plan.price));
   if(devices) lines += checkoutLine('Устройства', devices + (devicesTotal() ? ' · +' + money(devicesTotal()) : ' · вкл.'));
   if(state.promoPreview) lines += checkoutLine('Промокод', '−' + money(Math.max(0, base - final)), 'checkout-line--save');
@@ -2657,7 +2678,7 @@ async function openPayment(){
     const h = findHost();
     const devices = Number(state.tier && state.tier.devices || 0);
     $('paymentSummary').textContent = [
-      h && h.host_name,
+      hostLabel(h && h.host_name),
       state.plan.plan_name || (months() + ' мес.'),
       devices ? `${devices} ${plural(devices,'устройство','устройства','устройств')}` : null,
       money(orderPrice()),
