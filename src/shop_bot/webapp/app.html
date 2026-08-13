@@ -801,7 +801,11 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
      и при переключении вкладок содержимое прыгает по горизонтали */
   #view-profile{max-width:1320px}
   #view-help{max-width:920px;margin-inline:0 auto}
-  .page-head{margin-bottom:20px;min-height:44px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+  /* Заголовок экрана остаётся на месте при прокрутке: в длинном списке
+     он уезжал первым, и было не видно, где ты находишься. Фон обязателен,
+     иначе содержимое просвечивает под ним. */
+  .page-head{position:sticky;top:0;z-index:5;margin-bottom:20px;min-height:44px;
+    padding:6px 0 16px;border-bottom:1px solid var(--line);background:var(--bg)}
   .page-head h1{font-size:26px}
   .page-head__desktop-only{display:flex}
   .btn.page-head__desktop-only{display:inline-flex}
@@ -817,12 +821,17 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   .btn:active{transform:none}
 
 
-  /* ── Подписки строками, а не плитками ───────────────────────────────
+  /* ── Подписки списком ───────────────────────────────────────────────
      Плитки в ряду тянулись под самую высокую: у кого нет кнопки «Докупить
      устройства», у того карточка ниже соседей, и низ ряда шёл ступенькой.
-     В строке кнопки стоят в один ряд, поэтому отсутствие одной высоту не
-     меняет вовсе. Заодно строка занимает всю ширину, которая на большом
-     экране всё равно простаивала. */
+     В строке кнопки идут одним рядом, поэтому отсутствие одной высоту не
+     меняет вовсе.
+
+     Рамок внутри рамок здесь больше нет. Было три вложенных коробки:
+     карточка, внутри блок данных, внутри поле ссылки — и это читалось
+     административной таблицей. Коробка нужна, только когда она что-то
+     отделяет; здесь строки разделяет волосяная линия, а порядок держит
+     типографика. */
   /* align-items:start достался от сетки плиток: в колонке он заставляет
      строку сжиматься по содержимому, и та, где кнопок меньше, оказывалась
      уже соседей. Тянем на всю ширину. */
@@ -842,15 +851,35 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   /* Статус ставим рядом с номером подписки. Прижатый к правому краю
      колонки, он висел на стыке с блоком данных и не читался как чей-то. */
   .sub-card__top{justify-content:flex-start;gap:11px}
+  /* строки разделяет линия, а не рамка вокруг каждой */
+  .subs-list .sub-card{
+    border:0;
+    background:none;
+    border-radius:0;
+    padding:22px 2px;
+    border-top:1px solid var(--line);
+  }
+  .subs-list .sub-card:first-child{border-top:0}
+  /* данные и ссылка без собственных коробок */
+  .sub-card__meta{background:none;border:0;padding:0}
+  .sub-card__link{background:none;border:0;padding:0}
+  .sub-card__link code{font-size:12px}
+  /* второстепенные действия мельче главного */
+  .sub-card__actions .btn{padding:9px 14px;font-size:13.5px}
+  .sub-card__actions .btn svg{width:14px;height:14px}
   /* Полоса срока живёт рядом с «Осталось», а не под названием: под
      названием она читалась как подчёркивание заголовка. */
   .sub-card__bar{grid-column:2;align-self:start;margin-top:2px}
   .sub-card__note{grid-column:1/-1}
-  /* До 1200 точек ссылка и кнопки не помещаются в одну строку: ссылка
-     уходит выше. Высота при этом остаётся одинаковой у всех строк, потому
-     что кнопки всё равно идут одним рядом. */
-  .sub-card__foot{grid-column:1/-1;gap:12px}
-  .sub-card__link{flex:1;min-width:0}
+  /* Обёртку низа распускаем: ссылка встаёт в колонку названия, кнопки —
+     в колонку данных. Иначе группа кнопок прижималась к правому краю
+     растяжимой ссылкой, и в строке с четырьмя кнопками «Копировать»
+     оказывалась не на месте относительно соседних строк. */
+  .sub-card__foot{display:contents}
+  .sub-card__link{grid-column:1;min-width:0;align-self:center}
+  /* Кнопкам отдаём всю ширину строки. В колонке данных пять штук не
+     помещались нигде до 1920 точек и вылезали за край. */
+  .sub-card__actions{grid-column:1/-1}
   /* все пять действий в один ряд: display:contents распускает вложенные
      группы, и кнопки становятся прямыми детьми строки */
   .sub-card__actions{flex-direction:row;flex-wrap:nowrap;gap:8px;margin-top:0;flex:0 0 auto}
@@ -859,7 +888,10 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   /* подписи не переносим: «Докупить устройства» вставала в две строки и
      делала эту строку выше соседних — ровно та ступенька, ради которой
      карточки и переехали в строки */
-  .sub-card__actions .btn{white-space:nowrap}
+  /* display:contents оставил в силе мобильное flex:1 на кнопках, и в
+     строке с четырьмя кнопками они растягивались шире, чем в соседних.
+     Ширину задаёт содержимое. */
+  .sub-card__actions .btn{white-space:nowrap;flex:0 0 auto}
 
   .chip-row{flex-wrap:wrap;overflow:visible;padding-bottom:0}
   .buy-grid{grid-template-columns:minmax(0,1fr) 342px;gap:34px;align-items:start}
@@ -960,7 +992,6 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
    и в них ломались плитки статистики и реферальная ссылка */
 @media(min-width:1200px){
   .profile-grid{grid-template-columns:minmax(0,1.22fr) minmax(0,.78fr);gap:18px}
-  .sub-card__foot{flex-direction:row;align-items:center;gap:16px}
 }
 
 /* ---------- wide desktop ---------- */
