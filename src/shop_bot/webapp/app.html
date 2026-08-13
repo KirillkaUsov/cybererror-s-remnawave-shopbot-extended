@@ -101,11 +101,22 @@ button,input,textarea{font:inherit;color:inherit}
 button{cursor:pointer;background:none;border:0}
 a{color:inherit;text-decoration:none}
 h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
-:focus-visible{outline:2px solid var(--accent-line);outline-offset:2px;border-radius:4px}
+/* Обводка фокуса берёт акцент в полную силу. На полупрозрачном --accent-line
+   она давала 1.63:1 к спокойной рамке при норме 3:1: с клавиатуры было не
+   видно, что выделено. */
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
 ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.19);background-clip:padding-box}
 ::-webkit-scrollbar-track{background:transparent}
+/* Отбивки между блоками сведены к трём ступеням. Раньше они стояли прямо
+   в разметке атрибутами style восемью разными значениями от 8 до 18 точек,
+   выбранными поштучно, и вертикальный ритм не складывался. */
+.mt-0{margin-top:0}
+.mt-1{margin-top:9px}
+.mt-2{margin-top:12px}
+.mt-3{margin-top:18px}
+.mb-2{margin-bottom:12px}
 .is-hidden{display:none !important}
 ::selection{background:rgba(var(--accent-rgb),.28)}
 
@@ -127,12 +138,12 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 }
 .brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto}
 .topbar__actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;margin-left:auto}
-.brand__mark{width:30px;height:30px;border-radius:9px;object-fit:cover;flex:0 0 auto}
+.brand__mark{width:30px;height:30px;border-radius:var(--r-sm);object-fit:cover;flex:0 0 auto}
 /* Знак вписываем, а не кадрируем: object-fit:cover срезает всё, что не
-   квадратное, а логотип может быть любым. Скругление снимаем — у знака
-   своя форма, рамка ему не нужна. Запасная плашка с буквой остаётся
-   квадратной, ей скругление как раз нужно. */
-.brand__logo{display:none;border-radius:0;object-fit:contain}
+   квадратное, а логотип может быть любым. Ширину ведёт высота, поэтому
+   и широкий знак, и квадратный встают без искажения. Скругление снимаем:
+   у знака своя форма. Запасная плашка с буквой остаётся квадратной. */
+.brand__logo{display:none;width:auto;height:30px;border-radius:0;object-fit:contain}
 .brand__fallback{display:grid;place-items:center;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font-weight:700}
 .brand__title{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
@@ -269,7 +280,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .divider{height:1px;background:var(--line);margin:16px 0}
 
 .field{width:100%;min-height:46px;border:1px solid var(--line);border-radius:var(--r-md);background:rgba(0,0,0,.24);color:var(--text);padding:11px 14px;font-size:14px;outline:none;transition:border-color .12s ease}
-.field:focus{border-color:var(--accent-line)}
+.field:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .field::placeholder{color:var(--faint)}
 .field-label{display:block;font-size:12.5px;font-weight:500;color:var(--dim);margin:14px 0 7px}
 
@@ -550,7 +561,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .chat{display:flex;flex-direction:column;min-height:0}
 .thread-title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .thread-wrap{display:flex;flex-direction:column;gap:10px;padding:2px 1px 14px;min-height:140px}
-.bubble{max-width:min(84%,600px);padding:11px 14px 9px;border-radius:16px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.bubble{max-width:min(84%,600px);padding:11px 14px 9px;border-radius:var(--r-lg);font-size:14px;line-height:1.5;overflow-wrap:anywhere}
 .bubble.is-mine{align-self:flex-end;background:var(--accent-soft);border:1px solid var(--accent-line);border-bottom-right-radius:6px}
 .bubble.is-theirs{align-self:flex-start;background:var(--surface-2);border:1px solid var(--line);border-bottom-left-radius:6px}
 /* backwards, а не both: с both на пузыре навсегда остаётся transform, и он
@@ -559,16 +570,16 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 @keyframes bubble-in{from{opacity:0;transform:translateY(7px) scale(.98)}to{opacity:1;transform:none}}
 .bubble .who{font-size:11.5px;color:var(--accent);font-weight:600;margin-bottom:4px}
 .bubble .when{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:6px;text-align:right}
-.bubble-media{display:block;margin-top:8px;max-width:100%;border-radius:10px}
-.bubble-file{display:flex;align-items:center;gap:7px;margin-top:8px;padding:9px 11px;border-radius:10px;background:rgba(0,0,0,.24);font-size:12.5px}
+.bubble-media{display:block;margin-top:8px;max-width:100%;border-radius:var(--r-sm)}
+.bubble-file{display:flex;align-items:center;gap:7px;margin-top:8px;padding:9px 11px;border-radius:var(--r-sm);background:rgba(0,0,0,.24);font-size:12.5px}
 /* Голосовые и кружки приходят из Telegram — раньше в мини-аппе они
    выглядели ссылкой «Файл», хотя это запись голоса и видео. */
-.voice{display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px 11px;border-radius:12px;background:rgba(0,0,0,.24);min-width:190px}
+.voice{display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px 11px;border-radius:var(--r-md);background:rgba(0,0,0,.24);min-width:190px}
 .voice__btn{flex:0 0 auto;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:#14151a}
 .voice__btn .icon{width:15px;height:15px}
 .voice__body{flex:1;min-width:0}
-.voice__rail{position:relative;height:4px;border-radius:2px;background:rgba(255,255,255,.16);cursor:pointer}
-.voice__fill{position:absolute;inset:0 auto 0 0;width:0;border-radius:2px;background:var(--accent)}
+.voice__rail{position:relative;height:4px;border-radius:999px;background:rgba(255,255,255,.16);cursor:pointer}
+.voice__fill{position:absolute;inset:0 auto 0 0;width:0;border-radius:999px;background:var(--accent)}
 .voice__time{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:5px}
 .circle{position:relative;width:160px;height:160px;margin-top:8px;border-radius:50%;overflow:hidden;background:#000}
 .circle video{width:100%;height:100%;object-fit:cover}
@@ -584,7 +595,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 
 .composer{display:flex;gap:9px;align-items:flex-end;padding:10px var(--pad);margin:0 calc(var(--pad) * -1);border-top:1px solid var(--line);background:var(--bg-elev)}
 .composer textarea{flex:1;resize:none;max-height:104px;min-height:44px;border:1px solid var(--line);border-radius:var(--r-md);background:rgba(0,0,0,.24);color:var(--text);padding:11px 14px;outline:none;font-size:14px}
-.composer textarea:focus{border-color:var(--accent-line)}
+.composer textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 /* у закрытого обращения поля ввода нет — вместо пустоты внизу объясняем,
    почему написать нельзя */
 .thread-closed{padding:13px var(--pad);margin:0 calc(var(--pad) * -1);border-top:1px solid var(--line);background:var(--bg-elev);color:var(--dim);font-size:12.5px;text-align:center}
@@ -685,8 +696,11 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 @keyframes fade-out{from{opacity:1}to{opacity:0}}
 @keyframes sheet-up{from{transform:translateY(100%)}to{transform:none}}
 @keyframes sheet-down{from{transform:none}to{transform:translateY(100%)}}
+/* фокус на панель ставим сами, показывать обводку вокруг всего окна
+   не нужно: внутренние элементы свою обводку сохраняют */
+.sheet:focus{outline:none}
 .sheet{width:min(100%,520px);max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--line-2);border-bottom:0;border-radius:var(--r-xl) var(--r-xl) 0 0;background:var(--surface-2);padding:10px 18px calc(20px + var(--safe-b))}
-.sheet__handle{width:38px;height:4px;border-radius:8px;background:var(--surface-3);margin:2px auto 18px}
+.sheet__handle{width:38px;height:4px;border-radius:999px;background:var(--surface-3);margin:2px auto 18px}
 .sheet h2{font-size:18px;margin:0 0 6px}
 .sheet__sub{font-size:13px;color:var(--dim);margin-bottom:16px}
 .pay-method{width:100%;display:flex;align-items:center;gap:13px;padding:13px;border-radius:var(--r-md);border:1px solid var(--line);background:rgba(255,255,255,.027);text-align:left;margin-bottom:9px}
@@ -759,7 +773,8 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     height:var(--app-h);overflow-y:auto;background:var(--bg-elev);
   }
   .sidenav__brand{display:flex;align-items:center;gap:11px;padding:4px 10px 22px}
-  .sidenav__brand .brand__mark{width:34px;height:34px;border-radius:11px}
+  .sidenav__brand .brand__mark{width:34px;height:34px;border-radius:var(--r-md)}
+  .sidenav__brand .brand__logo{width:auto;height:34px}
   .sidenav__brand .brand__title{font-size:16px}
   .sidenav__section{padding:0 14px 8px}
   .sidenav__link{
@@ -1001,26 +1016,26 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 
         <section class="view" id="view-catalog">
           <div class="page-head"><h1 id="catalogTitle">Покупка</h1></div>
-          <div class="chip-row is-hidden" id="renewSelector" style="margin-bottom:12px"></div>
+          <div class="chip-row is-hidden mb-2" id="renewSelector"></div>
           <div class="buy-grid">
             <div class="buy-col">
               <div class="section-label">Локация</div>
               <div class="chip-row" id="hostSelector"></div>
-              <div id="hostDescription" class="card host-desc is-hidden" style="margin-top:10px">
+              <div id="hostDescription" class="card host-desc is-hidden mt-2">
                 <div class="host-desc__text" id="hostDescriptionText"></div>
                 <button class="host-desc__more is-hidden" id="hostDescriptionMore" onclick="toggleDescription()">Читать полностью</button>
               </div>
-              <div class="section-label" style="margin-top:18px" id="deviceLabel">Устройства</div>
+              <div class="section-label mt-3" id="deviceLabel">Устройства</div>
               <div class="device-grid" id="deviceSelector"></div>
               <div class="card device-note is-hidden" id="deviceNote"></div>
-              <div class="section-label" style="margin-top:18px">Срок подписки</div>
+              <div class="section-label mt-3">Срок подписки</div>
               <div class="plan-grid" id="planSelector"><div class="card skeleton"></div></div>
             </div>
             <aside class="buy-side">
               <div class="buy-promo">
                 <div class="section-label">Промокод</div>
                 <div class="promo-row">
-                  <input class="field" id="promoInput" placeholder="Есть промокод?">
+                  <input class="field" id="promoInput" aria-label="Промокод" placeholder="Есть промокод?">
                   <button class="btn btn--ghost" onclick="previewPromo()">Проверить</button>
                 </div>
                 <div class="promo-result" id="promoResult"></div>
@@ -1040,13 +1055,13 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
             <h1>Поддержка</h1>
             <div style="display:flex;gap:8px;align-items:center">
               <button class="btn btn--ghost btn--sm page-head__desktop-only" onclick="openNewTicket()">Новое обращение</button>
-              <button class="icon-btn" title="Открыть в Telegram" onclick="openSupportChat()"><svg class="icon"><use href="#ic-link"/></svg></button>
+              <button class="icon-btn" title="Открыть в Telegram" onclick="openSupportChat()" aria-label="Открыть в Telegram"><svg class="icon"><use href="#ic-link"/></svg></button>
             </div>
           </div>
           <div class="support-layout">
             <div id="supportListView">
               <div id="supportHistory"><div class="card skeleton"></div></div>
-              <button class="btn btn--primary btn--block" id="newTicketBtn" style="margin-top:12px" onclick="openNewTicket()">Новое обращение</button>
+              <button class="btn btn--primary btn--block mt-2" id="newTicketBtn" onclick="openNewTicket()">Новое обращение</button>
             </div>
             <div class="card support-empty is-hidden" id="supportEmpty">
               <svg class="icon"><use href="#ic-chat"/></svg>
@@ -1055,28 +1070,28 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
             <div id="supportThreadView" class="chat is-hidden">
               <div class="page-head">
                 <div style="display:flex;align-items:center;gap:10px;min-width:0">
-                  <button class="icon-btn thread-back" title="Назад" onclick="closeTicketThread()"><svg class="icon"><use href="#ic-chevron-left"/></svg></button>
+                  <button class="icon-btn thread-back" title="Назад" onclick="closeTicketThread()" aria-label="Назад"><svg class="icon"><use href="#ic-chevron-left"/></svg></button>
                   <span class="thread-title" id="threadTitle">Обращение</span>
                 </div>
                 <span class="pill" id="threadStatus"></span>
               </div>
               <div id="threadMessages" class="thread-wrap"></div>
               <div class="composer" id="threadComposer">
-                <button class="icon-btn is-hidden" id="attachBtn" onclick="triggerAttach()" title="Прикрепить файл"><svg class="icon"><use href="#ic-paperclip"/></svg></button>
+                <button class="icon-btn is-hidden" id="attachBtn" onclick="triggerAttach()" title="Прикрепить файл" aria-label="Прикрепить файл"><svg class="icon"><use href="#ic-paperclip"/></svg></button>
                 <input type="file" id="attachInput" class="is-hidden" onchange="handleAttachChange(event)">
-                <button class="icon-btn is-hidden" id="voiceBtn" onclick="startRecording('voice')" title="Записать голосовое"><svg class="icon"><use href="#ic-mic"/></svg></button>
-                <button class="icon-btn is-hidden" id="circleBtn" onclick="startRecording('video_note')" title="Записать кружок"><svg class="icon"><use href="#ic-circle-cam"/></svg></button>
-                <textarea id="messageInput" placeholder="Сообщение…" rows="1" oninput="autoGrow(this)"></textarea>
-                <button class="btn btn--primary btn--icon" onclick="sendSupportMessage()" title="Отправить"><svg class="icon"><use href="#ic-send"/></svg></button>
+                <button class="icon-btn is-hidden" id="voiceBtn" onclick="startRecording('voice')" title="Записать голосовое" aria-label="Записать голосовое"><svg class="icon"><use href="#ic-mic"/></svg></button>
+                <button class="icon-btn is-hidden" id="circleBtn" onclick="startRecording('video_note')" title="Записать кружок" aria-label="Записать кружок"><svg class="icon"><use href="#ic-circle-cam"/></svg></button>
+                <textarea id="messageInput" aria-label="Текст сообщения" placeholder="Сообщение…" rows="1" oninput="autoGrow(this)"></textarea>
+                <button class="btn btn--primary btn--icon" onclick="sendSupportMessage()" title="Отправить" aria-label="Отправить"><svg class="icon"><use href="#ic-send"/></svg></button>
               </div>
               <div class="composer is-hidden" id="threadRecorder">
-                <button class="icon-btn" onclick="cancelRecording()" title="Отменить"><svg class="icon"><use href="#ic-x"/></svg></button>
+                <button class="icon-btn" onclick="cancelRecording()" title="Отменить" aria-label="Отменить"><svg class="icon"><use href="#ic-x"/></svg></button>
                 <div class="rec">
                   <span class="rec__dot"></span>
                   <span id="recLabel">Записываю голосовое…</span>
                   <span class="rec__time" id="recTime">0:00</span>
                 </div>
-                <button class="btn btn--primary btn--icon" onclick="finishRecording()" title="Отправить запись"><svg class="icon"><use href="#ic-send"/></svg></button>
+                <button class="btn btn--primary btn--icon" onclick="finishRecording()" title="Отправить запись" aria-label="Отправить запись"><svg class="icon"><use href="#ic-send"/></svg></button>
               </div>
               <video id="recPreview" class="rec-preview is-hidden" playsinline muted style="margin:8px auto 0"></video>
               <div class="thread-closed is-hidden" id="threadClosed">Обращение закрыто. Остался вопрос — откройте новое.</div>
@@ -1090,14 +1105,14 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
         </section>
 
         <section class="view" id="view-help">
-          <div class="page-head"><h1>Подключение</h1><button class="icon-btn" title="Закрыть" onclick="showScreen('home')"><svg class="icon"><use href="#ic-x"/></svg></button></div>
+          <div class="page-head"><h1>Подключение</h1><button class="icon-btn" title="Закрыть" onclick="showScreen('home')" aria-label="Закрыть"><svg class="icon"><use href="#ic-x"/></svg></button></div>
           <div class="steps stagger">
             <div class="card step"><span class="step__no">1</span><div class="step__body"><b>Установите приложение</b><span>Happ, v2RayTun, Streisand или другой клиент с поддержкой VLESS.</span></div></div>
             <div class="card step"><span class="step__no">2</span><div class="step__body"><b>Скопируйте ссылку</b><span>На вкладке «Подписка» нажмите «Копировать» под нужной подпиской.</span></div></div>
             <div class="card step"><span class="step__no">3</span><div class="step__body"><b>Добавьте подписку</b><span>Импортируйте ссылку из буфера обмена в приложение.</span></div></div>
             <div class="card step"><span class="step__no">4</span><div class="step__body"><b>Подключитесь</b><span>Выберите сервер и включите VPN.</span></div></div>
           </div>
-          <button class="btn btn--ghost btn--block" style="margin-top:12px" onclick="showScreen('support')">Написать в поддержку</button>
+          <button class="btn btn--ghost btn--block mt-2" onclick="showScreen('support')">Написать в поддержку</button>
           <p class="legal-line">
             <a href="/legal/terms" target="_blank" rel="noopener">Пользовательское соглашение</a> ·
             <a href="/legal/privacy" target="_blank" rel="noopener">Политика обработки данных</a>
@@ -1111,10 +1126,10 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   <nav class="tabbar" id="tabbar"></nav>
 </div>
 
-<div class="modal" id="paymentModal" data-modal>
+<div class="modal" id="paymentModal" data-modal role="dialog" aria-modal="true" aria-labelledby="paymentModalTitle">
   <div class="sheet">
     <div class="sheet__handle"></div>
-    <h2>Оплата</h2>
+    <h2 id="paymentModalTitle">Оплата</h2>
     <div class="sheet__sub" id="paymentSummary"></div>
     <label class="card switch-row is-hidden" id="balanceUse">
       <span class="switch-row__main"><b>Частично оплатить с баланса</b><span id="balanceUseNote"></span></span>
@@ -1124,122 +1139,126 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <div class="section-label is-hidden" id="paymentMethodsLabel">Способ оплаты</div>
     <div id="paymentMethods"></div>
     <div class="pay-total is-hidden" id="paymentTotal"><span>Спишется сейчас</span><b id="paymentTotalValue">0 ₽</b></div>
-    <button class="btn btn--primary btn--block" id="payButton" style="margin-top:8px" onclick="createPayment()">Оплатить</button>
-    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('paymentModal')">Отмена</button>
+    <button class="btn btn--primary btn--block mt-1" id="payButton" onclick="createPayment()">Оплатить</button>
+    <button class="btn btn--quiet btn--block mt-1" onclick="closeModal('paymentModal')">Отмена</button>
   </div>
 </div>
 
-<div class="modal" id="wheelModal" data-modal>
+<div class="modal" id="wheelModal" data-modal role="dialog" aria-modal="true" aria-labelledby="wheelModalTitle">
   <div class="sheet sheet--wheel">
     <div class="sheet__handle"></div>
     <div class="wheel-title">
-      <h2>Колесо удачи</h2>
-      <button class="icon-btn" type="button" title="Шансы и билеты" onclick="openWheelInfo()">
+      <h2 id="wheelModalTitle">Колесо удачи</h2>
+      <button class="icon-btn" type="button" title="Шансы и билеты" onclick="openWheelInfo()" aria-label="Шансы и билеты">
         <svg class="icon"><use href="#ic-info"/></svg>
       </button>
     </div>
     <div class="sheet__sub" id="wheelSub">Загружаем барабан…</div>
     <div id="wheelBody"><div class="card skeleton" style="min-height:calc(var(--reel-card) * 3 + 148px)"></div></div>
-    <div class="btn-row" id="wheelActions" style="margin-top:12px">
+    <div class="btn-row mt-2" id="wheelActions">
       <button class="btn btn--primary is-hidden" id="wheelSpinBtn" onclick="spinWheel()">Крутить</button>
       <button class="btn btn--ghost is-hidden" id="wheelBuyBtn" onclick="buyWheelTicket()">Купить билет</button>
     </div>
-    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('wheelModal')">Закрыть</button>
+    <button class="btn btn--quiet btn--block mt-1" onclick="closeModal('wheelModal')">Закрыть</button>
   </div>
 </div>
 
-<div class="modal" id="wheelInfoModal" data-modal>
+<div class="modal" id="wheelInfoModal" data-modal role="dialog" aria-modal="true" aria-labelledby="wheelInfoModalTitle">
   <div class="sheet">
     <div class="sheet__handle"></div>
-    <h2>Шансы и билеты</h2>
+    <h2 id="wheelInfoModalTitle">Шансы и билеты</h2>
     <div class="sheet__sub">Какие призы на барабане, с какой вероятностью и откуда берутся билеты</div>
     <div id="wheelInfoBody"></div>
-    <label class="card switch-row" id="wheelNotifyRow" style="margin-top:12px">
+    <label class="card switch-row mt-2" id="wheelNotifyRow">
       <span class="switch-row__main"><b>Напоминать о бесплатном ходе</b><span>Бот напишет, когда он снова будет доступен</span></span>
       <input type="checkbox" id="wheelNotifyInput" onchange="toggleWheelNotify(this.checked)">
       <span class="switch"></span>
     </label>
-    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('wheelInfoModal')">Закрыть</button>
+    <button class="btn btn--quiet btn--block mt-1" onclick="closeModal('wheelInfoModal')">Закрыть</button>
   </div>
 </div>
 
-<div class="modal" id="addonModal" data-modal>
+<div class="modal" id="addonModal" data-modal role="dialog" aria-modal="true" aria-labelledby="addonModalTitle">
   <div class="sheet">
     <div class="sheet__handle"></div>
-    <h2>Докупить устройства</h2>
+    <h2 id="addonModalTitle">Докупить устройства</h2>
     <div class="sheet__sub" id="addonSub">Дата окончания не сдвинется — платите только за оставшиеся дни</div>
     <div id="addonBody"><div class="card skeleton" style="min-height:90px"></div></div>
-    <button class="btn btn--quiet btn--block" style="margin-top:12px" onclick="closeModal('addonModal')">Закрыть</button>
+    <button class="btn btn--quiet btn--block mt-2" onclick="closeModal('addonModal')">Закрыть</button>
   </div>
 </div>
 
-<div class="modal" id="notifyModal" data-modal>
+<div class="modal" id="notifyModal" data-modal role="dialog" aria-modal="true" aria-labelledby="notifyModalTitle">
   <div class="sheet">
     <div class="sheet__handle"></div>
-    <h2>Уведомления</h2>
+    <h2 id="notifyModalTitle">Уведомления</h2>
     <div class="sheet__sub" id="notifySub">Сообщения от команды сервиса</div>
     <div id="notifyList" class="stagger"><div class="card skeleton" style="min-height:120px"></div></div>
-    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('notifyModal')">Закрыть</button>
+    <button class="btn btn--quiet btn--block mt-1" onclick="closeModal('notifyModal')">Закрыть</button>
   </div>
 </div>
 
-<div class="modal" id="topupModal" data-modal>
+<div class="modal" id="topupModal" data-modal role="dialog" aria-modal="true" aria-labelledby="topupModalTitle">
   <div class="sheet">
     <div class="sheet__handle"></div>
-    <h2>Пополнение баланса</h2>
+    <h2 id="topupModalTitle">Пополнение баланса</h2>
     <div class="sheet__sub">Деньги лягут на счёт — потратить их можно на любую подписку или продление</div>
-    <div class="chip-row" id="topupPresets" style="margin-bottom:10px"></div>
-    <input class="field" id="topupAmount" inputmode="decimal" autocomplete="off" placeholder="Сумма, ₽">
+    <!-- подпись возглавляет всю группу: быстрые суммы подставляют значение
+         в то же поле, стоять выше его названия им незачем -->
+    <label class="field-label mt-0" for="topupAmount">Сумма пополнения</label>
+    <div class="chip-row mb-2" id="topupPresets"></div>
+    <input class="field" id="topupAmount" inputmode="decimal" autocomplete="off" placeholder="Например, 500">
     <div class="promo-result" id="topupResult"></div>
-    <div class="section-label" style="margin-top:10px">Способ оплаты</div>
+    <div class="section-label mt-2">Способ оплаты</div>
     <div id="topupMethods"><div class="card skeleton" style="min-height:100px"></div></div>
-    <button class="btn btn--primary btn--block" id="topupButton" style="margin-top:8px" onclick="createTopup()">Пополнить</button>
-    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('topupModal')">Отмена</button>
+    <button class="btn btn--primary btn--block mt-1" id="topupButton" onclick="createTopup()">Пополнить</button>
+    <button class="btn btn--quiet btn--block mt-1" onclick="closeModal('topupModal')">Отмена</button>
   </div>
 </div>
 
-<div class="modal" id="newTicketModal" data-modal>
+<div class="modal" id="newTicketModal" data-modal role="dialog" aria-modal="true" aria-labelledby="newTicketModalTitle">
   <div class="sheet">
     <div class="sheet__handle"></div>
-    <h2>Новое обращение</h2>
+    <h2 id="newTicketModalTitle">Новое обращение</h2>
     <div class="sheet__sub">Коротко опишите, что случилось — ответим в этой же переписке</div>
-    <div class="chip-row" id="subjectChips" style="margin-bottom:12px"></div>
-    <input class="field" id="subjectInput" placeholder="Тема обращения" maxlength="64" style="margin-bottom:12px">
+    <div class="chip-row mb-2" id="subjectChips"></div>
+    <label class="field-label" for="subjectInput">Тема обращения</label>
+    <input class="field mb-2" id="subjectInput" placeholder="Коротко, о чём вопрос" maxlength="64">
     <button class="btn btn--primary btn--block" id="createTicketBtn" onclick="submitNewTicket()">Создать обращение</button>
-    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('newTicketModal')">Отмена</button>
+    <button class="btn btn--quiet btn--block mt-1" onclick="closeModal('newTicketModal')">Отмена</button>
   </div>
 </div>
 
-<div class="modal" id="manageModal" data-modal>
+<div class="modal" id="manageModal" data-modal role="dialog" aria-modal="true" aria-labelledby="manageTitle">
   <div class="sheet">
     <div class="sheet__handle"></div>
     <h2 id="manageTitle">Управление</h2>
     <div class="sheet__sub">Заметка для себя, подключённые устройства и ссылка</div>
 
-    <div class="field-label" style="margin-top:0">Личная заметка</div>
+    <label class="field-label mt-0" for="manageNote">Личная заметка</label>
     <input class="field" id="manageNote" placeholder="Например: ноутбук жены">
-    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="saveManageNote()">Сохранить заметку</button>
+    <button class="btn btn--ghost btn--block mt-1" onclick="saveManageNote()">Сохранить заметку</button>
 
     <div class="divider"></div>
-    <div class="field-label" style="margin-top:0">Подключённые устройства</div>
+    <div class="field-label mt-0">Подключённые устройства</div>
     <div id="deviceList"><div class="card skeleton" style="min-height:70px"></div></div>
 
     <div class="divider"></div>
-    <div class="field-label" style="margin-top:0">Ссылка подписки</div>
+    <div class="field-label mt-0">Ссылка подписки</div>
     <p class="empty-hint" style="padding:0 0 12px;text-align:left">Ссылка попала не в те руки — выпустите новую. Старая сразу перестанет работать.</p>
     <button class="btn btn--danger btn--block" onclick="resetSubscriptionLink()">Пересоздать ссылку</button>
 
-    <button class="btn btn--quiet btn--block" style="margin-top:12px" onclick="closeModal('manageModal')">Закрыть</button>
+    <button class="btn btn--quiet btn--block mt-2" onclick="closeModal('manageModal')">Закрыть</button>
   </div>
 </div>
 
-<div class="modal" id="confirmModal" data-modal>
+<div class="modal" id="confirmModal" data-modal role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
   <div class="sheet sheet--compact">
     <div class="sheet__handle"></div>
     <h2 id="confirmTitle">Подтвердите действие</h2>
     <div class="sheet__sub" id="confirmText"></div>
     <button class="btn btn--primary btn--block" id="confirmOk" onclick="acceptConfirm()">Подтвердить</button>
-    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('confirmModal')">Отмена</button>
+    <button class="btn btn--quiet btn--block mt-1" onclick="closeModal('confirmModal')">Отмена</button>
   </div>
 </div>
 
@@ -1483,14 +1502,44 @@ const modalTimers = {};
 /* столько же длится анимация закрытия в CSS — если снять окно раньше, оно
    исчезнет посреди движения */
 const MODAL_CLOSE_MS = 200;
+/* ===== фокус в окнах =====
+   Окно обязано забрать фокус, удержать его внутри и вернуть на место при
+   закрытии. Без этого Tab уходит гулять по странице за окном, а чтение с
+   экрана вообще не сообщает, что окно открылось. */
+const ФОКУСИРУЕМЫЕ = 'a[href],button:not([disabled]),input:not([disabled]),' +
+  'textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
+const фокусВозврат = [];
+
+function верхнееОкно(){
+  const открытые = document.querySelectorAll('.modal.is-open:not(.is-closing)');
+  return открытые[открытые.length - 1] || null;
+}
+function внутриОкна(m){
+  return [...m.querySelectorAll(ФОКУСИРУЕМЫЕ)].filter(el => el.offsetParent !== null);
+}
+/* Всё, что не верхнее окно, выключаем из обхода целиком: inert снимает и
+   фокус, и чтение с экрана, в отличие от одного лишь aria-hidden. */
+function пересобратьСлои(){
+  const верх = верхнееОкно();
+  const shell = document.querySelector('.shell');
+  if(shell) shell.inert = !!верх;
+  document.querySelectorAll('.modal').forEach(m => { m.inert = !!верх && m !== верх; });
+}
+
 function openModal(id){
   const m = $(id);
   clearTimeout(modalTimers[id]);
   m.classList.remove('is-closing');
   /* повторное открытие уже открытого окна не должно проигрывать выезд заново */
   if(!m.classList.contains('is-open')){
+    фокусВозврат.push(document.activeElement);
     m.classList.add('is-open');
     haptic();
+    пересобратьСлои();
+    /* фокус на само окно, а не на первую кнопку: иначе чтение начинается
+       с «Закрыть» вместо заголовка */
+    const sheet = m.querySelector('.sheet') || m;
+    requestAnimationFrame(() => sheet.focus({ preventScroll:true }));
   }
 }
 function closeModal(id){
@@ -1499,6 +1548,13 @@ function closeModal(id){
     m.classList.add('is-closing');
     clearTimeout(modalTimers[id]);
     modalTimers[id] = setTimeout(() => m.classList.remove('is-open','is-closing'), MODAL_CLOSE_MS);
+    /* Слои пересобираем сразу, не дожидаясь конца выезда: пока окно уезжает,
+       оно уже не должно ловить Tab. Фокус возвращаем на кнопку, которой его
+       открыли, иначе он падает в начало страницы. */
+    пересобратьСлои();
+    const назад = фокусВозврат.pop();
+    if(назад && назад.isConnected && typeof назад.focus === 'function')
+      назад.focus({ preventScroll:true });
   }
   /* закрыли подтверждение мимо кнопки «Подтвердить» — значит отказ */
   if(id === 'confirmModal' && confirmResolve){
@@ -2872,7 +2928,7 @@ function renderProfile(){
         <div class="card panel-card">
           <span class="panel-card__label">Промокод</span>
           <div class="promo-row promo-row--stack">
-            <input class="field" id="bonusPromoInput" placeholder="Код на баланс или дни" autocomplete="off">
+            <input class="field" id="bonusPromoInput" aria-label="Промокод на баланс или дни" placeholder="Код на баланс или дни" autocomplete="off">
             <button class="btn btn--primary" id="bonusPromoBtn" onclick="activateBonusPromo()">Активировать</button>
           </div>
           <div class="promo-result" id="bonusPromoResult"></div>
@@ -3534,6 +3590,28 @@ function init(){
     m.addEventListener('click', e => { if(e.target === m) closeModal(m.id); });
   });
   document.addEventListener('keydown', e => { if(e.key === 'Escape') closeTopModal(); });
+  /* Панель окна должна принимать фокус сама, но не вставать в обход по Tab:
+     tabindex="-1" даёт ровно это. */
+  document.querySelectorAll('.sheet').forEach(s => s.setAttribute('tabindex', '-1'));
+  /* Замыкаем Tab внутри верхнего окна: с последнего элемента переходим на
+     первый и обратно, наружу не выпускаем. */
+  document.addEventListener('keydown', e => {
+    if(e.key !== 'Tab') return;
+    const m = верхнееОкно();
+    if(!m) return;
+    const цели = внутриОкна(m);
+    if(!цели.length){ e.preventDefault(); return; }
+    const первый = цели[0], последний = цели[цели.length - 1];
+    const где = document.activeElement;
+    const наПанели = где === m || где === m.querySelector('.sheet');
+    if(e.shiftKey && (где === первый || наПанели)){
+      e.preventDefault();
+      последний.focus();
+    } else if(!e.shiftKey && где === последний){
+      e.preventDefault();
+      первый.focus();
+    }
+  });
   $('promoInput').addEventListener('keydown', e => { if(e.key === 'Enter') previewPromo(); });
   $('subjectInput').addEventListener('keydown', e => { if(e.key === 'Enter') submitNewTicket(); });
   /* на десктопе Enter отправляет сообщение, Shift+Enter — перенос строки */
