@@ -805,7 +805,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   /* ширину ограничиваем, но по левому краю — иначе на широком экране заголовок
      кабинета и инструкции уезжает вправо относительно остальных разделов,
      и при переключении вкладок содержимое прыгает по горизонтали */
-  #view-profile{max-width:1120px;margin-inline:0 auto}
+  #view-profile{max-width:1320px}
   #view-help{max-width:920px;margin-inline:0 auto}
   .page-head{margin-bottom:20px;min-height:44px;padding-bottom:16px;border-bottom:1px solid var(--line)}
   .page-head h1{font-size:26px}
@@ -828,8 +828,25 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   .buy-grid{grid-template-columns:minmax(0,1fr) 342px;gap:34px;align-items:start}
   .buy-side{display:flex;flex-direction:column;gap:14px;position:sticky;top:20px;min-width:0}
   .buy-promo{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-lg);padding:15px 16px}
-  .device-grid{max-width:560px}
-  .plan-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+  .device-opt{padding:15px 8px}
+  .device-opt b{font-size:19px}
+  /* На большом экране разделы стоят просторнее: та же плотность, что на
+     телефоне, оставляла нижнюю треть окна пустой. */
+  .buy-col .mt-3{margin-top:26px}
+  /* Описание локации на десктопе не подрезаем: места хватает, а лишнее
+     нажатие «Читать полностью» ничего не даёт. */
+  .host-desc__text{max-height:none}
+  .host-desc__text::after{display:none}
+  .host-desc__more{display:none}
+  .plan-grid{grid-template-columns:minmax(0,1fr);gap:10px}
+  .plan{padding:17px 20px;gap:18px}
+  .plan__term{font-size:15.5px}
+  .plan__price{font-size:22px}
+  /* В вертикальном списке бейджу нельзя висеть над карточкой: он налезает
+     на строку сверху. Ставим его в поток, между сроком и ценой. */
+  .plan__save{position:static;order:2;margin-left:auto;align-self:center}
+  .plan__price{order:3}
+  .plan-grid{padding-top:0}
 
   .checkout-bar{
     position:static;display:flex;flex-direction:column;align-items:stretch;gap:0;
