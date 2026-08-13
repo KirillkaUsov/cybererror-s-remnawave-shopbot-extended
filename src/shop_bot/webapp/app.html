@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
-<meta name="theme-color" content="#141519">
+<meta name="theme-color" content="#0a0a0c">
 <link rel="icon" href="{{ webapp_icon }}">
 <title>{{ panel_brand_title }}</title>
 <script src="/js/telegram-web-app.js"></script>
@@ -12,43 +12,48 @@
 <link href="/static/fonts/fonts.css" rel="stylesheet">
 <style>
 :root{
-  --font:'Golos Text',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Ubuntu,sans-serif;
-  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --font:'Onest',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Ubuntu,sans-serif;
+  --mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
 
-  --bg:#101013;
-  --bg-elev:#141519;
-  --surface:#191a1f;
-  --surface-2:#1f2027;
-  --surface-3:#272932;
-  --line:rgba(236,238,242,.08);
-  --line-2:rgba(236,238,242,.15);
+  /* База намеренно нейтральная: серые не подкрашены ни в тёплую, ни в
+     холодную сторону, чтобы единственным цветом на экране был акцент. */
+  --bg:#0a0a0c;
+  --bg-elev:#111114;
+  --surface:#131317;
+  --surface-2:#1a1a1f;
+  --surface-3:#232329;
+  --line:rgba(255,255,255,.07);
+  --line-2:rgba(255,255,255,.14);
 
-  --text:#e9e9ee;
-  --dim:#9c9daa;
-  --faint:#7b7d8a;
+  --text:#f0f0f3;
+  --dim:#9a9aa6;
+  --faint:#83838f;
 
   /* Акцент задаётся одним каналом --accent-rgb: остальное считается от него,
-     поэтому смена палитры — это подмена трёх значений, а не полсотни. */
-  --accent-rgb:215,171,255;
-  --accent:#d7abff;
-  --accent-hi:#e4c4ff;
-  --accent-ink:#1d1029;
+     поэтому смена палитры — это подмена трёх значений, а не полсотни.
+     Все начертания сидят на одной формуле: светлота 72%, насыщенность 54%,
+     чернила — тот же тон при светлоте 7%. Отсюда одинаковый вес у любой
+     темы и запас по контрасту не ниже 7:1 на фоне. */
+  --accent-rgb:207,145,222;
+  --accent:#cf91de;
+  --accent-hi:#e0b1ec;
+  --accent-ink:#170a1a;
   --accent-soft:rgba(var(--accent-rgb),.12);
   --accent-line:rgba(var(--accent-rgb),.34);
 
   --ok:var(--accent); --ok-soft:rgba(var(--accent-rgb),.12);  --ok-line:rgba(var(--accent-rgb),.3);
-  --warn:#d9c46e;    --warn-soft:rgba(217,196,110,.12); --warn-line:rgba(217,196,110,.3);
-  --danger:#e07f74;  --danger-soft:rgba(224,127,116,.1);--danger-line:rgba(224,127,116,.32);
+  --warn:#d9c48c;    --warn-soft:rgba(217,196,140,.12); --warn-line:rgba(217,196,140,.3);
+  --danger:#da8c81;  --danger-soft:rgba(218,140,129,.1);--danger-line:rgba(218,140,129,.32);
 
 }
 /* Палитры кабинета: имена совпадают с APP_THEMES в database.py. Тема
    приезжает в data-theme на <html> ещё в разметке, поэтому первый кадр
    рисуется уже в нужном цвете — без вспышки сиреневого. */
-:root[data-theme="ocean"] {--accent-rgb:120,190,255; --accent:#78beff; --accent-hi:#a3d4ff; --accent-ink:#04182b}
-:root[data-theme="forest"]{--accent-rgb:126,214,167; --accent:#7ed6a7; --accent-hi:#a6e6c5; --accent-ink:#062015}
-:root[data-theme="ember"] {--accent-rgb:255,150,110; --accent:#ff966e; --accent-hi:#ffb495; --accent-ink:#2b0f04}
-:root[data-theme="rose"]  {--accent-rgb:255,148,182; --accent:#ff94b6; --accent-hi:#ffb8ce; --accent-ink:#2b0713}
-:root[data-theme="gold"]  {--accent-rgb:232,196,110; --accent:#e8c46e; --accent-hi:#f2d795; --accent-ink:#251a04}
+:root[data-theme="ocean"] {--accent-rgb:145,186,222; --accent:#91bade; --accent-hi:#b1d0ec; --accent-ink:#0a121a}
+:root[data-theme="forest"]{--accent-rgb:145,222,186; --accent:#91deba; --accent-hi:#b1ecd0; --accent-ink:#0a1a12}
+:root[data-theme="ember"] {--accent-rgb:222,173,145; --accent:#dead91; --accent-hi:#ecc7b1; --accent-ink:#1a100a}
+:root[data-theme="rose"]  {--accent-rgb:222,145,166; --accent:#de91a6; --accent-hi:#ecb1c1; --accent-ink:#1a0a0e}
+:root[data-theme="gold"]  {--accent-rgb:222,202,145; --accent:#deca91; --accent-hi:#ecdcb1; --accent-ink:#1a160a}
 :root{
   --r-sm:9px; --r-md:13px; --r-lg:17px; --r-xl:22px;
   --shadow:0 14px 40px rgba(0,0,0,.5);
@@ -77,6 +82,9 @@ body{
   background:radial-gradient(130% 55% at 50% -12%,rgba(var(--accent-rgb),.05),transparent 62%),var(--bg);
   color:var(--text);font-family:var(--font);font-size:15px;line-height:1.45;
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  /* Табличные цифры на весь кабинет: остаток дней и суммы пересчитываются
+     на месте, а не дёргают строку каждый раз, когда «1» сменяется «8». */
+  font-variant-numeric:tabular-nums;
 }
 button,input,textarea{font:inherit;color:inherit}
 button{cursor:pointer;background:none;border:0}
@@ -84,8 +92,8 @@ a{color:inherit;text-decoration:none}
 h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 :focus-visible{outline:2px solid var(--accent-line);outline-offset:2px;border-radius:4px}
 ::-webkit-scrollbar{width:8px;height:8px}
-::-webkit-scrollbar-thumb{background:rgba(236,238,242,.11);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
-::-webkit-scrollbar-thumb:hover{background:rgba(236,238,242,.2);background-clip:padding-box}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.19);background-clip:padding-box}
 ::-webkit-scrollbar-track{background:transparent}
 .is-hidden{display:none !important}
 ::selection{background:rgba(var(--accent-rgb),.28)}
@@ -96,6 +104,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .icon--md{width:16px;height:16px}
 
 .label{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+
 
 /* ---------- shell ---------- */
 .shell{display:flex;flex-direction:column;height:var(--app-h);overflow:hidden}
@@ -177,7 +186,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .page-head__desktop-only,.btn.page-head__desktop-only{display:none}
 
 /* ---------- primitives ---------- */
-.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:11.5px;font-weight:500;background:rgba(236,238,242,.05);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:11.5px;font-weight:500;background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
 .pill:before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.9}
 .pill--ok{background:var(--ok-soft);border-color:var(--ok-line);color:var(--ok)}
 .pill--accent{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
@@ -192,7 +201,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   transition:transform .13s var(--ease),border-color .13s var(--ease)}
 .sub-card[onclick]:active,.notify[onclick]:active,[role="button"]:active,.tile[onclick]:active{
   transform:scale(.988)}
-.skeleton{min-height:150px;background:linear-gradient(90deg,rgba(236,238,242,.02),rgba(236,238,242,.055),rgba(236,238,242,.02));background-size:200% 100%;animation:shimmer 1.3s linear infinite}
+.skeleton{min-height:150px;background:linear-gradient(90deg,rgba(255,255,255,.02),rgba(255,255,255,.055),rgba(255,255,255,.02));background-size:200% 100%;animation:shimmer 1.3s linear infinite}
 @keyframes shimmer{to{background-position:-200% 0}}
 
 /* пустое место рисуем такой же спокойной рамкой, как всё остальное: пунктир
@@ -219,8 +228,8 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .btn:disabled{opacity:.45;pointer-events:none}
 .btn--primary{background:var(--accent);color:var(--accent-ink)}
 .btn--primary:hover{background:var(--accent-hi)}
-.btn--ghost{background:rgba(236,238,242,.045);border:1px solid var(--line);color:var(--text)}
-.btn--ghost:hover{background:rgba(236,238,242,.075);border-color:var(--line-2)}
+.btn--ghost{background:rgba(255,255,255,.045);border:1px solid var(--line);color:var(--text)}
+.btn--ghost:hover{background:rgba(255,255,255,.075);border-color:var(--line-2)}
 .btn--danger{background:var(--danger-soft);border:1px solid var(--danger-line);color:var(--danger)}
 .btn--sm{min-height:38px;padding:8px 14px;font-size:13px;border-radius:var(--r-sm)}
 .btn--block{width:100%}
@@ -232,7 +241,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .btn.is-copied,.btn.is-copied:hover{background:var(--ok-soft);border:1px solid var(--ok-line);color:var(--ok)}
 .info-row.is-copied .info-row__main b{color:var(--ok)}
 
-.icon-btn{width:36px;height:36px;border-radius:var(--r-sm);border:1px solid var(--line);background:rgba(236,238,242,.04);color:var(--dim);display:grid;place-items:center;flex:0 0 auto;transition:color .12s ease,border-color .12s ease}
+.icon-btn{width:36px;height:36px;border-radius:var(--r-sm);border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--dim);display:grid;place-items:center;flex:0 0 auto;transition:color .12s ease,border-color .12s ease}
 .icon-btn:hover{color:var(--text);border-color:var(--line-2)}
 .icon-btn .icon{width:16px;height:16px}
 
@@ -245,7 +254,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .field-label{display:block;font-size:12.5px;font-weight:500;color:var(--dim);margin:14px 0 7px}
 
 .chip-row{display:flex;gap:8px;overflow-x:auto;padding:1px 0 6px;scrollbar-width:none}
-.chip{flex:0 0 auto;border:1px solid var(--line);background:rgba(236,238,242,.035);color:var(--dim);border-radius:999px;padding:9px 14px;white-space:nowrap;font-size:13px;transition:border-color .16s var(--ease),background .16s var(--ease),color .16s var(--ease)}
+.chip{flex:0 0 auto;border:1px solid var(--line);background:rgba(255,255,255,.035);color:var(--dim);border-radius:999px;padding:9px 14px;white-space:nowrap;font-size:13px;transition:border-color .16s var(--ease),background .16s var(--ease),color .16s var(--ease)}
 .chip.is-active{border-color:var(--accent-line);background:var(--accent-soft);color:var(--text)}
 
 /* ---------- home ---------- */
@@ -264,14 +273,14 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .sub-card{display:flex;flex-direction:column;gap:13px}
 .sub-card__top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .sub-card__name{font-size:19px;font-weight:700;letter-spacing:-.015em;overflow-wrap:anywhere}
-.sub-card__meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;padding:13px;border-radius:var(--r-md);background:rgba(236,238,242,.025);border:1px solid var(--line)}
+.sub-card__meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;padding:13px;border-radius:var(--r-md);background:rgba(255,255,255,.025);border:1px solid var(--line)}
 .meta-value{display:block;font-size:14px;font-weight:600;margin-top:4px;overflow-wrap:anywhere}
-.sub-card__bar{height:4px;border-radius:99px;background:rgba(236,238,242,.07);overflow:hidden}
+.sub-card__bar{height:4px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
 /* полосу растим масштабом, а не шириной: работает при любом проценте */
 .sub-card__bar-fill{height:100%;background:var(--accent);border-radius:99px;transform-origin:left center;animation:bar-grow .65s var(--ease) both .12s}
 @keyframes bar-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
-.sub-card__note{display:flex;gap:7px;align-items:flex-start;font-size:13px;color:var(--dim);padding:10px 12px;border-radius:var(--r-sm);background:rgba(236,238,242,.03);border:1px solid var(--line)}
-.sub-card__link{display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:var(--r-sm);border:1px solid var(--line);background:rgba(236,238,242,.025)}
+.sub-card__note{display:flex;gap:7px;align-items:flex-start;font-size:13px;color:var(--dim);padding:10px 12px;border-radius:var(--r-sm);background:rgba(255,255,255,.03);border:1px solid var(--line)}
+.sub-card__link{display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:var(--r-sm);border:1px solid var(--line);background:rgba(255,255,255,.025)}
 .sub-card__link code{min-width:0;flex:1;font-family:var(--mono);font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* прижимаем действия к низу — в сетке карточки выравниваются по одной линии */
 .sub-card__actions{display:flex;flex-direction:column;gap:8px;margin-top:auto}
@@ -307,7 +316,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .sheet--wheel{max-height:92dvh}
 .wheel-head{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .wheel-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;
-  border:1px solid var(--line);background:rgba(236,238,242,.035);font-size:12.5px;color:var(--dim)}
+  border:1px solid var(--line);background:rgba(255,255,255,.035);font-size:12.5px;color:var(--dim)}
 .wheel-chip b{color:var(--text);font-weight:600}
 .wheel-chip--ready{border-color:var(--accent-line);background:var(--accent-soft);color:var(--text)}
 
@@ -318,9 +327,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .reel__strip{will-change:transform;transform:translateY(0)}
 .reel__strip.is-moving{transition:transform var(--reel-time,4s) cubic-bezier(.16,.66,.14,1)}
 .reel__card{height:var(--reel-card);display:flex;align-items:center;gap:12px;padding:0 14px;
-  border-bottom:1px solid rgba(236,238,242,.05)}
+  border-bottom:1px solid rgba(255,255,255,.05)}
 .reel__icon{width:42px;height:42px;border-radius:var(--r-md);flex:0 0 auto;display:grid;place-items:center;
-  font-size:20px;background:rgba(236,238,242,.05);border:1px solid var(--line)}
+  font-size:20px;background:rgba(255,255,255,.05);border:1px solid var(--line)}
 .reel__body{min-width:0;flex:1}
 .reel__body b{display:block;font-size:15px;font-weight:700;letter-spacing:-.01em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -359,7 +368,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 
 
 .wheel-result{margin:16px 0 0;padding:13px 14px;border-radius:var(--r-md);text-align:center;
-  border:1px solid var(--line);background:rgba(236,238,242,.03);font-size:13.5px;color:var(--dim);min-height:22px}
+  border:1px solid var(--line);background:rgba(255,255,255,.03);font-size:13.5px;color:var(--dim);min-height:22px}
 /* блочный только заголовок: <b> внутри текста приза (сумма, срок) должен
    оставаться в строке, иначе фраза рвётся на куски */
 .wheel-result > b:first-child{display:block;font-size:15px;color:var(--text);margin-bottom:3px}
@@ -402,10 +411,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .prize-code:active{transform:scale(.98)}
 .prize-code .icon{color:var(--dim);flex:0 0 auto}
 .prize-code.is-copied{border-style:solid;color:var(--ok);border-color:var(--ok-line);background:var(--ok-soft)}
-.pill--muted{border-color:var(--line);background:rgba(236,238,242,.04);color:var(--faint)}
+.pill--muted{border-color:var(--line);background:rgba(255,255,255,.04);color:var(--faint)}
 .wheel-keys{display:grid;gap:8px;margin-top:4px}
 .wheel-key{display:flex;align-items:center;gap:10px;padding:12px 13px;border-radius:var(--r-md);
-  border:1px solid var(--line);background:rgba(236,238,242,.025);text-align:left;width:100%}
+  border:1px solid var(--line);background:rgba(255,255,255,.025);text-align:left;width:100%}
 .wheel-key:hover{border-color:var(--accent-line)}
 .wheel-key__main{min-width:0;flex:1}
 .wheel-key__main b{display:block;font-size:13.5px;font-weight:600}
@@ -440,12 +449,12 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .device-opt{flex:1 1 calc(50% - 4px)}
 .device-note{display:flex;align-items:center;gap:9px;padding:12px 14px;font-size:13px;color:var(--dim)}
 .device-note b{color:var(--text);font-weight:600}
-.device-opt{border:1px solid var(--line);background:rgba(236,238,242,.025);color:var(--dim);border-radius:var(--r-sm);padding:11px 5px;text-align:center}
+.device-opt{border:1px solid var(--line);background:rgba(255,255,255,.025);color:var(--dim);border-radius:var(--r-sm);padding:11px 5px;text-align:center}
 .device-opt b{display:block;font-size:17px;font-weight:600;color:var(--text)}
 .device-opt span{display:block;font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .device-opt.is-active{border-color:var(--accent-line);background:var(--accent-soft)}
 .plan-grid{display:grid;gap:15px 10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
-.plan{position:relative;display:flex;align-items:center;gap:14px;padding:15px;border-radius:var(--r-md);border:1px solid var(--line);background:rgba(236,238,242,.027);text-align:left}
+.plan{position:relative;display:flex;align-items:center;gap:14px;padding:15px;border-radius:var(--r-md);border:1px solid var(--line);background:rgba(255,255,255,.027);text-align:left}
 .plan.is-active{border-color:var(--accent-line);background:var(--accent-soft)}
 .plan__copy{min-width:0;flex:1}
 .plan__term{display:block;font-size:14px;font-weight:600}
@@ -566,9 +575,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 /* «Скопировать» раньше был голым значком впритык к краю карточки и не
    читался как кнопка */
 .info-row__copy{width:30px;height:30px;border-radius:var(--r-sm);flex:0 0 auto;display:grid;place-items:center;
-  background:rgba(236,238,242,.05);border:1px solid var(--line);color:var(--dim);
+  background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--dim);
   transition:color .12s ease,border-color .12s ease,background .12s ease}
-button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-2);background:rgba(236,238,242,.08)}
+button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-2);background:rgba(255,255,255,.08)}
 .info-row.is-copied .info-row__copy{color:var(--ok);border-color:var(--ok)}
 .info-row__main b{display:block;font-size:13.5px;font-weight:600}
 .info-row__main span{display:block;font-family:var(--mono);font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
@@ -581,7 +590,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 .panel-card{padding:16px}
 .panel-card__label{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);display:block;margin:0 0 11px}
 .panel-card .promo-result{padding-top:8px}
-.panel-card .info-row{padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:rgba(236,238,242,.025)}
+.panel-card .info-row{padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:rgba(255,255,255,.025)}
 /* только прямые соседи в стопке: иначе отступ доставался и кнопкам внутри
    .btn-row, где они стоят в ряд — вторая съезжала на 9px вниз */
 .panel-card > .info-row + .info-row,.panel-card > .info-row + .btn,.panel-card > .btn + .btn{margin-top:9px}
@@ -654,7 +663,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 .sheet__handle{width:38px;height:4px;border-radius:8px;background:var(--surface-3);margin:2px auto 18px}
 .sheet h2{font-size:18px;margin:0 0 6px}
 .sheet__sub{font-size:13px;color:var(--dim);margin-bottom:16px}
-.pay-method{width:100%;display:flex;align-items:center;gap:13px;padding:13px;border-radius:var(--r-md);border:1px solid var(--line);background:rgba(236,238,242,.027);text-align:left;margin-bottom:9px}
+.pay-method{width:100%;display:flex;align-items:center;gap:13px;padding:13px;border-radius:var(--r-md);border:1px solid var(--line);background:rgba(255,255,255,.027);text-align:left;margin-bottom:9px}
 .pay-method.is-active{border-color:var(--accent-line);background:var(--accent-soft)}
 .pay-method__icon{width:38px;height:38px;border-radius:var(--r-sm);display:grid;place-items:center;background:rgba(var(--accent-rgb),.14);color:var(--accent);font-weight:600;font-size:16px;flex:0 0 auto}
 .pay-method b{display:block;font-size:14px;font-weight:600}
@@ -676,7 +685,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 .pay-total b{font-size:19px;font-weight:700;color:var(--text)}
 
 .device-row{display:flex;align-items:center;gap:11px;padding:11px 2px}
-.device-row__icon{width:34px;height:34px;border-radius:var(--r-sm);background:rgba(236,238,242,.05);color:var(--dim);display:grid;place-items:center;flex:0 0 auto}
+.device-row__icon{width:34px;height:34px;border-radius:var(--r-sm);background:rgba(255,255,255,.05);color:var(--dim);display:grid;place-items:center;flex:0 0 auto}
 .device-row__info{min-width:0;flex:1}
 .device-row__info b{display:block;font-size:13.5px;font-weight:600}
 .device-row__info span{display:block;font-size:12px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -724,14 +733,14 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     color:var(--dim);font-size:14px;border:1px solid transparent;text-align:left;
     transition:background .12s ease,color .12s ease;
   }
-  .sidenav__link:hover{background:rgba(236,238,242,.05);color:var(--text)}
+  .sidenav__link:hover{background:rgba(255,255,255,.05);color:var(--text)}
   .sidenav__link.is-active{background:var(--accent-soft);border-color:var(--accent-line);color:var(--text)}
   .sidenav__link.is-active .icon{color:var(--accent)}
   .sidenav__link .icon{transition:color .12s ease}
   .sidenav__spacer{flex:1;min-height:16px}
   .sidenav__foot{border-top:1px solid var(--line);padding-top:10px;margin-top:8px}
   .sidenav__user{display:flex;align-items:center;gap:11px;width:100%;padding:9px 10px;border-radius:var(--r-md);text-align:left;transition:background .12s ease}
-  .sidenav__user:hover{background:rgba(236,238,242,.05)}
+  .sidenav__user:hover{background:rgba(255,255,255,.05)}
   .sidenav__user-ava{width:32px;height:32px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font-weight:600;font-size:13px}
   .sidenav__user-main{min-width:0;flex:1}
   .sidenav__user-main b{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -756,7 +765,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   /* курсор и ховеры — на десктопе кликабельное должно выглядеть кликабельным */
   .info-row,.card.ticket-row,.plan,.device-opt,.chip,.pay-method{transition:border-color .12s ease,background .12s ease,transform .12s ease}
   button.info-row:hover,.card.ticket-row:hover{border-color:var(--line-2);background:var(--surface-2)}
-  .plan:hover,.device-opt:hover,.pay-method:hover{border-color:var(--line-2);background:rgba(236,238,242,.05)}
+  .plan:hover,.device-opt:hover,.pay-method:hover{border-color:var(--line-2);background:rgba(255,255,255,.05)}
   .plan.is-active:hover,.device-opt.is-active:hover,.pay-method.is-active:hover{border-color:var(--accent-line);background:var(--accent-soft)}
   .chip:hover{border-color:var(--line-2);color:var(--text)}
   .chip.is-active:hover{border-color:var(--accent-line)}
