@@ -290,7 +290,8 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
    точек. Пусть каждая карточка будет ровно своего роста. */
 .subs-list{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));align-items:start}
 .subs-empty{max-width:520px;margin:0 auto}
-.sub-card{container-type:inline-size;display:flex;flex-direction:column;gap:13px}
+.sub-card{display:flex;flex-direction:column;gap:13px}
+.sub-card__head,.sub-card__foot{display:flex;flex-direction:column;gap:13px}
 .sub-card__top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .sub-card__name{font-size:19px;font-weight:700;letter-spacing:-.015em;overflow-wrap:anywhere}
 .sub-card__meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;padding:13px;border-radius:var(--r-md);background:rgba(255,255,255,.025);border:1px solid var(--line)}
@@ -312,13 +313,6 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .sub-card__link code{min-width:0;flex:1;font-family:var(--mono);font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* прижимаем действия к низу — в сетке карточки выравниваются по одной линии */
 .sub-card__actions{display:flex;flex-direction:column;gap:8px;margin-top:auto}
-/* Бок о бок группы кнопок встают, только когда карточка правда широкая:
-   двум группам нужно 240 + 190 точек, чтобы ни одна не сминалась. */
-@container (min-width:560px){
-  .sub-card__actions{flex-direction:row;flex-wrap:wrap;align-items:flex-start}
-  .sub-card__actions .btn--block{width:auto;flex:1 1 190px}
-  .sub-card__actions .btn-row{flex:1 1 240px}
-}
 /* подписи не переносим: кнопка копирования на пару секунд меняет текст,
    и строка не должна от этого прыгать */
 .link-actions .btn{white-space:nowrap}
@@ -822,7 +816,50 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   .chip.is-active:hover{border-color:var(--accent-line)}
   .btn:active{transform:none}
 
-  .subs-list{grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px}
+
+  /* ── Подписки строками, а не плитками ───────────────────────────────
+     Плитки в ряду тянулись под самую высокую: у кого нет кнопки «Докупить
+     устройства», у того карточка ниже соседей, и низ ряда шёл ступенькой.
+     В строке кнопки стоят в один ряд, поэтому отсутствие одной высоту не
+     меняет вовсе. Заодно строка занимает всю ширину, которая на большом
+     экране всё равно простаивала. */
+  /* align-items:start достался от сетки плиток: в колонке он заставляет
+     строку сжиматься по содержимому, и та, где кнопок меньше, оказывалась
+     уже соседей. Тянем на всю ширину. */
+  .subs-list{display:flex;flex-direction:column;gap:14px;align-items:stretch}
+  .sub-card{
+    display:grid;
+    /* обе колонки с нулевым минимумом: иначе ширину тянет самое длинное
+       название, и у каждой строки колонки встают по-своему */
+    grid-template-columns:minmax(0,1fr) minmax(0,1.45fr);
+    gap:14px 28px;
+    align-items:start;
+  }
+  .sub-card__head{grid-column:1;gap:9px}
+  .sub-card__meta{grid-column:2;align-self:start;
+    grid-template-columns:repeat(4,minmax(0,1fr));gap:0 16px}
+  .sub-card__head{grid-row:span 2}
+  /* Статус ставим рядом с номером подписки. Прижатый к правому краю
+     колонки, он висел на стыке с блоком данных и не читался как чей-то. */
+  .sub-card__top{justify-content:flex-start;gap:11px}
+  /* Полоса срока живёт рядом с «Осталось», а не под названием: под
+     названием она читалась как подчёркивание заголовка. */
+  .sub-card__bar{grid-column:2;align-self:start;margin-top:2px}
+  .sub-card__note{grid-column:1/-1}
+  /* До 1200 точек ссылка и кнопки не помещаются в одну строку: ссылка
+     уходит выше. Высота при этом остаётся одинаковой у всех строк, потому
+     что кнопки всё равно идут одним рядом. */
+  .sub-card__foot{grid-column:1/-1;gap:12px}
+  .sub-card__link{flex:1;min-width:0}
+  /* все пять действий в один ряд: display:contents распускает вложенные
+     группы, и кнопки становятся прямыми детьми строки */
+  .sub-card__actions{flex-direction:row;flex-wrap:nowrap;gap:8px;margin-top:0;flex:0 0 auto}
+  .sub-card__actions .btn-row{display:contents}
+  .sub-card__actions .btn--block{width:auto;margin-top:0}
+  /* подписи не переносим: «Докупить устройства» вставала в две строки и
+     делала эту строку выше соседних — ровно та ступенька, ради которой
+     карточки и переехали в строки */
+  .sub-card__actions .btn{white-space:nowrap}
 
   .chip-row{flex-wrap:wrap;overflow:visible;padding-bottom:0}
   .buy-grid{grid-template-columns:minmax(0,1fr) 342px;gap:34px;align-items:start}
@@ -923,6 +960,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
    и в них ломались плитки статистики и реферальная ссылка */
 @media(min-width:1200px){
   .profile-grid{grid-template-columns:minmax(0,1.22fr) minmax(0,.78fr);gap:18px}
+  .sub-card__foot{flex-direction:row;align-items:center;gap:16px}
 }
 
 /* ---------- wide desktop ---------- */
@@ -1733,11 +1771,13 @@ function keyCardHtml(k){
   const заголовок = hostLabel(автоимя ? (k.subtitle || k.name) : k.name);
   const метка = hostLabel(автоимя ? (k.subtitle ? k.name : '') : (k.subtitle || ''));
   return `<article class="card sub-card">
+    <div class="sub-card__head">
     <div class="sub-card__top">
       <span class="label">${esc(метка)}</span>
       <span class="pill pill--${styleClass}">${esc(k.status_text||'')}</span>
     </div>
     <div class="sub-card__name">${esc(заголовок)}</div>
+    </div>
     <div class="sub-card__meta">
       ${metaCell('Действует до', esc(k.expire_date_str||'—'))}
       ${metaCell('Осталось', k.is_unlimited ? '∞' : esc(k.remaining_str||'—'))}
@@ -1756,6 +1796,7 @@ function keyCardHtml(k){
       ${k.is_unlimited ? '' : `<div class="sub-card__bar-fill" style="width:${progress}%"></div>`}
     </div>
     ${k.comment_key ? `<div class="sub-card__note"><svg class="icon icon--sm"><use href="#ic-tag"/></svg>${esc(k.comment_key)}</div>` : ''}
+    <div class="sub-card__foot">
     <div class="sub-card__link"><svg class="icon icon--xs" style="color:var(--faint)"><use href="#ic-link"/></svg><code>${esc(k.sub_url || 'Ссылка ещё готовится — обновите экран через минуту')}</code></div>
     <div class="sub-card__actions">
       <div class="btn-row link-actions">
@@ -1766,7 +1807,8 @@ function keyCardHtml(k){
         <button class="btn btn--ghost" onclick="renewKey(${Number(k.key_id)})">Продлить</button>
         <button class="btn btn--ghost" onclick="openManage(${Number(k.key_id)})">Управление</button>
       </div>
-      ${k.device_addon ? `<button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="openAddon(${Number(k.key_id)})"><svg class="icon icon--sm"><use href="#ic-monitor"/></svg>Докупить устройства</button>` : ''}
+      ${k.device_addon ? `<button class="btn btn--ghost btn--block mt-1" onclick="openAddon(${Number(k.key_id)})"><svg class="icon icon--sm"><use href="#ic-monitor"/></svg>Докупить устройства</button>` : ''}
+    </div>
     </div>
   </article>`;
 }
