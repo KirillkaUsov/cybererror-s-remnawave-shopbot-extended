@@ -49,13 +49,24 @@
 /* Палитры кабинета: имена совпадают с APP_THEMES в database.py. Тема
    приезжает в data-theme на <html> ещё в разметке, поэтому первый кадр
    рисуется уже в нужном цвете — без вспышки сиреневого. */
-:root[data-theme="ocean"] {--accent-rgb:145,186,222; --accent:#91bade; --accent-hi:#b1d0ec; --accent-ink:#0a121a}
-:root[data-theme="forest"]{--accent-rgb:145,222,186; --accent:#91deba; --accent-hi:#b1ecd0; --accent-ink:#0a1a12}
-:root[data-theme="ember"] {--accent-rgb:222,173,145; --accent:#dead91; --accent-hi:#ecc7b1; --accent-ink:#1a100a}
-:root[data-theme="rose"]  {--accent-rgb:222,145,166; --accent:#de91a6; --accent-hi:#ecb1c1; --accent-ink:#1a0a0e}
-:root[data-theme="gold"]  {--accent-rgb:222,202,145; --accent:#deca91; --accent-hi:#ecdcb1; --accent-ink:#1a160a}
+/* Цвет каждой темы объявлен здесь один раз. Кружки выбора в кабинете
+   читают эти же переменные, а не держат копию списка: пока копия жила в
+   JS, она разошлась с палитрой и превью показывало не тот цвет, который
+   человек получал после нажатия. */
+:root{
+  --t-violet:#cf91de; --t-ocean:#91bade; --t-forest:#91deba;
+  --t-ember:#dead91;  --t-rose:#de91a6;  --t-gold:#deca91;
+}
+:root[data-theme="ocean"] {--accent-rgb:145,186,222; --accent:var(--t-ocean);  --accent-hi:#b1d0ec; --accent-ink:#0a121a}
+:root[data-theme="forest"]{--accent-rgb:145,222,186; --accent:var(--t-forest); --accent-hi:#b1ecd0; --accent-ink:#0a1a12}
+:root[data-theme="ember"] {--accent-rgb:222,173,145; --accent:var(--t-ember);  --accent-hi:#ecc7b1; --accent-ink:#1a100a}
+:root[data-theme="rose"]  {--accent-rgb:222,145,166; --accent:var(--t-rose);   --accent-hi:#ecb1c1; --accent-ink:#1a0a0e}
+:root[data-theme="gold"]  {--accent-rgb:222,202,145; --accent:var(--t-gold);   --accent-hi:#ecdcb1; --accent-ink:#1a160a}
 :root{
   --r-sm:9px; --r-md:13px; --r-lg:17px; --r-xl:22px;
+  /* высота карточки барабана: ею меряется и сам барабан, и заглушка
+     под него, поэтому живёт в корне, а не внутри .reel */
+  --reel-card:76px;
   --shadow:0 14px 40px rgba(0,0,0,.5);
   /* одна кривая на весь интерфейс: быстрый старт, мягкая остановка */
   --ease:cubic-bezier(.22,.72,.24,1);
@@ -117,7 +128,11 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto}
 .topbar__actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;margin-left:auto}
 .brand__mark{width:30px;height:30px;border-radius:9px;object-fit:cover;flex:0 0 auto}
-.brand__logo{display:none}
+/* Знак вписываем, а не кадрируем: object-fit:cover срезает всё, что не
+   квадратное, а логотип может быть любым. Скругление снимаем — у знака
+   своя форма, рамка ему не нужна. Запасная плашка с буквой остаётся
+   квадратной, ей скругление как раз нужно. */
+.brand__logo{display:none;border-radius:0;object-fit:contain}
 .brand__fallback{display:grid;place-items:center;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font-weight:700}
 .brand__title{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
@@ -229,6 +244,11 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .btn--primary{background:var(--accent);color:var(--accent-ink)}
 .btn--primary:hover{background:var(--accent-hi)}
 .btn--ghost{background:rgba(255,255,255,.045);border:1px solid var(--line);color:var(--text)}
+/* Закрытие окна не должно соревноваться с действием. Цель нажатия остаётся
+   во всю ширину, но рамка и контраст уходят: с рамкой «Отмена» читалась как
+   вторая равноправная кнопка, хотя окно закрывается ещё и ручкой, и фоном. */
+.btn--quiet{background:transparent;border:1px solid transparent;color:var(--faint)}
+.btn--quiet:hover{background:rgba(255,255,255,.04);color:var(--dim)}
 .btn--ghost:hover{background:rgba(255,255,255,.075);border-color:var(--line-2)}
 .btn--danger{background:var(--danger-soft);border:1px solid var(--danger-line);color:var(--danger)}
 .btn--sm{min-height:38px;padding:8px 14px;font-size:13px;border-radius:var(--r-sm)}
@@ -322,14 +342,19 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 
 /* Барабан вместо колеса: на телефоне вертикальная лента карточек читается
    лучше круга — приз виден целиком, а не подписью в сектор шириной в палец. */
-.reel{--reel-card:76px;position:relative;height:calc(var(--reel-card) * 3);overflow:hidden;
+/* Место под барабан держим до загрузки: заглушка была вдвое ниже
+   готового содержимого, панель подрастала на 182 точки сразу после
+   ответа сервера, и всё окно дёргалось на глазах. */
+#wheelBody{min-height:calc(var(--reel-card) * 3 + 160px)}
+.reel{position:relative;height:calc(var(--reel-card) * 3);overflow:hidden;
   border-radius:var(--r-lg);border:1px solid var(--line);background:rgba(0,0,0,.26)}
 .reel__strip{will-change:transform;transform:translateY(0)}
 .reel__strip.is-moving{transition:transform var(--reel-time,4s) cubic-bezier(.16,.66,.14,1)}
 .reel__card{height:var(--reel-card);display:flex;align-items:center;gap:12px;padding:0 14px;
   border-bottom:1px solid rgba(255,255,255,.05)}
 .reel__icon{width:42px;height:42px;border-radius:var(--r-md);flex:0 0 auto;display:grid;place-items:center;
-  font-size:20px;background:rgba(255,255,255,.05);border:1px solid var(--line)}
+  color:var(--accent);background:rgba(255,255,255,.05);border:1px solid var(--line)}
+.reel__icon .icon{width:20px;height:20px}
 .reel__body{min-width:0;flex:1}
 .reel__body b{display:block;font-size:15px;font-weight:700;letter-spacing:-.01em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -352,13 +377,14 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 @media (max-height:760px){
   .sheet--wheel{padding-top:6px}
   .sheet--wheel .sheet__sub{display:none}
-  .reel{--reel-card:64px}
+  :root{--reel-card:64px}
   .wheel-result{padding:10px 12px;font-size:13px;margin-top:12px}
   .wheel-head{margin-bottom:10px}
 }
 @media (max-height:670px){
-  .reel{--reel-card:54px}
-  .reel__icon{width:34px;height:34px;font-size:17px}
+  :root{--reel-card:54px}
+  .reel__icon{width:34px;height:34px}
+  .reel__icon .icon{width:17px;height:17px}
   .reel__body b{font-size:13.5px}
   .reel__body span{font-size:11px}
 }
@@ -381,7 +407,7 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .wheel-odds summary::before{content:'▸ ';color:var(--faint)}
 .wheel-odds[open] summary::before{content:'▾ '}
 .wheel-odds__row{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--dim);padding:4px 0}
-.wheel-odds__row i{font-style:normal;width:18px;text-align:center;flex:0 0 auto}
+.wheel-odds__row .icon{color:var(--faint)}
 .wheel-odds__row b{margin-left:auto;color:var(--text);font-weight:600;font-family:var(--mono);font-size:11.5px}
 .wheel-earn{margin-top:12px;font-size:12.5px;color:var(--dim);line-height:1.7}
 .prizes-more{margin-top:4px}
@@ -703,6 +729,14 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 .main.is-chat .thread-wrap{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
 
 /* ---------- tablet ---------- */
+/* Ссылки на документы: мелко, но доступно с любого экрана кабинета.
+   Правила лежали внутри @media(min-width:1000px), поэтому на телефоне
+   строка рисовалась обычным текстом основного цвета и ссылки ничем не
+   отличались от абзаца. */
+.legal-line{margin:16px 0 0;text-align:center;font-size:12px;color:var(--faint);line-height:1.7}
+.legal-line a{color:var(--dim);text-decoration:none;border-bottom:1px solid var(--line)}
+.legal-line a:hover,.legal-line a:active{color:var(--accent);border-bottom-color:var(--accent-line)}
+
 @media(min-width:600px){
   :root{--pad:22px}
   .device-opt{flex:1 1 84px}
@@ -752,10 +786,6 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
      и при переключении вкладок содержимое прыгает по горизонтали */
   #view-profile{max-width:1120px;margin-inline:0 auto}
   #view-help{max-width:920px;margin-inline:0 auto}
-/* ссылки на документы: мелко, но доступно с любого экрана кабинета */
-.legal-line{margin:16px 0 0;text-align:center;font-size:12px;color:var(--faint);line-height:1.7}
-.legal-line a{color:var(--dim);text-decoration:none;border-bottom:1px solid var(--line)}
-.legal-line a:active{color:var(--accent)}
   .page-head{margin-bottom:20px;min-height:44px;padding-bottom:16px;border-bottom:1px solid var(--line)}
   .page-head h1{font-size:26px}
   .page-head__desktop-only{display:flex}
@@ -901,6 +931,10 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 <symbol id="ic-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
 <!-- спиц ровно четыре: с восемью значок в 19 пикселей слипался в звёздочку -->
 <symbol id="ic-wheel" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/><circle cx="12" cy="12" r="1.8"/></symbol>
+<symbol id="ic-calendar" viewBox="0 0 24 24"><rect x="3.6" y="5.2" width="16.8" height="15.2" rx="2.6"/><path d="M3.6 9.9h16.8M8.2 3.3v3.6M15.8 3.3v3.6"/></symbol>
+<symbol id="ic-card" viewBox="0 0 24 24"><rect x="2.8" y="5.4" width="18.4" height="13.2" rx="2.6"/><path d="M2.8 10h18.4M6.4 14.6h3.4"/></symbol>
+<symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.3V12l3.3 1.9"/></symbol>
+<symbol id="ic-circle-slash" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M6.6 17.4 17.4 6.6"/></symbol>
 </defs>
 </svg>
 
@@ -1091,7 +1125,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <div id="paymentMethods"></div>
     <div class="pay-total is-hidden" id="paymentTotal"><span>Спишется сейчас</span><b id="paymentTotalValue">0 ₽</b></div>
     <button class="btn btn--primary btn--block" id="payButton" style="margin-top:8px" onclick="createPayment()">Оплатить</button>
-    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('paymentModal')">Отмена</button>
+    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('paymentModal')">Отмена</button>
   </div>
 </div>
 
@@ -1105,12 +1139,12 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
       </button>
     </div>
     <div class="sheet__sub" id="wheelSub">Загружаем барабан…</div>
-    <div id="wheelBody"><div class="card skeleton" style="min-height:200px"></div></div>
+    <div id="wheelBody"><div class="card skeleton" style="min-height:calc(var(--reel-card) * 3 + 148px)"></div></div>
     <div class="btn-row" id="wheelActions" style="margin-top:12px">
       <button class="btn btn--primary is-hidden" id="wheelSpinBtn" onclick="spinWheel()">Крутить</button>
       <button class="btn btn--ghost is-hidden" id="wheelBuyBtn" onclick="buyWheelTicket()">Купить билет</button>
     </div>
-    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('wheelModal')">Закрыть</button>
+    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('wheelModal')">Закрыть</button>
   </div>
 </div>
 
@@ -1125,7 +1159,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
       <input type="checkbox" id="wheelNotifyInput" onchange="toggleWheelNotify(this.checked)">
       <span class="switch"></span>
     </label>
-    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('wheelInfoModal')">Закрыть</button>
+    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('wheelInfoModal')">Закрыть</button>
   </div>
 </div>
 
@@ -1135,7 +1169,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <h2>Докупить устройства</h2>
     <div class="sheet__sub" id="addonSub">Дата окончания не сдвинется — платите только за оставшиеся дни</div>
     <div id="addonBody"><div class="card skeleton" style="min-height:90px"></div></div>
-    <button class="btn btn--ghost btn--block" style="margin-top:12px" onclick="closeModal('addonModal')">Закрыть</button>
+    <button class="btn btn--quiet btn--block" style="margin-top:12px" onclick="closeModal('addonModal')">Закрыть</button>
   </div>
 </div>
 
@@ -1145,7 +1179,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <h2>Уведомления</h2>
     <div class="sheet__sub" id="notifySub">Сообщения от команды сервиса</div>
     <div id="notifyList" class="stagger"><div class="card skeleton" style="min-height:120px"></div></div>
-    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('notifyModal')">Закрыть</button>
+    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('notifyModal')">Закрыть</button>
   </div>
 </div>
 
@@ -1160,7 +1194,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <div class="section-label" style="margin-top:10px">Способ оплаты</div>
     <div id="topupMethods"><div class="card skeleton" style="min-height:100px"></div></div>
     <button class="btn btn--primary btn--block" id="topupButton" style="margin-top:8px" onclick="createTopup()">Пополнить</button>
-    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('topupModal')">Отмена</button>
+    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('topupModal')">Отмена</button>
   </div>
 </div>
 
@@ -1172,7 +1206,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <div class="chip-row" id="subjectChips" style="margin-bottom:12px"></div>
     <input class="field" id="subjectInput" placeholder="Тема обращения" maxlength="64" style="margin-bottom:12px">
     <button class="btn btn--primary btn--block" id="createTicketBtn" onclick="submitNewTicket()">Создать обращение</button>
-    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('newTicketModal')">Отмена</button>
+    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('newTicketModal')">Отмена</button>
   </div>
 </div>
 
@@ -1195,7 +1229,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <p class="empty-hint" style="padding:0 0 12px;text-align:left">Ссылка попала не в те руки — выпустите новую. Старая сразу перестанет работать.</p>
     <button class="btn btn--danger btn--block" onclick="resetSubscriptionLink()">Пересоздать ссылку</button>
 
-    <button class="btn btn--ghost btn--block" style="margin-top:12px" onclick="closeModal('manageModal')">Закрыть</button>
+    <button class="btn btn--quiet btn--block" style="margin-top:12px" onclick="closeModal('manageModal')">Закрыть</button>
   </div>
 </div>
 
@@ -1205,7 +1239,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <h2 id="confirmTitle">Подтвердите действие</h2>
     <div class="sheet__sub" id="confirmText"></div>
     <button class="btn btn--primary btn--block" id="confirmOk" onclick="acceptConfirm()">Подтвердить</button>
-    <button class="btn btn--ghost btn--block" style="margin-top:9px" onclick="closeModal('confirmModal')">Отмена</button>
+    <button class="btn btn--quiet btn--block" style="margin-top:9px" onclick="closeModal('confirmModal')">Отмена</button>
   </div>
 </div>
 
@@ -1604,23 +1638,37 @@ function keyCardHtml(k){
      двух процентов — это уже не линия, а пиксель. */
   const elapsed = Math.max(0, Math.min(100, parseFloat(k.percent_str) || 0));
   const progress = elapsed >= 100 ? 0 : Math.max(2, 100 - elapsed);
+  /* Заголовком идёт то, по чему подписку узнают. Имя вида «Подписка №2»
+     выдаётся сервером само и не различает ничего, кроме порядка, поэтому
+     наверх поднимаем локацию, а порядковый номер уходит в метку. Если
+     человек назвал подписку сам, ведёт его название. */
+  const автоимя = /^Подписка\s*[№#]/.test(k.name || '');
+  const заголовок = автоимя ? (k.subtitle || k.name) : k.name;
+  const метка = автоимя ? (k.subtitle ? k.name : '') : (k.subtitle || '');
   return `<article class="card sub-card">
     <div class="sub-card__top">
-      <span class="label">${esc(k.subtitle || '')}</span>
+      <span class="label">${esc(метка)}</span>
       <span class="pill pill--${styleClass}">${esc(k.status_text||'')}</span>
     </div>
-    <div class="sub-card__name">${esc(k.name)}</div>
+    <div class="sub-card__name">${esc(заголовок)}</div>
     <div class="sub-card__meta">
       ${metaCell('Действует до', esc(k.expire_date_str||'—'))}
       ${metaCell('Осталось', k.is_unlimited ? '∞' : esc(k.remaining_str||'—'))}
       ${metaCell('Трафик', esc(k.traffic_display||'—'))}
       ${metaCell('Устройства', esc(k.hwid_display||'—'))}
     </div>
-    <!-- полоса стоит и у бессрочной подписки, целиком закрашенная: без неё
-         карточка становилась на четыре точки ниже соседних, и в ряду
-         одинаковые строки не совпадали по высоте -->
-    <div class="sub-card__bar"><div class="sub-card__bar-fill" style="width:${k.is_unlimited ? 100 : progress}%"></div></div>
-    ${k.comment_key ? `<div class="sub-card__note">📝&nbsp;${esc(k.comment_key)}</div>` : ''}
+    <!-- Полоса стоит и у бессрочной подписки: без неё карточка становилась
+         на четыре точки ниже соседних, и в ряду одинаковые строки не
+         совпадали по высоте. Но закрашивать её там нечем — «сто процентов
+         срока» у бессрочной подписки ничего не значит и читается то как
+         «всё израсходовано», то как «всё осталось». Оставляем пустую
+         дорожку. Полосе нужно имя: без него для чтения с экрана это просто
+         пустой блок. -->
+    <div class="sub-card__bar"${k.is_unlimited ? '' : ` role="progressbar" aria-valuemin="0" aria-valuemax="100"
+      aria-valuenow="${Math.round(progress)}" aria-label="Осталось от срока подписки"`}>
+      ${k.is_unlimited ? '' : `<div class="sub-card__bar-fill" style="width:${progress}%"></div>`}
+    </div>
+    ${k.comment_key ? `<div class="sub-card__note"><svg class="icon icon--sm"><use href="#ic-tag"/></svg>${esc(k.comment_key)}</div>` : ''}
     <div class="sub-card__link"><svg class="icon icon--xs" style="color:var(--faint)"><use href="#ic-link"/></svg><code>${esc(k.sub_url || 'Ссылка ещё готовится — обновите экран через минуту')}</code></div>
     <div class="sub-card__actions">
       <div class="btn-row link-actions">
@@ -1838,7 +1886,6 @@ const PRIZE_STATUS = {
   expired: {cls:'muted', text:'сгорел'},
 };
 function prizeRowHtml(p){
-  const face = prizeFace(p);
   const st = PRIZE_STATUS[p.status] || PRIZE_STATUS.done;
   const canTake = p.status === 'pending' && (state.prizeKeys || []).length;
   /* у призов, выданных до появления срока, expires_text пуст — не пишем
@@ -1848,7 +1895,7 @@ function prizeRowHtml(p){
     ? (canTake ? `можно забрать${until || ' в любое время'}` : `нужна подписка, забрать${until}`)
     : (p.status === 'expired' ? `срок вышел${until}` : esc(p.date_text));
   return `<div class="prize-row prize-row--${st.cls}">
-    <span class="reel__icon">${face.icon}</span>
+    ${prizeIcon(p)}
     <span class="prize-row__main"><b>${esc(p.label)}</b><span>${note}</span>${prizeCodeHtml(p)}</span>
     ${canTake
       ? `<button class="btn btn--primary btn--sm" onclick="openPrizeClaim(${Number(p.spin_id)})">Забрать</button>`
@@ -1900,14 +1947,20 @@ function reelDuration(){
   }catch(e){ return REEL_TIME_MS; }
 }
 
+/* Иконки из общего набора, а не эмодзи: цветные эмодзи рисуются системным
+   шрифтом и в наборе однотонных контурных значков читаются как чужеродная
+   наклейка. Заодно они одинаково выглядят на всех платформах. */
 const PRIZE_FACE = {
-  days:          {icon:'📅', note:'добавятся к подписке'},
-  balance:       {icon:'💰', note:'зачислятся на счёт'},
-  promo_percent: {icon:'🏷', note:'код на скидку'},
-  promo_fixed:   {icon:'🏷', note:'код на скидку'},
-  nothing:       {icon:'🎲', note:'пустой сектор'},
+  days:          {icon:'ic-calendar',     note:'добавятся к подписке'},
+  balance:       {icon:'ic-wallet',       note:'зачислятся на счёт'},
+  promo_percent: {icon:'ic-tag',          note:'код на скидку'},
+  promo_fixed:   {icon:'ic-tag',          note:'код на скидку'},
+  nothing:       {icon:'ic-circle-slash', note:'пустой сектор'},
 };
 function prizeFace(p){ return PRIZE_FACE[p && p.prize_type] || PRIZE_FACE.nothing; }
+function prizeIcon(p){
+  return `<span class="reel__icon"><svg class="icon"><use href="#${prizeFace(p).icon}"/></svg></span>`;
+}
 
 function wheelPrizes(prizes){
   const total = prizes.reduce((s,p) => s + Number(p.weight||0), 0) || 1;
@@ -1925,7 +1978,7 @@ function reelCardHtml(p){
   const face = prizeFace(p);
   const blank = (p.prize_type || 'nothing') === 'nothing';
   return `<div class="reel__card${blank ? ' reel__card--blank' : ''}">
-    <span class="reel__icon">${face.icon}</span>
+    ${prizeIcon(p)}
     <span class="reel__body"><b>${esc(p.label || '')}</b><span>${esc(face.note)}</span></span>
   </div>`;
 }
@@ -2084,22 +2137,22 @@ async function openWheel(){
 }
 function wheelChips(d){
   const chips = [];
-  if(d.tickets) chips.push(`<span class="wheel-chip">🎟 Билетов <b>${d.tickets}</b></span>`);
+  if(d.tickets) chips.push(`<span class="wheel-chip"><svg class="icon icon--sm"><use href="#ic-gift"/></svg>Билетов <b>${d.tickets}</b></span>`);
   /* неполученные призы больше не блокируют прокрут, но и потеряться не
      должны. Надпись прямо говорит, что от человека требуется действие:
      «ждут вас» читалось как что-то, что происходит само. */
   const waiting = (d.pending || []).length;
-  if(waiting) chips.push(`<span class="wheel-chip wheel-chip--ready">🎁 Заберите <b>${waiting}</b> ${plural(waiting,'приз','приза','призов')}</span>`);
+  if(waiting) chips.push(`<span class="wheel-chip wheel-chip--ready"><svg class="icon icon--sm"><use href="#ic-gift"/></svg>Заберите <b>${waiting}</b> ${plural(waiting,'приз','приза','призов')}</span>`);
   chips.push(d.wait_seconds > 0
-    ? `<span class="wheel-chip">⏳ Бесплатный ход через <b>${esc(d.wait_text || '')}</b></span>`
-    : '<span class="wheel-chip wheel-chip--ready">✅ Бесплатный ход готов</span>');
+    ? `<span class="wheel-chip"><svg class="icon icon--sm"><use href="#ic-clock"/></svg>Бесплатный ход через <b>${esc(d.wait_text || '')}</b></span>`
+    : '<span class="wheel-chip wheel-chip--ready"><svg class="icon icon--sm"><use href="#ic-check"/></svg>Бесплатный ход готов</span>');
   return `<div class="wheel-head">${chips.join('')}</div>`;
 }
 function wheelEarnHtml(d){
   const ways = [];
-  if(d.tickets_per_purchase) ways.push(`🛒 покупка подписки — ${d.tickets_per_purchase} 🎟`);
-  if(d.tickets_per_referral) ways.push(`🤝 приглашённый друг — ${d.tickets_per_referral} 🎟`);
-  if(Number(d.ticket_price) > 0) ways.push(`💰 покупка за ${money(d.ticket_price)}`);
+  if(d.tickets_per_purchase) ways.push(`покупка подписки: ${d.tickets_per_purchase}`);
+  if(d.tickets_per_referral) ways.push(`приглашённый друг: ${d.tickets_per_referral}`);
+  if(Number(d.ticket_price) > 0) ways.push(`покупка за ${money(d.ticket_price)}`);
   if(!ways.length) return '';
   return `<div class="section-label" style="margin-top:18px">Как получить билеты</div>`
        + `<div class="wheel-earn">${ways.map(esc).join('<br>')}</div>`;
@@ -2112,17 +2165,31 @@ function renderWheel(d, resultHtml){
     : (d.note || 'Колесо выключено');
   /* Шансы и способы добыть билет уехали в отдельный лист: вместе с ними
      колесо не помещалось на экран и его приходилось листать. */
+  /* Подсказка называет только ту кнопку, которая сейчас на экране: когда
+     бесплатный ход ещё не подошёл, «Крутить» скрыта, а текст всё равно
+     предлагал её нажать. */
+  const подсказка = d.can_spin
+    ? 'Нажмите «Крутить» — что выпало, увидите здесь.'
+    : (Number(d.ticket_price) > 0
+        ? 'Купите билет, чтобы не ждать бесплатного хода.'
+        : 'Здесь появится то, что выпало.');
   swapIn($('wheelBody'), wheelChips(d)
     + reelHtml(prizes)
-    + `<div class="wheel-result" id="wheelResult">${resultHtml || 'Нажмите «Крутить» — что выпало, увидите здесь.'}</div>`);
+    + `<div class="wheel-result" id="wheelResult">${resultHtml || подсказка}</div>`);
 
   const spin = $('wheelSpinBtn');
   toggle('wheelSpinBtn', !d.can_spin);
   if(d.can_spin) spin.textContent = 'Крутить';
   spin.disabled = false;
+  const buy = $('wheelBuyBtn');
   toggle('wheelBuyBtn', !(Number(d.ticket_price) > 0));
-  $('wheelBuyBtn').textContent = `Билет — ${money(d.ticket_price)}`;
-  $('wheelBuyBtn').disabled = false;
+  buy.textContent = `Билет — ${money(d.ticket_price)}`;
+  buy.disabled = false;
+  /* Главной становится та кнопка, которой сейчас можно воспользоваться:
+     пока бесплатный ход не подошёл, покупка билета — единственный способ
+     крутить, и второстепенной она выглядеть не должна. */
+  buy.classList.toggle('btn--primary', !d.can_spin);
+  buy.classList.toggle('btn--ghost', !!d.can_spin);
   toggle('wheelActions', !(d.can_spin || Number(d.ticket_price) > 0));
 }
 /* второй лист: шансы, источники билетов и напоминания */
@@ -2131,7 +2198,7 @@ function openWheelInfo(){
   const prizes = state.wheelPrizes || wheelPrizes(d.prizes || []);
   $('wheelInfoBody').innerHTML =
     `<div class="section-label" style="margin-top:14px">Призы и шансы</div>`
-    + prizes.map(x => `<div class="wheel-odds__row"><i>${prizeFace(x).icon}</i>${esc(x.label)}<b>${x.chance.toFixed(1)}%</b></div>`).join('')
+    + prizes.map(x => `<div class="wheel-odds__row"><svg class="icon icon--sm"><use href="#${prizeFace(x).icon}"/></svg>${esc(x.label)}<b>${x.chance.toFixed(1)}%</b></div>`).join('')
     + wheelEarnHtml(d);
   $('wheelNotifyInput').checked = !!d.notify;
   openModal('wheelInfoModal');
@@ -2141,10 +2208,10 @@ function renderWheelChoice(prize, keys){
   state.wheelChoice = prize;
   $('wheelSub').textContent = 'К какой подписке добавить выигранные дни';
   const until = prize.expires_text ? `Забрать можно до ${esc(prize.expires_text)}.` : '';
-  swapIn($('wheelBody'), `<div class="wheel-result wheel-result--win"><b>🎁 ${esc(prize.label)}</b>${until}</div>
+  swapIn($('wheelBody'), `<div class="wheel-result wheel-result--win"><b>${esc(prize.label)}</b>${until}</div>
     <div class="wheel-keys">${(keys || []).map(k => `
       <button class="wheel-key" onclick="claimWheelDays(${Number(k.key_id)},${Number(prize.spin_id) || 0})">
-        <span class="wheel-card__icon">🔑</span>
+        <span class="wheel-card__icon"><svg class="icon"><use href="#ic-gift"/></svg></span>
         <span class="wheel-key__main"><b>${esc(k.host_name || 'Подписка')}</b><span>действует до ${esc(k.expiry_text || '—')}</span></span>
         <svg class="icon icon--sm" style="color:var(--faint)"><use href="#ic-chevron-right"/></svg>
       </button>`).join('')}</div>
@@ -2158,7 +2225,7 @@ async function wheelChooseLater(){
   const prize = state.wheelChoice;
   state.wheelChoice = null;
   const note = prize
-    ? `<b>🎁 ${esc(prize.label)}</b>Приз ждёт в кабинете${prize.expires_text ? ` — заберите до ${esc(prize.expires_text)}` : ''}.`
+    ? `<b>${esc(prize.label)}</b>Приз ждёт в кабинете${prize.expires_text ? ` — заберите до ${esc(prize.expires_text)}` : ''}.`
     : '';
   try{
     const d = await api('/api/wheel/state');
@@ -2179,7 +2246,7 @@ async function claimWheelDays(keyId, spinId){
     await refreshAll();
     const st = await api('/api/wheel/state');
     state.wheel = st;
-    renderWheel(st, `<b>🎉 ${esc(d.label)}</b>${d.detail || ''}`);
+    renderWheel(st, `<b>${esc(d.label)}</b>${d.detail || ''}`);
     $('wheelResult').classList.add('wheel-result--win');
     refreshWheelButton(st);
     state.profile = null;
@@ -2208,7 +2275,7 @@ async function spinWheel(){
         /* приз не пропадает: ждёт подписку в истории кабинета */
         const box = $('wheelResult');
         box.classList.add('wheel-result--win');
-        box.innerHTML = `<b>🎉 ${esc(d.label)}</b>Подписки пока нет, поэтому приз лежит в кабинете до ${esc(d.expires_text)} — оформите подписку и заберите его.`;
+        box.innerHTML = `<b>${esc(d.label)}</b>Подписки пока нет, поэтому приз лежит в кабинете до ${esc(d.expires_text)} — оформите подписку и заберите его.`;
         state.profile = null;
         refreshWheelButton();
         btn.disabled = false;
@@ -2220,7 +2287,7 @@ async function spinWheel(){
     const box = $('wheelResult');
     box.classList.toggle('wheel-result--win', !!d.won);
     box.innerHTML = d.won
-      ? `<b>🎉 ${esc(d.label)}</b>${d.detail || ''}`
+      ? `<b>${esc(d.label)}</b>${d.detail || ''}`
       : `<b>${esc(d.label)}</b>Не повезло. Следующий бесплатный ход через ${d.cooldown_hours} ч, с билетом — прямо сейчас.`;
     await refreshAll();
     const st = await api('/api/wheel/state');
@@ -2553,10 +2620,15 @@ async function openPayment(){
     renderPaymentMethods();
   }catch(e){ fillLoaded($('paymentMethods'), `<p class="sheet__sub">${esc(e.message)}</p>`); }
 }
+/* У каждого способа своя подпись: раньше карта и крипта показывали один и
+   тот же текст, и подпись переставала что-либо сообщать. */
 function methodNote(m){
-  if(m.id === 'pay_balance') return `На счёте ${money(state.balance)}`;
-  if(m.id === 'pay_stars') return 'Счёт придёт в бота';
-  return 'Оплата на странице банка или сервиса';
+  const id = m.id || '';
+  if(id.includes('balance')) return `На счёте ${money(state.balance)}`;
+  if(id.includes('stars'))   return 'Счёт придёт в бота';
+  if(id.includes('crypto') || id.includes('heleket') || id.includes('ton'))
+                             return 'Курс зафиксируется на странице оплаты';
+  return 'Откроется страница банка';
 }
 function renderPaymentMethods(){
   const price = orderPrice();
@@ -2592,12 +2664,14 @@ function updatePayButton(){
   $('paymentTotalValue').innerHTML = `<s style="color:var(--faint);font-size:13px;font-weight:500;margin-right:6px">${money(orderPrice())}</s>${money(rest)}`;
   $('payButton').textContent = rest > 0 || !applied ? `Оплатить ${money(rest || orderPrice())}` : 'Оплатить';
 }
+/* Стрелка «наружу» ничего не говорила о способе оплаты: она означала лишь
+   «откроется другая страница», о чём и так написано в подписи. */
 function paymentIcon(id){
   if(id.includes('balance')) return '₽';
   if(id.includes('stars')) return '★';
   if(id.includes('crypto') || id.includes('heleket')) return '₿';
   if(id.includes('ton')) return '◆';
-  return '↗';
+  return '<svg class="icon"><use href="#ic-card"/></svg>';
 }
 function selectMethod(id){
   state.method = id;
@@ -2809,7 +2883,7 @@ function renderProfile(){
           <span class="panel-card__label">Аккаунт</span>
           <div class="info-row info-row--wrap">
             <span class="info-row__icon"><svg class="icon icon--md"><use href="#ic-user"/></svg></span>
-            <span class="info-row__main"><b>${esc(p.username || p.email || 'Пользователь')}</b><span>ID ${esc(p.user_id||USER_ID)}${p.registration_date ? ' · с '+esc(p.registration_date) : ''}</span></span>
+            <span class="info-row__main"><b>${esc(p.username || p.email || 'Пользователь')}</b><span>ID ${esc(p.user_id||USER_ID)}${p.registration_date ? ' · с\u00a0'+esc(p.registration_date) : ''}</span></span>
             <span class="pill ${p.tg_linked ? 'pill--ok' : 'pill--warn'}">${p.tg_linked ? 'Telegram привязан' : 'Без Telegram'}</span>
           </div>
           ${p.tg_linked ? '' : `<div class="tg-link" style="margin-top:10px">
@@ -2855,14 +2929,17 @@ function renderProfile(){
 /* ===== палитра кабинета =====
    Имена совпадают с APP_THEMES на сервере; «violet» — базовый :root, поэтому
    у него нет своего блока в CSS и data-theme для него просто не совпадает
-   ни с одним правилом. */
+   ни с одним правилом.
+
+   Цвет кружка берётся из --t-<имя> в CSS, а не хранится здесь: копия списка
+   разошлась с палитрой, и превью обещало один цвет, а тема давала другой. */
 const APP_THEMES = [
-  ['violet', 'Сирень',  '#d7abff'],
-  ['ocean',  'Океан',   '#78beff'],
-  ['forest', 'Лес',     '#7ed6a7'],
-  ['ember',  'Закат',   '#ff966e'],
-  ['rose',   'Роза',    '#ff94b6'],
-  ['gold',   'Золото',  '#e8c46e'],
+  ['violet', 'Сирень'],
+  ['ocean',  'Океан'],
+  ['forest', 'Лес'],
+  ['ember',  'Закат'],
+  ['rose',   'Роза'],
+  ['gold',   'Золото'],
 ];
 
 function currentTheme(){
@@ -2873,9 +2950,9 @@ function renderThemeRow(){
   const row = $('themeRow');
   if(!row) return;
   const active = currentTheme();
-  row.innerHTML = APP_THEMES.map(([id, label, color]) => `
+  row.innerHTML = APP_THEMES.map(([id, label]) => `
     <button class="theme-dot${id === active ? ' is-active' : ''}" data-theme-id="${id}"
-      style="--dot:${color}" title="${label}" aria-label="${label}" aria-pressed="${id === active}">
+      style="--dot:var(--t-${id})" title="${label}" aria-label="${label}" aria-pressed="${id === active}">
       <span class="theme-dot__ring"></span>
     </button>`).join('');
   row.querySelectorAll('[data-theme-id]').forEach(b => {

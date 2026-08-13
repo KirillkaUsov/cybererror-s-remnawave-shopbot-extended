@@ -77,7 +77,7 @@ def get_available_payment_methods(include_balance: bool = False, balance: float 
     if _enabled("platega_crypto_enabled"):
         methods.append(_method(
             "platega_crypto", "pay_platega_crypto", "topup_pay_platega_crypto",
-            "🪙 Crypto / Platega", "Крипта / Platega", "payments",
+            "🪙 Криптовалюта", "Криптовалюта", "payments",
         ))
 
     # CryptoBot и Heleket закрывают одну и ту же кнопку «Криптовалюта»,
