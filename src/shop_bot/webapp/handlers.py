@@ -15,10 +15,11 @@ except Exception:
     except Exception:
         MULTIPART_AVAILABLE = False
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 import aiohttp
 from shop_bot.data_manager.remnawave_repository import get_setting, get_user_keys, get_msk_time, get_webapp_settings, get_user, get_referral_count, get_all_hosts, list_squads, get_plans_for_host
 from shop_bot.data_manager import passwords
+from html import escape as html_escape
 import os
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
@@ -59,6 +60,11 @@ logger = logging.getLogger(__name__)
 
 # In-memory storage for temporary auth tokens: {token: user_id}
 TEMP_AUTH_TOKENS = {}
+
+# Кто пригласил владельца токена входа: {token: referrer_id}.
+# У Telegram один параметр start, и он занят самим токеном, — приглашение
+# из веба ждёт бота здесь, рядом. Живёт столько же, сколько попытка входа.
+TEMP_AUTH_REFERRERS = {}
 
 # Привязка Telegram к веб-аккаунту: {token: {"user_id": int, "expires": float,
 # "linked_to": int | None}}. Токен одноразовый и живёт 15 минут — по нему
@@ -808,7 +814,27 @@ async def legal_index():
         f'<ul>{links}</ul></div></body></html>'))
 
 
-def _render_login_page() -> HTMLResponse:
+def _invite_banner(inviter: dict | None) -> str:
+    """Плашка «вас пригласили» на странице входа.
+
+    Имя показываем, только если оно есть: id вместо имени ничего гостю не
+    говорит, а пригласившего выдаёт.
+    """
+    if not inviter:
+        return ""
+    name = (inviter.get("username") or "").strip().lstrip("@")
+    кто = f"<b>@{html_escape(name)} приглашает вас</b>" if name else "<b>Вас пригласили</b>"
+    return (
+        '<div class="invite">'
+        '<svg class="icon invite__icon"><use href="#li-gift"/></svg>'
+        f'<span>{кто}'
+        '<span>Заведите аккаунт — на первую покупку будет скидка. '
+        'Способ входа выбирайте любой.</span></span>'
+        '</div>'
+    )
+
+
+def _render_login_page(inviter: dict | None = None) -> HTMLResponse:
     p = os.path.join(os.path.dirname(__file__), "login.html")
     if not os.path.exists(p):
         return HTMLResponse(content="<h1>Login page not found</h1>", status_code=404)
@@ -819,6 +845,7 @@ def _render_login_page() -> HTMLResponse:
         "webapp_logo": webapp_settings.get("webapp_logo") or "",
         "webapp_icon": webapp_settings.get("webapp_icon") or "",
     }
+    content = content.replace("{{ invite_banner }}", _invite_banner(inviter))
     # страницу входа тоже не храним: причина та же, что у оболочки кабинета
     return HTMLResponse(content=_process_template_placeholders(content, 0, webapp_settings, context),
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -852,6 +879,41 @@ async def index(request: Request, token: str | None = None):
         # приложения любому, кто открыл страницу с ошибкой.
         logger.error(f"[WEBAPP] - Ошибка главной страницы: {e}", exc_info=True)
         return HTMLResponse(content="<h1>500 Internal Server Error</h1>", status_code=500)
+
+
+def _referrals_enabled() -> bool:
+    return (get_setting("enable_referrals") or "true").strip().lower() not in ("0", "false", "off", "no")
+
+
+@app.get("/ref/{code}", response_class=HTMLResponse)
+async def invite_link(request: Request, code: str):
+    """Приглашение по короткому коду.
+
+    Сама привязка происходит не здесь: гость ещё не аккаунт, привязывать
+    некого. Здесь запоминается, кто его позвал, — до регистрации, которая
+    может случиться и через неделю, и уже в Telegram.
+    """
+    try:
+        from shop_bot.data_manager import database
+
+        inviter = database.get_user_by_ref_code(code) if _referrals_enabled() else None
+        if inviter and inviter.get("is_banned"):
+            inviter = None
+
+        # Кто уже вошёл, тому приглашение ни к чему: аккаунт у него есть,
+        # привязать его задним числом нельзя. Открываем кабинет.
+        session_token = _read_auth_token(request) or ""
+        if session_token and database.get_user_by_auth_token(session_token):
+            return RedirectResponse("/", status_code=303)
+
+        response = _render_login_page(inviter)
+        if inviter:
+            _set_ref_cookie(response, inviter["telegram_id"])
+            logger.info(f"[WEBAPP] - Гость пришёл по приглашению от {inviter['telegram_id']}")
+        return response
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка ссылки приглашения: {e}", exc_info=True)
+        return RedirectResponse("/", status_code=303)
 
 # ===== API Models =====
 
@@ -994,6 +1056,11 @@ def validate_telegram_data(init_data: str, bot_token: str) -> dict | None:
 AUTH_COOKIE = "auth_token"
 AUTH_COOKIE_MAX_AGE = 365 * 24 * 3600
 
+# Кто пригласил гостя. Ставится на /ref/<код> и живёт до регистрации:
+# человек редко заводит аккаунт в тот же заход, когда открыл ссылку.
+REF_COOKIE = "ref_by"
+REF_COOKIE_MAX_AGE = 30 * 24 * 3600
+
 
 class AuthRequired(Exception):
     """Нет сессии или она больше не действует."""
@@ -1039,6 +1106,29 @@ def _set_auth_cookie(response, token: str) -> None:
     )
 
 
+def _read_ref_cookie(request: Request) -> int | None:
+    """Кто пригласил гостя, по куке от /ref/<код>."""
+    raw = (request.cookies.get(REF_COOKIE) or "").strip()
+    if not raw.isdigit():
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _set_ref_cookie(response, referrer_id: int) -> None:
+    response.set_cookie(
+        REF_COOKIE,
+        str(int(referrer_id)),
+        max_age=REF_COOKIE_MAX_AGE,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=True,
+    )
+
+
 def _resolve_session_user(request: Request) -> dict:
     from shop_bot.data_manager import database
 
@@ -1063,9 +1153,20 @@ def session_user_id(auth: dict) -> int:
 
 
 @app.get("/api/auth/request-token")
-async def api_request_auth_token():
+async def api_request_auth_token(request: Request):
     token = str(uuid.uuid4())[:36]
     TEMP_AUTH_TOKENS[token] = None
+    # У Telegram один параметр start, и его занимает токен входа. Кто позвал
+    # гостя — оставляем боту здесь: он прочитает это, когда человек нажмёт
+    # «Начать», и привяжет ровно так же, как по ссылке ?start=ref_<id>.
+    referrer_id = _read_ref_cookie(request)
+    if referrer_id:
+        TEMP_AUTH_REFERRERS[token] = referrer_id
+        # Словарь живёт в памяти процесса: без уборки он растёт от каждой
+        # открытой страницы входа и не уменьшается никогда.
+        if len(TEMP_AUTH_REFERRERS) > 5000:
+            for key in list(TEMP_AUTH_REFERRERS)[:2500]:
+                TEMP_AUTH_REFERRERS.pop(key, None)
     bot_username = (get_setting("telegram_bot_username") or "").lstrip("@")
     # универсальная ссылка, а не tg://resolve: кастомную схему iOS во встроенных
     # браузерах и в SFSafariViewController не открывает вовсе — тап не делал
@@ -1315,7 +1416,7 @@ async def _deliver_code(email: str, purpose: str, code: str, telegram_id: int | 
 
 
 @app.post("/api/auth/email/register")
-async def api_email_register(req: EmailAuthRequest):
+async def api_email_register(req: EmailAuthRequest, request: Request):
     from shop_bot.data_manager import database
     from shop_bot.modules import mailer
 
@@ -1337,18 +1438,39 @@ async def api_email_register(req: EmailAuthRequest):
     token = str(uuid.uuid4())
     database.update_user_auth_token(user['telegram_id'], token)
 
+    # Приглашение: аккаунт появился только сейчас, значит и привязывать его
+    # можно только сейчас. Билет колеса здесь не выдаём — он положен за
+    # телеграм-реферала, а этот аккаунт пока почтовый; если Telegram
+    # появится позже, билет начислит settle_referral_ticket.
+    invited_by = _read_ref_cookie(request) if _referrals_enabled() else None
+    if invited_by and database.attach_referrer(user['telegram_id'], invited_by):
+        logger.info(f"[WEBAPP] - Аккаунт {user['telegram_id']} привязан к пригласившему {invited_by}")
+        inviter = get_user(invited_by) or {}
+        if database.is_telegram_account(inviter):
+            await _send_telegram_message(
+                invited_by,
+                "🤝 <b>По вашей ссылке зарегистрировались</b>\n\n"
+                "Человек завёл аккаунт на сайте — вы получите свой процент с его покупок.\n\n"
+                "<i>Билет для колеса удачи начисляется за приглашённых с Telegram; "
+                "если он привяжет Telegram, билет придёт.</i>")
+
     # Письмо — вежливость, а не условие регистрации: если SMTP молчит,
     # аккаунт уже создан и человек войдёт, просто без отметки о подтверждении.
     code = database.issue_email_code(email, VERIFY_PURPOSE)
     delivered, channel, _ = await _deliver_code(email, VERIFY_PURPOSE, code, user['telegram_id'])
 
-    return {
+    response = JSONResponse({
         "ok": True,
         "token": token,
         "verification_sent": delivered,
         "verification_channel": channel,
         "verification_required": _verification_required(),
-    }
+    })
+    # Кука своё отработала. Оставлять её — значит привязать к тому же
+    # человеку и следующий аккаунт, заведённый с этого браузера.
+    if invited_by:
+        response.delete_cookie(REF_COOKIE, path="/")
+    return response
 
 
 @app.post("/api/auth/email/verify/request")
@@ -1516,6 +1638,10 @@ async def api_sync_tg(req: SyncTgRequest):
          
     res = database.link_telegram_to_email_user(user['telegram_id'], tg_id, tg_username)
     if res is True:
+         # Аккаунт стал телеграмным — если его кто-то приглашал, билет за
+         # него положен именно сейчас.
+         from shop_bot.bot.handlers import settle_referral_ticket
+         await settle_referral_ticket(tg_id)
          return {"ok": True}
     else:
          return {"ok": False, "error": str(res)}
@@ -3461,6 +3587,107 @@ async def api_profile_stats(auth: dict = Depends(webapp_user)):
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка показателей кабинета {user_id}: {e}")
         return {"ok": False, "error": "Внутренняя ошибка"}
+
+
+def _public_origin(request: Request) -> str:
+    """Адрес, по которому кабинет открыт снаружи.
+
+    Сам сервер слушает localhost, поэтому request.url здесь бесполезен:
+    настоящее имя приносит nginx в заголовках.
+    """
+    host = (request.headers.get("x-forwarded-host")
+            or request.headers.get("host") or "").split(",")[0].strip()
+    scheme = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https")
+    scheme = scheme.split(",")[0].strip() or "https"
+    return f"{scheme}://{host}" if host else ""
+
+
+@app.get("/api/referral")
+async def api_referral(request: Request, auth: dict = Depends(webapp_user)):
+    """Экран приглашений: ссылки, условия и кого уже привели."""
+    from shop_bot.data_manager import database
+    from shop_bot.modules import fortune_wheel
+
+    user_id = session_user_id(auth)
+    try:
+        user = get_user(user_id)
+        if not user or user.get('is_banned'):
+            return {"ok": False, "error": "Access denied"}
+
+        if not _referrals_enabled():
+            return {"ok": True, "enabled": False}
+
+        code = database.get_or_create_ref_code(user_id) or ""
+        origin = _public_origin(request)
+        web_link = f"{origin}/ref/{code}" if (origin and code) else ""
+
+        bot_username = (get_setting("telegram_bot_username") or "").lstrip("@")
+        tg_link = f"https://t.me/{bot_username}?start=ref_{user_id}" if bot_username else ""
+
+        # Условия — те же настройки, по которым начисляет бот. Держать здесь
+        # свой текст нельзя: он разойдётся с тем, что реально платится.
+        reward_type = (get_setting("referral_reward_type") or "percent_purchase").strip()
+        if reward_type == "fixed_purchase":
+            reward = f"{_money(get_setting('fixed_referral_bonus_amount') or 50)} ₽"
+            reward_note = "с каждой покупки приглашённого"
+        elif reward_type == "fixed_start_referrer":
+            reward = f"{_money(get_setting('referral_on_start_referrer_amount') or 20)} ₽"
+            reward_note = "за каждого, кто зарегистрируется по ссылке"
+        else:
+            reward = f"{_money(get_setting('referral_percentage') or 0)}%"
+            reward_note = "с каждой покупки приглашённого — и первой, и всех следующих"
+
+        discount = _money(get_setting("referral_discount") or 0)
+        try:
+            tickets = fortune_wheel.tickets_per_referral() if fortune_wheel.is_enabled() else 0
+        except Exception:
+            tickets = 0
+
+        people = []
+        for r in (database.get_referrals_for_user(user_id) or []):
+            joined = str(r.get('registration_date') or "")[:10]
+            if joined and "-" in joined:
+                try:
+                    y, m, d = joined.split("-")
+                    joined = f"{d}.{m}.{y}"
+                except ValueError:
+                    pass
+            name = (r.get('username') or "").strip().lstrip("@")
+            people.append({
+                # id приглашённого наружу не отдаём: для ссылки он не нужен,
+                # а вместе с именем это уже готовая карточка чужого человека
+                "name": f"@{name}" if name else "Без имени",
+                "joined": joined,
+                "telegram": bool(database.is_telegram_account(r)),
+                "spent": float(r.get('total_spent') or 0) > 0,
+            })
+
+        return {
+            "ok": True,
+            "enabled": True,
+            "code": code,
+            "web_link": web_link,
+            "tg_link": tg_link,
+            "count": len(people),
+            "earned": f"{float(user.get('referral_balance_all') or 0):.2f}".replace(".", ","),
+            "reward": reward,
+            "reward_note": reward_note,
+            "discount": discount,
+            "tickets": tickets,
+            "people": people,
+        }
+    except Exception as e:
+        logger.error(f"[WEBAPP] - Ошибка экрана приглашений {user_id}: {e}", exc_info=True)
+        return {"ok": False, "error": "Внутренняя ошибка"}
+
+
+def _money(value) -> str:
+    """Число настройки для показа: без хвоста ,00 у целых."""
+    try:
+        f = float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return "0"
+    return f"{f:.0f}" if f == int(f) else f"{f:.2f}".replace(".", ",")
 
 
 @app.get("/api/trial/status")

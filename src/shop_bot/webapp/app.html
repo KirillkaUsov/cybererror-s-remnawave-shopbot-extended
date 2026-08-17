@@ -439,7 +439,9 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .prize-row--expired .prize-row__main b,.prize-row--muted .prize-row__main b{color:var(--faint)}
 .prize-row--muted .reel__icon{opacity:.45}
 /* код выигранного купона: пунктир намекает, что это не поле, а кнопка */
-.prize-code{display:inline-flex;align-items:center;gap:8px;margin-top:7px;padding:5px 10px;border-radius:var(--r-sm);
+/* min-height — палец: 31 px по высоте промахивается мимо кода,
+   а промах здесь стоит того, что человек не заберёт свой приз */
+.prize-code{display:inline-flex;align-items:center;gap:8px;margin-top:7px;padding:5px 10px;min-height:36px;border-radius:var(--r-sm);
   border:1px dashed var(--accent-line);background:var(--accent-soft);color:var(--accent);
   font-family:var(--mono);font-size:12.5px;letter-spacing:.04em;
   transition:border-color .14s var(--ease),background .14s var(--ease),transform .12s var(--ease)}
@@ -474,7 +476,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .host-desc.is-clipped:not(.is-expanded) .host-desc__text::after{opacity:1}
 .host-desc.is-expanded .host-desc__text{max-height:var(--desc-full,none)}
 /* кнопка живёт вне обрезаемого текста — иначе её самой не видно */
-.host-desc__more{margin-top:8px;color:var(--accent);font-size:12.5px;font-weight:500;padding:2px 0}
+/* 22 px в высоту — это меньше подушечки пальца; текст оставляем на месте,
+   растим только область нажатия */
+.host-desc__more{margin-top:4px;color:var(--accent);font-size:12.5px;font-weight:500;
+  padding:9px 0;min-height:36px;display:inline-flex;align-items:center}
 .host-desc__more:hover{color:var(--accent-hi)}
 /* варианты по устройствам тянутся на всю строку — пустые «хвосты» сетки
    выглядели как недорисованный ряд */
@@ -618,12 +623,47 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 .info-row.is-copied .info-row__copy{color:var(--ok);border-color:var(--ok)}
 .info-row__main b{display:block;font-size:13.5px;font-weight:600}
 .info-row__main span{display:block;font-family:var(--mono);font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+/* моноширинный тут для ссылок и идентификаторов; обычную фразу он делает
+   похожей на технический вывод */
+.info-row__main span.plain{font-family:var(--font);font-size:12.5px}
 
 /* кабинет собран из панелей: на телефоне они идут стопкой, на десктопе
    раскладываются в две колонки — иначе страница выглядела горсткой
    разнокалиберных блоков в левом верхнем углу */
 .profile-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:start}
 .profile-col{min-width:0;display:flex;flex-direction:column;gap:12px}
+
+/* ---------- приглашения ---------- */
+/* Ссылка — единственное, ради чего сюда заходят, поэтому она набрана
+   крупнее остального и стоит первой, а условия и список идут следом. */
+.invite-link{display:flex;align-items:center;gap:11px;
+  padding:14px 15px;border-radius:var(--r-md);
+  border:1px solid var(--accent-line);background:var(--accent-soft)}
+.invite-link code{font-family:var(--mono);font-size:13.5px;color:var(--text);
+  min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.invite-actions{display:flex;gap:9px;margin-top:10px}
+.invite-actions .btn{flex:1 1 0;min-width:0}
+.invite-note{font-size:12.5px;color:var(--dim);line-height:1.5;margin:11px 0 0}
+
+.terms{list-style:none;margin:0;padding:0}
+.terms li{display:flex;gap:13px;align-items:baseline;padding:11px 0;border-top:1px solid var(--line)}
+.terms li:first-child{border-top:0;padding-top:0}
+.terms li:last-child{padding-bottom:0}
+.terms__val{flex:0 0 auto;min-width:54px;color:var(--accent);
+  font-size:15px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.terms__txt{min-width:0;font-size:13px;color:var(--dim);line-height:1.5}
+
+.friend{display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--line)}
+.friend:first-child{border-top:0;padding-top:0}
+.friend:last-child{padding-bottom:0}
+.friend__ava{width:32px;height:32px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+  background:var(--surface-2);color:var(--faint)}
+.friend__ava .icon{width:16px;height:16px}
+.friend__main{min-width:0;flex:1}
+.friend__main b{display:block;font-size:13.5px;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.friend__main span{display:block;font-size:11.5px;color:var(--faint);margin-top:2px}
+
 .panel-card{padding:16px}
 .panel-card__label{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);display:block;margin:0 0 11px}
 .panel-card .promo-result{padding-top:8px}
@@ -668,7 +708,9 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 .step__body span{font-size:12.5px;line-height:1.55;color:var(--dim);display:block;margin-top:4px}
 
 /* ---------- tab bar ---------- */
-.tabbar{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:8px 6px var(--safe-b);min-height:calc(var(--tabbar-h) + var(--safe-b));border-top:1px solid var(--line);background:var(--bg-elev)}
+/* колонок ровно столько, сколько пунктов: число в repeat() уже расходилось
+   с NAV и оставляло лишнюю пустую колонку */
+.tabbar{flex:0 0 auto;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);padding:8px 6px var(--safe-b);min-height:calc(var(--tabbar-h) + var(--safe-b));border-top:1px solid var(--line);background:var(--bg-elev)}
 .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--faint);font-size:11px;font-weight:500;transition:color .18s var(--ease)}
 .tab .icon{width:20px;height:20px;transition:transform .24s var(--ease)}
 .tab.is-active{color:var(--accent)}
@@ -799,7 +841,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   /* ширину ограничиваем, но по левому краю — иначе на широком экране заголовок
      кабинета и инструкции уезжает вправо относительно остальных разделов,
      и при переключении вкладок содержимое прыгает по горизонтали */
-  #view-profile{max-width:1320px}
+  #view-profile,#view-friends{max-width:1320px}
   #view-help{max-width:920px;margin-inline:0 auto}
   /* Заголовок экрана остаётся на месте при прокрутке: в длинном списке
      он уезжал первым, и было не видно, где ты находишься. Фон обязателен,
@@ -1021,6 +1063,8 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 <symbol id="ic-cart" viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7L6 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></symbol>
 <symbol id="ic-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5Z"/></symbol>
 <symbol id="ic-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-6 8-6s8 1.6 8 6"/></symbol>
+<symbol id="ic-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.8 3-5.3 6.5-5.3s6.5 1.5 6.5 5.3"/><path d="M16.5 5.4a3.4 3.4 0 0 1 0 6.6"/><path d="M18 14.9c2.3.5 3.5 1.9 3.5 4.4"/></symbol>
+<symbol id="ic-share" viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M8.2 10.8l7.6-4"/><path d="M8.2 13.2l7.6 4"/></symbol>
 <symbol id="ic-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
 <symbol id="ic-link" viewBox="0 0 24 24"><path d="M9 15l6-6"/><path d="M13 5l1-1a4 4 0 1 1 6 6l-1 1"/><path d="M11 19l-1 1a4 4 0 1 1-6-6l1-1"/></symbol>
 <symbol id="ic-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></symbol>
@@ -1197,6 +1241,11 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
               <div class="thread-closed is-hidden" id="threadClosed">Обращение закрыто. Остался вопрос — откройте новое.</div>
             </div>
           </div>
+        </section>
+
+        <section class="view" id="view-friends">
+          <div class="page-head"><h1>Друзья</h1></div>
+          <div id="friendsContent"><div class="card skeleton"></div></div>
         </section>
 
         <section class="view" id="view-profile">
@@ -1389,6 +1438,7 @@ const state = {
   promoPreview: null,
   pendingPaymentId: null, pendingPaymentKind: 'order',
   support: { tickets: [], current: null, view: 'list', mediaConfig: null },
+  referral: null,
 };
 let currentScreen = 'home';
 let supportPollTimer = null;
@@ -1676,6 +1726,7 @@ function closeTopModal(){
 const NAV = [
   { id:'home',    label:'Подписка',  icon:'ic-home', go: () => showScreen('home') },
   { id:'catalog', label:'Покупка',   icon:'ic-cart', go: () => openCatalog('new') },
+  { id:'friends', label:'Друзья',    icon:'ic-users', go: () => showScreen('friends') },
   { id:'support', label:'Поддержка', icon:'ic-chat', go: () => showScreen('support') },
   { id:'profile', label:'Кабинет',   icon:'ic-user', go: () => showScreen('profile') },
 ];
@@ -1743,6 +1794,7 @@ function showScreen(name){
   if(prev !== name) swapView(name); else restoreScroll(name);
   if(name !== 'support'){ stopTicketPoll(); setChatMode(false); }
   if(name === 'profile') loadProfile();
+  if(name === 'friends') loadReferral();
   if(name === 'support' && prev !== 'support'){ resetSupportView(); loadSupportHistory(); }
   updateBackButton();
 }
@@ -3060,10 +3112,10 @@ function renderProfile(){
         </div>
         <div class="card panel-card">
           <span class="panel-card__label">Партнёрская программа</span>
-          <button class="info-row" onclick="copyReferral(event)">
-            <span class="info-row__icon"><svg class="icon icon--md"><use href="#ic-link"/></svg></span>
-            <span class="info-row__main"><b>Реферальная ссылка</b><span>${esc(p.referral_link || 'Недоступна')}</span></span>
-            <span class="info-row__copy"><svg class="icon icon--sm"><use href="#ic-copy"/></svg></span>
+          <button class="info-row" onclick="showScreen('friends')">
+            <span class="info-row__icon"><svg class="icon icon--md"><use href="#ic-users"/></svg></span>
+            <span class="info-row__main"><b>Пригласить друзей</b><span class="plain">Ссылка, условия и кого вы уже привели</span></span>
+            <span class="info-row__copy"><svg class="icon icon--sm"><use href="#ic-chevron-right"/></svg></span>
           </button>
         </div>
         <div class="card panel-card">
@@ -3194,9 +3246,127 @@ function stopTgLinkWatch(){
   tgLinkTimer = null;
   setTgLinkState(null, false);
 }
-function copyReferral(ev){
-  const row = ev && ev.currentTarget;
-  return copyText(state.profile && state.profile.referral_link, 'Ссылка скопирована', null, row);
+/* ===== друзья =====
+   Условия здесь не сочиняются: и процент, и билет, и скидка приходят из тех
+   же настроек, по которым начисляет бот. Разойтись им нельзя — обещание в
+   кабинете и деньги на балансе должны быть про одно и то же. */
+async function loadReferral(){
+  if(state.referral){ renderReferral(); return; }
+  try{
+    const d = await api('/api/referral');
+    if(!d.ok) throw new Error(d.error || 'Раздел недоступен');
+    state.referral = d;
+    renderReferral();
+  }catch(e){
+    fillLoaded($('friendsContent'), errorCard('Не удалось открыть раздел', e.message, 'loadReferral()'));
+  }
+}
+
+function friendRow(p){
+  const метки = [p.joined, p.telegram ? 'Telegram' : 'через сайт'];
+  if(p.spent) метки.push('покупал');
+  return `<div class="friend">
+    <span class="friend__ava"><svg class="icon"><use href="#ic-user"/></svg></span>
+    <span class="friend__main"><b>${esc(p.name)}</b><span>${esc(метки.filter(Boolean).join(' · '))}</span></span>
+  </div>`;
+}
+
+function renderReferral(){
+  const d = state.referral, box = $('friendsContent');
+  if(!d.enabled){
+    fillLoaded(box, `<div class="card empty"><h2>Программа выключена</h2>
+      <p>Приглашения сейчас не действуют. Загляните позже.</p></div>`);
+    return;
+  }
+
+  const условия = [];
+  условия.push([d.reward, `${esc(d.reward_note)} — деньги приходят на ваш баланс`]);
+  /* эмодзи-билет рисовался чёрным прямоугольником: во многих системных
+     шрифтах этого символа просто нет */
+  if(Number(d.tickets) > 0)
+    условия.push([String(d.tickets),
+      `${plural(Number(d.tickets), 'билет', 'билета', 'билетов')} для колеса удачи ` +
+      'за каждого приглашённого с Telegram']);
+  if(Number(String(d.discount).replace(',', '.')) > 0)
+    условия.push([`${d.discount}%`, 'скидка приглашённому на первую покупку']);
+
+  const пусто = `<p class="invite-note" style="margin:0">Пока никого. Отправьте ссылку тем,
+    кому VPN нужен — вы увидите их здесь, как только они заведут аккаунт.</p>`;
+
+  fillLoaded(box, `
+    <div class="profile-grid">
+      <div class="profile-col stagger">
+        <div class="card panel-card">
+          <span class="panel-card__label">Ваша ссылка</span>
+          <div class="invite-link">
+            <svg class="icon icon--md" style="color:var(--accent)"><use href="#ic-link"/></svg>
+            <code id="inviteLink">${esc(d.web_link || 'Недоступна')}</code>
+          </div>
+          <div class="invite-actions">
+            <button class="btn btn--primary" onclick="copyInvite(event)">
+              <svg class="icon icon--sm"><use href="#ic-copy"/></svg>Скопировать</button>
+            <button class="btn btn--ghost" onclick="shareInvite()">
+              <svg class="icon icon--sm"><use href="#ic-share"/></svg>Поделиться</button>
+          </div>
+          <p class="invite-note">Ссылка открывает страницу входа. Кто заведёт по ней аккаунт —
+            станет вашим приглашённым, каким бы способом он ни вошёл.</p>
+        </div>
+
+        <div class="stat-grid">
+          ${statCard('Приглашено', Number(d.count || 0), 'Всего по ссылке')}
+          ${statCard('Заработано', `${esc(d.earned || '0,00')}&nbsp;<small>₽</small>`, 'На баланс')}
+        </div>
+
+        ${d.tg_link ? `<div class="card panel-card">
+          <span class="panel-card__label">Ссылка для Telegram</span>
+          <button class="info-row" onclick="copyTgInvite(event)">
+            <span class="info-row__icon"><svg class="icon icon--md"><use href="#ic-send"/></svg></span>
+            <span class="info-row__main"><b>Прямая ссылка на бота</b><span>${esc(d.tg_link)}</span></span>
+            <span class="info-row__copy"><svg class="icon icon--sm"><use href="#ic-copy"/></svg></span>
+          </button>
+        </div>` : ''}
+      </div>
+
+      <div class="profile-col stagger">
+        <div class="card panel-card">
+          <span class="panel-card__label">Что вы получаете</span>
+          <ul class="terms">
+            ${условия.map(([v, t]) => `<li><span class="terms__val">${esc(v)}</span><span class="terms__txt">${t}</span></li>`).join('')}
+          </ul>
+        </div>
+        <div class="card panel-card">
+          <span class="panel-card__label">Приглашённые</span>
+          ${d.people && d.people.length ? d.people.map(friendRow).join('') : пусто}
+        </div>
+      </div>
+    </div>`);
+}
+
+function copyInvite(ev){
+  const d = state.referral;
+  return copyText(d && d.web_link, 'Скопировано', null, ev && ev.currentTarget);
+}
+function copyTgInvite(ev){
+  const d = state.referral;
+  return copyText(d && d.tg_link, 'Скопировано', null, ev && ev.currentTarget);
+}
+/* Внутри Telegram отдаём выбор чата самому клиенту, в браузере — системному
+   «поделиться», а если и его нет, остаётся копирование. */
+function shareInvite(){
+  const d = state.referral;
+  const url = d && (d.web_link || d.tg_link);
+  if(!url) return toast('Ссылка недоступна', true);
+  const текст = 'Держи ссылку на VPN — по ней будет скидка на первую покупку.';
+  haptic();
+  if(tg && tg.openTelegramLink){
+    tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(текст)}`);
+    return;
+  }
+  if(navigator.share){
+    navigator.share({ text: текст, url }).catch(()=>{});
+    return;
+  }
+  copyText(url, 'Скопировано');
 }
 /* бонусный промокод (баланс/дни) — без цены сервер трактует код как бонусный */
 async function activateBonusPromo(){

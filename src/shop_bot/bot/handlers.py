@@ -57,6 +57,7 @@ from shop_bot.data_manager.remnawave_repository import (
     credit_referrer,
     get_imported_referrer,
     mark_referral_import_applied,
+    mark_referral_ticket_granted,
     settle_pending_referral_bonuses,
     settle_balance_import,
     get_referral_balance_all,
@@ -522,6 +523,46 @@ def _referrer_is_payable(referrer_id) -> bool:
     return not (referrer and referrer.get('is_banned'))
 
 
+async def settle_referral_ticket(referral_id: int, bot: Bot | None = None) -> None:
+    """Билет пригласившему, когда у приглашённого появился Telegram.
+
+    Приглашение из веба заводит аккаунт по почте, а билет положен только за
+    телеграм-реферала — значит, момент начисления не регистрация, а привязка.
+    Повторные вызовы безопасны: отметку ставит база, и второй раз не отдаёт.
+
+    Готовый Bot передают те, у кого он под рукой; из веб-приложения его нет,
+    поэтому там поднимается свой на одно сообщение.
+    """
+    try:
+        referrer_id, tickets = fortune_wheel.settle_referral_ticket(referral_id)
+    except Exception as e:
+        logger.error(f"Не удалось начислить билет за реферала {referral_id}: {e}")
+        return
+    if not referrer_id or not tickets:
+        return
+
+    referral = get_user(referral_id) or {}
+    name = referral.get('username') or ''
+    display_name = f"@{name}" if name else f"id {referral_id}"
+    text = ("🎟 <b>Билет за приглашённого</b>\n\n"
+            f"{display_name} привязал Telegram — вам начислено "
+            f"<b>{tickets}</b> билет(ов) для колеса удачи.")
+
+    own_bot = None
+    try:
+        if bot is None:
+            token = get_setting("telegram_bot_token")
+            if not token:
+                return
+            own_bot = bot = Bot(token=token)
+        await bot.send_message(chat_id=int(referrer_id), text=text, parse_mode="HTML")
+    except Exception as e:
+        logger.warning(f"Не удалось сообщить {referrer_id} о билете за реферала {referral_id}: {e}")
+    finally:
+        if own_bot is not None:
+            await own_bot.session.close()
+
+
 async def create_yookassa_payment_async(payload: dict, idempotence_key: str, shop_id: str, secret_key: str, timeout_seconds: int = 30) -> dict:
     timeout = aiohttp.ClientTimeout(total=timeout_seconds, connect=20, sock_read=timeout_seconds)
     headers = {"Idempotence-Key": str(idempotence_key)}
@@ -892,6 +933,22 @@ def get_user_router() -> Router:
             except (IndexError, ValueError):
                 logger.warning(f"Получен некорректный реферальный код: {command.args}")
 
+        # Приглашение из веба. Человек открыл /ref/<код> в браузере и выбрал
+        # вход через Telegram — параметр start уже занят токеном входа, а
+        # второго у Telegram нет, поэтому пригласивший ждёт на сервере рядом
+        # с этим токеном.
+        if not user_data and referrer_id is None and command.args and command.args.startswith('auth_'):
+            try:
+                from shop_bot.webapp.handlers import TEMP_AUTH_REFERRERS
+                potential_referrer_id = TEMP_AUTH_REFERRERS.get(command.args[5:])
+            except ImportError:
+                potential_referrer_id = None
+            if potential_referrer_id and int(potential_referrer_id) != user_id:
+                potential_referrer = get_user(int(potential_referrer_id))
+                if potential_referrer and not potential_referrer.get('is_banned'):
+                    referrer_id = int(potential_referrer_id)
+                    logger.info(f"Пользователь {user_id} пришёл по веб-приглашению от {referrer_id}")
+
         # Связь из старого бота срабатывает, только если человек пришёл без
         # ссылки: побеждает тот, кто успел первым. Проверку «реферер есть в
         # базе» здесь не делаем — его может не быть ещё месяц, а связь всё
@@ -935,7 +992,11 @@ def get_user_router() -> Router:
         if referrer_id:
             try:
                 display_name = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
-                tickets = fortune_wheel.grant_for_referral(referrer_id, f"реферал {user_id}")
+                # Отметка о билете — здесь же: сюда человек пришёл сразу
+                # телеграмом, и позднее привязывать ему нечего, но при
+                # склейке аккаунтов та же связь может всплыть повторно.
+                fresh = mark_referral_ticket_granted(user_id)
+                tickets = fortune_wheel.grant_for_referral(referrer_id, f"реферал {user_id}") if fresh else 0
                 ticket_line = (f"🎟 Билетов для колеса удачи: <b>{tickets}</b>\n\n"
                                if tickets else "")
                 await bot.send_message(
@@ -997,6 +1058,7 @@ def get_user_router() -> Router:
             if res is True:
                 data["linked_to"] = user_id
                 logger.info(f"Привязка: веб-аккаунт {web_user_id} привязан к Telegram {user_id}.")
+                await settle_referral_ticket(user_id, bot)
                 await message.answer(
                     "✅ <b>Telegram привязан</b>\n\n"
                     "Подписки и баланс веб-аккаунта теперь здесь. "
@@ -1016,6 +1078,7 @@ def get_user_router() -> Router:
                       res = database.link_telegram_to_email_user(user_by_token['telegram_id'], user_id, message.from_user.username or "")
                       if res is True:
                            logger.info(f"Синхронизация: Аккаунт {user_id} успешно синхронизирован с веб-профилем.")
+                           await settle_referral_ticket(user_id, bot)
                            await message.answer("✅ <b>Аккаунт связан</b>\n\nПодписки и баланс из личного кабинета теперь здесь.")
                       else:
                            await message.answer(f"⚠️ Не удалось связать аккаунты: {res}")

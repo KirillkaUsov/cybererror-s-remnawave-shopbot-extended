@@ -849,9 +849,26 @@ def _ensure_users_columns(cursor: sqlite3.Cursor) -> None:
         "wheel_tickets": "INTEGER DEFAULT 0",
         "wheel_notify": "INTEGER DEFAULT 1",
         "wheel_notified_at": "TIMESTAMP",
+        # Короткий код для веб-ссылки приглашения. Отдельно от telegram_id:
+        # эту ссылку рассылают по чатам, и id в ней светить незачем.
+        "ref_code": "TEXT",
+        # 1 — билет колеса за этого приглашённого пригласившему уже выдан.
+        # Отметка живёт на строке приглашённого, а не пригласившего: билет
+        # положен только за телеграм-аккаунт, а Telegram у почтового
+        # аккаунта появляется позже регистрации.
+        "referral_ticket_granted": "INTEGER DEFAULT 0",
     }
     for column, definition in mapping.items():
         _ensure_table_column(cursor, "users", column, definition)
+
+    # Код ищется по ссылке, поэтому он и индекс, и гарантия уникальности.
+    # Частичный индекс — потому что ref_code пустой почти у всех: код
+    # заводится, только когда человек открыл экран приглашений.
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ref_code "
+                       "ON users(ref_code) WHERE ref_code IS NOT NULL")
+    except sqlite3.Error as e:
+        logger.warning(f"Не удалось создать индекс по ref_code: {e}")
 
     # Разовое заполнение для уже существующих записей: синтетический
     # диапазон — почтовые аккаунты, всё остальное — настоящий Telegram.
@@ -3254,7 +3271,7 @@ def get_latest_pending_for_user(user_id: int) -> dict | None:
 def get_referrals_for_user(user_id: int) -> list[dict]:
     rows = _fetch_list(
         """
-        SELECT telegram_id, username, registration_date, total_spent
+        SELECT telegram_id, username, registration_date, total_spent, tg_linked
         FROM users
         WHERE referred_by = ?
         ORDER BY registration_date DESC
@@ -3277,6 +3294,114 @@ def detach_referrals_from_user(user_id: int) -> int:
     )
     return cursor.rowcount if cursor else 0
 # ======================================
+
+
+# ===== КОД ПРИГЛАШЕНИЯ ДЛЯ ВЕБ-ССЫЛКИ =====
+
+# Ни 0/O, ни 1/l/I: код диктуют вслух и набирают руками, и пара, которую
+# нельзя различить на слух или в шрифте, стоит дороже одного лишнего знака.
+REF_CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
+REF_CODE_LENGTH = 7
+
+
+def _new_ref_code() -> str:
+    import secrets
+    return "".join(secrets.choice(REF_CODE_ALPHABET) for _ in range(REF_CODE_LENGTH))
+
+
+def get_or_create_ref_code(user_id: int) -> str | None:
+    """Код приглашения владельца аккаунта; заводится при первом обращении.
+
+    Уникальность держит индекс, а не проверка перед вставкой: между SELECT
+    и UPDATE успевает вклиниться второй запрос, и два человека получают
+    один код. Здесь вместо этого ловится нарушение индекса и берётся
+    следующий код.
+    """
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return None
+
+    row = _fetch_row("SELECT ref_code FROM users WHERE telegram_id = ?", (user_id,),
+                     f"Не удалось прочитать код приглашения {user_id}")
+    if row is None:
+        return None
+    if row.get("ref_code"):
+        return row["ref_code"]
+
+    for _ in range(12):
+        code = _new_ref_code()
+        try:
+            with sqlite3.connect(DB_FILE, timeout=30.0) as conn:
+                cursor = conn.cursor()
+                # Условие на ref_code IS NULL — на случай, если параллельный
+                # запрос уже успел выдать код этому же аккаунту.
+                cursor.execute(
+                    "UPDATE users SET ref_code = ? WHERE telegram_id = ? AND ref_code IS NULL",
+                    (code, user_id))
+                conn.commit()
+                if cursor.rowcount:
+                    return code
+        except sqlite3.IntegrityError:
+            continue
+        except sqlite3.Error as e:
+            logging.error(f"Не удалось выдать код приглашения {user_id}: {e}")
+            return None
+        # rowcount = 0 — код уже проставлен кем-то ещё, перечитываем
+        row = _fetch_row("SELECT ref_code FROM users WHERE telegram_id = ?", (user_id,), "")
+        if row and row.get("ref_code"):
+            return row["ref_code"]
+
+    logging.error(f"Не удалось подобрать свободный код приглашения для {user_id}")
+    return None
+
+
+def get_user_by_ref_code(code: str) -> dict | None:
+    code = (code or "").strip().lower()
+    if not code or not re.fullmatch(r"[a-z0-9]{4,16}", code):
+        return None
+    return _fetch_row("SELECT * FROM users WHERE ref_code = ?", (code,),
+                      "Не удалось найти владельца кода приглашения")
+
+
+def attach_referrer(user_id: int, referrer_id: int) -> bool:
+    """Привязывает приглашённого к пригласившему. Только если связи ещё нет.
+
+    Возвращает True, только когда привязка действительно случилась: на этом
+    держится решение о билете и об уведомлении.
+    """
+    try:
+        user_id, referrer_id = int(user_id), int(referrer_id)
+    except (TypeError, ValueError):
+        return False
+    if user_id == referrer_id:
+        return False
+
+    referrer = get_user(referrer_id)
+    if not referrer or referrer.get("is_banned"):
+        return False
+
+    cursor = _exec(
+        "UPDATE users SET referred_by = ? WHERE telegram_id = ? "
+        "AND (referred_by IS NULL OR referred_by = '')",
+        (referrer_id, user_id),
+        f"Не удалось привязать {user_id} к пригласившему {referrer_id}")
+    return bool(cursor and cursor.rowcount)
+
+
+def mark_referral_ticket_granted(user_id: int) -> bool:
+    """Отмечает, что билет за этого приглашённого уже выдан.
+
+    Возвращает True только первому вызову — на этом и держится «один билет
+    на приглашённого», сколько бы раз ни сработали пути начисления.
+    """
+    cursor = _exec(
+        "UPDATE users SET referral_ticket_granted = 1 WHERE telegram_id = ? "
+        "AND COALESCE(referral_ticket_granted, 0) = 0",
+        (int(user_id),),
+        f"Не удалось отметить билет за реферала {user_id}")
+    return bool(cursor and cursor.rowcount)
+# ==========================================
 
 
 # ===== GET_ALL_SETTINGS =====
@@ -3878,6 +4003,16 @@ def link_telegram_to_email_user(old_telegram_id: int, new_telegram_id: int, new_
                       old_user.get('auth_email'), old_user.get('auth_pass'), old_user.get('auth_token'),
                       new_telegram_id))
                 
+                # Кто привёл веб-аккаунт, при склейке терялось: строка с
+                # referred_by удалялась, а телеграм-аккаунт оставался со
+                # своим — то есть чаще всего ни с чьим. Переносим связь,
+                # если на принимающей стороне её нет.
+                if old_user.get('referred_by') and int(old_user['referred_by']) != int(new_telegram_id):
+                    cursor.execute(
+                        "UPDATE users SET referred_by = ? WHERE telegram_id = ? "
+                        "AND (referred_by IS NULL OR referred_by = '')",
+                        (old_user['referred_by'], new_telegram_id))
+
                 cursor.execute("DELETE FROM users WHERE telegram_id = ?", (old_telegram_id,))
             else:
                 # tg_linked обязательно взводим здесь: без него привязанный

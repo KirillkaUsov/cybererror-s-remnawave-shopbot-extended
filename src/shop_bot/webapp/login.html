@@ -153,6 +153,16 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
 .status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2.4s ease-in-out infinite}
 .status-line span{font-size:12.5px;color:var(--dim)}
 
+/* приглашение по ссылке /ref/<код> */
+.invite{
+  display:flex;gap:11px;align-items:flex-start;text-align:left;
+  margin-top:18px;padding:13px 15px;border-radius:var(--r-md);
+  background:var(--accent-soft);border:1px solid var(--accent-line);
+}
+.invite__icon{flex:0 0 auto;color:var(--accent);width:18px;height:18px;margin-top:1px}
+.invite b{display:block;font-size:13.5px;font-weight:600}
+.invite span{display:block;font-size:12.5px;color:var(--dim);line-height:1.5;margin-top:3px}
+
 /* ---------- десктоп: витрина слева, форма справа ---------- */
 @media(min-width:960px){
   .shell{grid-template-columns:minmax(0,1fr) 520px}
@@ -224,6 +234,7 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
 <symbol id="li-link" viewBox="0 0 24 24"><path d="M9 15l6-6"/><path d="M13 5l1-1a4 4 0 1 1 6 6l-1 1"/><path d="M11 19l-1 1a4 4 0 1 1-6-6l1-1"/></symbol>
 <symbol id="li-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8"/><path d="M12 16v4"/></symbol>
 <symbol id="li-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5Z"/></symbol>
+<symbol id="li-gift" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8"/><path d="M12 8v12"/><path d="M12 8S10.5 4 8.5 4a2.5 2.5 0 0 0 0 5"/><path d="M12 8s1.5-4 3.5-4a2.5 2.5 0 0 1 0 5"/></symbol>
 <symbol id="li-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
 </defs>
 </svg>
@@ -285,6 +296,7 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
           <h1>Вход в кабинет</h1>
           <p class="lede">Три способа войти: Telegram, Email или ссылка подписки. Подойдёт любой.</p>
         </div>
+        {{ invite_banner }}
 
         <div id="authMethods" class="stack">
           <a id="authTelegramLink" href="#" class="btn btn--primary"><span>Войти через Telegram</span><svg class="icon" style="width:16px;height:16px"><use href="#li-arrow"/></svg></a>

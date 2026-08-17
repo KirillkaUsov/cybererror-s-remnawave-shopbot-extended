@@ -563,3 +563,39 @@ def grant_for_referral(user_id: int, reason_note: str | None = None) -> int:
         logger.info("Колесо: %s получил %d билет(ов) за реферала", user_id, amount)
         return amount
     return 0
+
+
+def settle_referral_ticket(referral_id: int) -> tuple[int, int]:
+    """Билет пригласившему за приглашённого, у которого появился Telegram.
+
+    Билет положен только за телеграм-аккаунт, но приглашённый мог прийти
+    через веб и завестись по почте — тогда билета в момент регистрации нет,
+    и он выдаётся здесь, при привязке Telegram.
+
+    Возвращает (id пригласившего, сколько билетов). Нули — значит начислять
+    было нечего или уже начислено: отметку ставит база, и второй раз она её
+    не отдаст, сколько бы путей сюда ни вело.
+    """
+    try:
+        referral_id = int(referral_id)
+    except (TypeError, ValueError):
+        return 0, 0
+
+    referral = database.get_user(referral_id)
+    if not referral or not database.is_telegram_account(referral):
+        return 0, 0
+
+    referrer_id = referral.get("referred_by")
+    if not referrer_id:
+        return 0, 0
+    referrer = database.get_user(int(referrer_id))
+    if not referrer or referrer.get("is_banned"):
+        return 0, 0
+
+    # Отметку ставим до начисления: повторный вызов не должен пройти дальше
+    # этой строки, даже если само начисление сорвётся.
+    if not database.mark_referral_ticket_granted(referral_id):
+        return 0, 0
+
+    tickets = grant_for_referral(int(referrer_id), f"реферал {referral_id}")
+    return int(referrer_id), tickets
