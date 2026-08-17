@@ -20,3 +20,6 @@ src/shop_bot/webapp/static/broadcasts/
 
 # приватные ключи для спидтестов — в репозиторий не попадают никогда
 src/modules/keys/
+
+# состояние рассылки о переезде — локальное, не для репозитория
+tools/migration_nudge_state.db
