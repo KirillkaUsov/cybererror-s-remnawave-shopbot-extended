@@ -591,6 +591,9 @@ def initialize_db():
                 "support_schedule_end": "23:00",
                 "channel_url": None,
                 "force_subscription": "true",
+                # Подписка на канал ради бесплатных дней, а не ради входа:
+                # на пороге такое требование отпугивает, перед подарком — нет.
+                "trial_requires_subscription": "false",
                 "receipt_email": "example@example.com",
                 "telegram_bot_token": None,
                 "telegram_bot_username": None,

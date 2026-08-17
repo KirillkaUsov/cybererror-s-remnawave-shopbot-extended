@@ -2894,6 +2894,19 @@
                         <h4 class="text-white font-bold text-sm">Внешние ссылки и Доступ</h4>
                     </div>
 
+                    <!-- Подписка ради бесплатных дней, а не ради входа: на пороге
+                         требование отпугивает, перед подарком выглядит обменом. -->
+                    <div class="flex items-center gap-3 bg-black/20 rounded-xl px-4 py-2 border border-white/5 mb-3">
+                        <span class="text-[10px] font-bold uppercase tracking-widest text-white/60 flex-1">Подписка для пробного периода</span>
+                        <input type="hidden" name="trial_requires_subscription" value="false" />
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" name="trial_requires_subscription" value="true" id="trial_requires_subscription"
+                                {% if settings.trial_requires_subscription=='true' %}checked{% endif %} class="sr-only peer" />
+                            <div
+                                class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary">
+                            </div>
+                        </label>
+                    </div>
                     <div class="flex items-center gap-3 bg-black/20 rounded-xl px-4 py-2 border border-white/5">
                         <span class="text-[10px] font-bold uppercase tracking-widest text-white/60">Обязательная
                             подписка</span>

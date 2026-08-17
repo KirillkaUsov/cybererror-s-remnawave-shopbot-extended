@@ -2647,6 +2647,27 @@ def get_user_router() -> Router:
             await callback.answer("⚠️ Пробный период уже был использован.", show_alert=True)
             return
 
+        # Подписка на канал — условие только для бесплатных дней. На входе в
+        # бота её не требуем: там человек ещё ничего не получил.
+        from shop_bot.modules import channel_gate
+        if channel_gate.required():
+            channel_gate.forget(user_id)
+            if not await channel_gate.is_member(user_id, callback.bot):
+                url = channel_gate.channel_url()
+                builder = InlineKeyboardBuilder()
+                builder.button(text="📢 Подписаться", url=url)
+                builder.button(text="✅ Я подписался", callback_data="get_trial")
+                builder.button(text="⬅️ Назад", callback_data="back_to_main_menu")
+                builder.adjust(1)
+                await callback.answer()
+                await smart_edit_message(
+                    callback.message,
+                    "🎁 <b>Пробный период</b>\n\nОн открывается подписчикам канала — "
+                    "там мы пишем о сбоях, работах и новых локациях.\n\n"
+                    "Подпишитесь и нажмите «Я подписался».",
+                    builder.as_markup())
+                return
+
         hosts = get_all_hosts(visible_only=True)
         if not hosts:
             await smart_edit_message(callback.message, "⚠️ <b>Свободных локаций нет</b>\n\nПробный период сейчас выдать не получится. Загляните позже.", keyboards.create_back_to_menu_keyboard())

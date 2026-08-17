@@ -266,6 +266,10 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   border-radius:var(--r-sm);margin-bottom:9px;background:var(--surface-2)}
 .notify__media-link{display:block}
 .notify__link{margin-top:9px}
+/* готовое сообщение для приглашения */
+.pitch-tabs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:11px}
+.pitch-text{min-height:118px;resize:vertical;overflow:hidden;line-height:1.55;font-size:13.5px;
+  padding:12px 14px;white-space:pre-wrap}
 /* «поддержка сейчас не на связи» — над списком обращений */
 .support-closed{margin:0 0 10px;padding:11px 13px;border:1px solid var(--line);
   border-radius:var(--r-md);background:var(--surface);color:var(--dim);
@@ -315,8 +319,11 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .chip.is-active{border-color:var(--accent-line);background:var(--accent-soft);color:var(--text)}
 
 /* ---------- home ---------- */
-.trial-banner{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px 13px;padding:15px 16px;border-radius:var(--r-lg);margin-bottom:14px;border:1px solid var(--accent-line);background:var(--accent-soft);animation:rise .34s var(--ease) both}
+.trial-banner{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px 13px;padding:15px 16px;border-radius:var(--r-lg);margin-bottom:14px;border:1px solid var(--accent-line);background:var(--accent-soft);animation:rise .24s var(--ease) backwards}
 .trial-banner .btn{grid-column:1/-1}
+/* «Подписаться» и «Я подписался» — один шаг, поэтому и ячейка у них общая */
+.trial-banner__pair{grid-column:1/-1;display:flex;gap:8px}
+.trial-banner__pair .btn{flex:1 1 auto;min-width:0;white-space:nowrap;padding-inline:12px}
 .trial-banner__icon{width:38px;height:38px;border-radius:var(--r-md);background:rgba(var(--accent-rgb),.16);color:var(--accent);display:grid;place-items:center;flex:0 0 auto}
 .trial-banner__body{min-width:0}
 .trial-banner__body b{display:block;font-size:14px;font-weight:600}
@@ -847,6 +854,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
   .stat-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
   .trial-banner{grid-template-columns:auto minmax(0,1fr) auto}
   .trial-banner .btn{grid-column:auto}
+  .trial-banner__pair{grid-column:auto}
 }
 
 /* ---------- desktop ---------- */
@@ -1202,6 +1210,10 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
             <div class="trial-banner__body"><b id="trialBannerTitle">Бесплатный пробный период</b><span id="trialBannerText"></span></div>
             <button class="btn btn--primary btn--sm" id="trialActivateBtn" onclick="activateTrial()">Активировать</button>
             <button class="btn btn--primary btn--sm is-hidden" id="trialLinkBtn" data-tg-link onclick="startTgLink()">Привязать Telegram</button>
+            <div class="trial-banner__pair is-hidden" id="trialSubPair">
+              <a class="btn btn--primary btn--sm" id="trialSubBtn" href="#" target="_blank" rel="noopener" onclick="markTrialSubTapped()">Подписаться</a>
+              <button class="btn btn--ghost btn--sm" id="trialRecheckBtn" onclick="recheckTrial()">Я подписался</button>
+            </div>
           </div>
           <div id="homeList" class="subs-list"><div class="card skeleton"></div></div>
         </section>
@@ -1984,23 +1996,57 @@ async function loadTrial(){
 function renderTrialBanner(){
   const t = state.trial;
   const needsTg = !!(t && !t.available && t.reason === 'no_telegram');
-  const show = !!(t && (t.available || needsTg));
+  /* Подписка на канал — условие только для бесплатных дней; покупке она не
+     мешает. Поэтому это не запрет, а ещё один шаг в том же баннере. */
+  const needsSub = !!(t && !t.available && t.reason === 'needs_subscription');
+  const show = !!(t && (t.available || needsTg || needsSub));
   toggle('trialBanner', !show);
   if(!show) return;
   const days = Number(t.days || 0);
-  $('trialBannerTitle').textContent = needsTg ? 'Пробный период по Telegram' : 'Бесплатный пробный период';
+  const срок = days ? `${days} ${plural(days,'день','дня','дней')}` : '';
+  $('trialBannerTitle').textContent = needsTg ? 'Пробный период по Telegram'
+    : needsSub ? 'Пробный период для подписчиков'
+    : 'Бесплатный пробный период';
   $('trialBannerText').textContent = needsTg
-    ? (days ? `Привяжите Telegram — и получите ${days} ${plural(days,'день','дня','дней')} бесплатно` : 'Привяжите Telegram, чтобы получить пробный период')
-    : `${days} ${plural(days,'день','дня','дней')} бесплатно — сервер подберём сами`;
-  toggle('trialActivateBtn', needsTg);
+    ? (срок ? `Привяжите Telegram — и получите ${срок} бесплатно` : 'Привяжите Telegram, чтобы получить пробный период')
+    : needsSub
+    ? (срок ? `Подпишитесь на канал — и ${срок} бесплатно` : 'Подпишитесь на канал, чтобы включить пробный период')
+    : `${срок} бесплатно — сервер подберём сами`;
+  toggle('trialActivateBtn', needsTg || needsSub);
   toggle('trialLinkBtn', !needsTg);
+  toggle('trialSubPair', !needsSub);
+  if(needsSub && t.channel_url) $('trialSubBtn').href = t.channel_url;
 }
+/* Открыли канал — почти наверняка сейчас подпишутся и вернутся. Проверяем
+   сами при возврате на вкладку, чтобы не заставлять нажимать вторую кнопку. */
+let trialSubTapped = false;
+function markTrialSubTapped(){ trialSubTapped = true; }
+async function recheckTrial(){
+  const btn = $('trialRecheckBtn');
+  btn.disabled = true;
+  try{
+    const d = await api('/api/trial/recheck', { method:'POST', headers: JSON_H, body: '{}' });
+    state.trial = d.ok ? d : state.trial;
+    renderTrialBanner();
+    if(!d.available && d.reason === 'needs_subscription') toast('Подписка пока не видна — попробуйте через минуту', true);
+  }catch(e){ toast(e.message, true); }
+  finally{ btn.disabled = false; }
+}
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden || !trialSubTapped) return;
+  trialSubTapped = false;
+  recheckTrial();
+});
 async function activateTrial(){
   const btn = $('trialActivateBtn');
   btn.disabled = true;
   try{
     const d = await api('/api/trial/activate', { method:'POST', headers: JSON_H, body: JSON.stringify({ user_id: USER_ID }) });
-    if(!d.ok) throw new Error(d.error || 'Не удалось активировать пробный период');
+    if(!d.ok){
+      /* сервер мог узнать про отписку раньше нас — перерисуем баннер по его ответу */
+      if(d.reason === 'needs_subscription'){ state.trial = { ...(state.trial||{}), ...d, available:false }; renderTrialBanner(); }
+      throw new Error(d.error || 'Не удалось активировать пробный период');
+    }
     toast('Пробный период активирован');
     state.trial = null;
     renderTrialBanner();
@@ -3321,6 +3367,72 @@ function stopTgLinkWatch(){
    Условия здесь не сочиняются: и процент, и билет, и скидка приходят из тех
    же настроек, по которым начисляет бот. Разойтись им нельзя — обещание в
    кабинете и деньги на балансе должны быть про одно и то же. */
+
+/* Готовые тексты приглашения. Голую ссылку не пересылают не из лени, а
+   потому что не знают, что написать рядом; человек хочет отправить
+   сообщение, а не ссылку. Варианты разные, потому что коллеге и родителям
+   пишут по-разному. Про обход блокировок здесь ни слова: это и лишнее
+   обещание, и лишний повод для разговора с законом у того, кто перешлёт. */
+const PITCHES = [
+  { label: 'Коротко', text: d =>
+`Пользуюсь вот этим, чтобы всё открывалось и не тормозило. Работает на телефоне и на компьютере, настраивать ничего не надо.
+
+Есть бесплатные дни, попробуй: ${d.link}` },
+  { label: 'Другу', text: d =>
+`Слушай, ты вроде жаловался, что половина сайтов не грузится. Я себе поставил — работает без плясок с бубном, ставится за минуту, на всех устройствах сразу.
+
+По этой ссылке дадут попробовать бесплатно${d.discount ? `, а первая покупка будет со скидкой ${d.discount}%` : ''}: ${d.link}` },
+  { label: 'В чат', text: d =>
+`Кому нужен нормальный доступ без лагов — вот рабочий вариант. Пара минут на настройку, есть бесплатный период.
+
+${d.link}` },
+  { label: 'Родителям', text: d =>
+`Поставил себе — теперь всё открывается как раньше. Устанавливается само, ничего настраивать не нужно, работает и на телефоне, и на ноутбуке.
+
+Открой ссылку и нажми одну кнопку: ${d.link}` },
+];
+let pitchIndex = 0;
+
+function pitchData(){
+  const d = state.referral || {};
+  const скидка = Number(String(d.discount || 0).replace(',', '.'));
+  return { link: d.web_link || d.tg_link || '', discount: скидка > 0 ? d.discount : null };
+}
+/* Поле растёт под текст: у вариантов разная длина, и фиксированная высота
+   либо резала последнюю строку пополам, либо оставляла пустоту. */
+function growPitch(){
+  const box = $('pitchText');
+  if(!box) return;
+  box.style.height = 'auto';
+  box.style.height = box.scrollHeight + 'px';
+}
+function pickPitch(i){
+  pitchIndex = i;
+  const box = $('pitchText');
+  if(box){ box.value = PITCHES[i].text(pitchData()); growPitch(); }
+  document.querySelectorAll('#pitchTabs .chip').forEach(c =>
+    c.classList.toggle('is-active', Number(c.dataset.pitch) === i));
+  haptic();
+}
+function pitchValue(){
+  const box = $('pitchText');
+  return (box && box.value.trim()) || PITCHES[pitchIndex].text(pitchData());
+}
+function copyPitch(ev){
+  return copyText(pitchValue(), 'Сообщение скопировано', null, ev && ev.currentTarget);
+}
+/* В Telegram отдаём готовый текст его же окну выбора чата: url пустой,
+   потому что ссылка уже внутри сообщения — иначе она придёт дважды. */
+function sharePitch(){
+  const текст = pitchValue();
+  haptic();
+  if(tg && tg.openTelegramLink){
+    tg.openTelegramLink(`https://t.me/share/url?url=&text=${encodeURIComponent(текст)}`);
+    return;
+  }
+  if(navigator.share){ navigator.share({ text: текст }).catch(()=>{}); return; }
+  copyText(текст, 'Сообщение скопировано');
+}
 async function loadReferral(){
   if(state.referral){ renderReferral(); return; }
   try{
@@ -3383,6 +3495,24 @@ function renderReferral(){
             станет вашим приглашённым, каким бы способом он ни вошёл.</p>
         </div>
 
+        <div class="card panel-card">
+          <span class="panel-card__label">Готовое сообщение</span>
+          <div class="pitch-tabs" id="pitchTabs">
+            ${PITCHES.map((p, i) => `<button class="chip${i ? '' : ' is-active'}" data-pitch="${i}"
+              onclick="pickPitch(${i})">${esc(p.label)}</button>`).join('')}
+          </div>
+          <textarea class="field pitch-text" id="pitchText" rows="5"
+            aria-label="Текст приглашения" oninput="growPitch()"></textarea>
+          <div class="invite-actions">
+            <button class="btn btn--primary" onclick="copyPitch(event)">
+              <svg class="icon icon--sm"><use href="#ic-copy"/></svg>Скопировать</button>
+            <button class="btn btn--ghost" onclick="sharePitch()">
+              <svg class="icon icon--sm"><use href="#ic-share"/></svg>Отправить</button>
+          </div>
+          <p class="invite-note">Текст можно поправить — отправится то, что видите здесь.
+            Ссылка внутри уже ваша.</p>
+        </div>
+
         <div class="stat-grid">
           ${statCard('Приглашено', Number(d.count || 0), 'Всего по ссылке')}
           ${statCard('Заработано', `${esc(d.earned || '0,00')}&nbsp;<small>₽</small>`, 'На баланс')}
@@ -3398,7 +3528,7 @@ function renderReferral(){
         </div>` : ''}
       </div>
 
-      <div class="profile-col stagger">
+      <div class="profile-col stagger" id="friendsRight">
         <div class="card panel-card">
           <span class="panel-card__label">Что вы получаете</span>
           <ul class="terms">
@@ -3411,6 +3541,8 @@ function renderReferral(){
         </div>
       </div>
     </div>`);
+  /* текст подставляем после вставки разметки: до неё поля ещё нет */
+  pickPitch(pitchIndex);
 }
 
 function copyInvite(ev){
@@ -3423,18 +3555,20 @@ function copyTgInvite(ev){
 }
 /* Внутри Telegram отдаём выбор чата самому клиенту, в браузере — системному
    «поделиться», а если и его нет, остаётся копирование. */
+/* Здесь уходит только ссылка — текст живёт в блоке «Готовое сообщение»
+   со своей кнопкой, и дублировать его тут значило бы делать две кнопки
+   с одинаковым делом. */
 function shareInvite(){
   const d = state.referral;
   const url = d && (d.web_link || d.tg_link);
   if(!url) return toast('Ссылка недоступна', true);
-  const текст = 'Держи ссылку на VPN — по ней будет скидка на первую покупку.';
   haptic();
   if(tg && tg.openTelegramLink){
-    tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(текст)}`);
+    tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}`);
     return;
   }
   if(navigator.share){
-    navigator.share({ text: текст, url }).catch(()=>{});
+    navigator.share({ url }).catch(()=>{});
     return;
   }
   copyText(url, 'Скопировано');

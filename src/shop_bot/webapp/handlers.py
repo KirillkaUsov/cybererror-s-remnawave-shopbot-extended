@@ -3731,9 +3731,35 @@ def _money(value) -> str:
     return f"{f:.0f}" if f == int(f) else f"{f:.2f}".replace(".", ",")
 
 
+async def _trial_gate(user_id: int, state: dict) -> dict:
+    """Добавляет к готовому состоянию условие подписки на канал.
+
+    Проверка отдельно от _trial_state: та синхронная и лезет только в базу,
+    а за подпиской надо сходить в Telegram.
+    """
+    from shop_bot.modules import channel_gate
+    if not state.get("available") or not channel_gate.required():
+        return state
+    if await channel_gate.is_member(user_id):
+        return state
+    return {**state, "available": False, "reason": "needs_subscription",
+            "channel_url": channel_gate.channel_url()}
+
+
 @app.get("/api/trial/status")
 async def api_trial_status(auth: dict = Depends(webapp_user)):
-    state = _trial_state(session_user_id(auth))
+    uid = session_user_id(auth)
+    state = await _trial_gate(uid, _trial_state(uid))
+    return {"ok": True, **state}
+
+
+@app.post("/api/trial/recheck")
+async def api_trial_recheck(auth: dict = Depends(webapp_user)):
+    """«Я подписался» — спрашиваем Telegram заново, не дожидаясь кэша."""
+    from shop_bot.modules import channel_gate
+    uid = session_user_id(auth)
+    channel_gate.forget(uid)
+    state = await _trial_gate(uid, _trial_state(uid))
     return {"ok": True, **state}
 
 
@@ -3750,15 +3776,17 @@ async def api_trial_activate(req: TrialRequest, auth: dict = Depends(webapp_user
         if not user or user.get("is_banned"):
             return {"ok": False, "error": "Access denied"}
 
-        state = _trial_state(req.user_id)
+        state = await _trial_gate(req.user_id, _trial_state(req.user_id))
         if not state.get("available"):
             messages = {
                 "used": "Пробный период уже был активирован",
                 "no_telegram": "Привяжите Telegram, чтобы получить пробный период",
                 "disabled": "Пробный период сейчас недоступен",
                 "no_hosts": "Нет доступных серверов, попробуйте позже",
+                "needs_subscription": "Подпишитесь на канал — и пробный период откроется",
             }
-            return {"ok": False, "error": messages.get(state.get("reason"), "Пробный период недоступен")}
+            return {"ok": False, "error": messages.get(state.get("reason"), "Пробный период недоступен"),
+                    "reason": state.get("reason"), "channel_url": state.get("channel_url")}
 
         host_name = state["host"]
         days = state["days"]
