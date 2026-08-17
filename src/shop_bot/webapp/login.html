@@ -110,7 +110,17 @@ a{color:inherit;text-decoration:none}
   color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-line);overflow:hidden;
 }
 .brand-mark .icon{width:28px;height:28px}
-.brand-mark img{width:100%;height:100%;object-fit:cover;display:block}
+/* Плашка со скруглением — оправа для дежурного щита. Настоящий знак не
+   квадратный (260x192), и object-fit:cover срезал ему бока: в кабинете эту
+   же ошибку уже исправили, здесь она осталась. Свой логотип показываем
+   целиком, в его пропорциях и без оправы. */
+.brand-mark img{width:auto;max-width:100%;object-fit:contain;display:block}
+/* высота в пикселях, а не в процентах: у коробки ширина auto, и проценты
+   упираются в круг «ширина от содержимого, содержимое от ширины» —
+   картинка выпадала в свой натуральный размер */
+.brand-mark.has-logo{display:inline-grid;width:auto;height:auto;margin-inline:0;
+  background:none;border:0;border-radius:0;overflow:visible}
+.brand-mark.has-logo img{height:64px}
 .eyebrow{font-size:12px;color:var(--accent);font-weight:500;letter-spacing:.04em;margin-top:14px}
 h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
 .lede{font-size:13.5px;color:var(--dim);line-height:1.55;max-width:290px;margin:10px auto 0}
@@ -149,9 +159,28 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
 .timer-row span.label{color:var(--dim);font-size:13px;font-family:var(--font);text-transform:none;letter-spacing:0}
 .timer-pill{color:var(--accent);font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:3px;background:var(--accent-soft);padding:5px 10px;border-radius:9px}
 
-.status-line{display:flex;align-items:center;justify-content:center;gap:9px}
-.status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2.4s ease-in-out infinite}
-.status-line span{font-size:12.5px;color:var(--dim)}
+/* Ожидание подтверждения из Telegram.
+   Была одна строка с точкой: она сообщала, что что-то происходит, но не
+   говорила ни что делать, ни что уже сделано, ни как выйти из ожидания.
+   Человек уходит отсюда в другое приложение — вернувшись, он должен
+   увидеть, на чём остановился, и иметь под рукой оба продолжения. */
+.wait{width:100%;text-align:left;padding:16px;
+  border:1px solid var(--line);border-radius:var(--r-md);background:rgba(255,255,255,.03)}
+.wait__head{display:flex;align-items:center;gap:9px}
+.wait__head b{font-size:14px;font-weight:600}
+.wait__dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--accent);
+  animation:pulse 2.4s ease-in-out infinite}
+.wait__text{font-size:13px;color:var(--dim);line-height:1.55;margin:9px 0 0}
+.wait__note{font-size:12.5px;line-height:1.5;color:var(--accent);margin:10px 0 0}
+.wait__row{display:flex;gap:9px;margin-top:14px}
+/* flex:1 1 auto, а не 1 1 0: при равных долях на узком экране «Открыть ещё
+   раз» не влезало в свою половину и ложилось в две строки, из-за чего
+   соседняя кнопка становилась ниже */
+.wait__row .btn{flex:1 1 auto;min-width:0;min-height:44px;font-size:13.5px;
+  padding-inline:12px;white-space:nowrap}
+.wait__cancel{display:block;margin:10px auto 0}
+/* точку не анимируем, если человек просил меньше движения */
+@media(prefers-reduced-motion:reduce){.wait__dot{animation:none}}
 
 /* приглашение по ссылке /ref/<код> */
 .invite{
@@ -172,6 +201,8 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
   }
   .hero__brand{display:flex;align-items:center;gap:13px}
   .hero__brand .brand-mark{width:42px;height:42px;border-radius:13px;margin:0}
+  .hero__brand .brand-mark.has-logo{width:auto;height:auto}
+  .hero__brand .brand-mark.has-logo img{height:42px}
   .hero__brand .brand-mark .icon{width:20px;height:20px}
   .hero__brand b{font-size:17px;font-weight:600;letter-spacing:-.01em}
   .hero__head{margin-top:auto;padding-top:40px}
@@ -299,7 +330,7 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
         {{ invite_banner }}
 
         <div id="authMethods" class="stack">
-          <a id="authTelegramLink" href="#" class="btn btn--primary"><span>Войти через Telegram</span><svg class="icon" style="width:16px;height:16px"><use href="#li-arrow"/></svg></a>
+          <a id="authTelegramLink" href="#" target="_blank" rel="noopener" class="btn btn--primary"><span>Войти через Telegram</span><svg class="icon" style="width:16px;height:16px"><use href="#li-arrow"/></svg></a>
           <button id="showEmailBtn" class="btn btn--soft"><svg class="icon" style="width:16px;height:16px;color:var(--accent)"><use href="#li-mail"/></svg><span>Войти по Email</span></button>
           <button id="showSubBtn" class="btn btn--soft"><svg class="icon" style="width:16px;height:16px;color:var(--accent)"><use href="#li-link"/></svg><span>Войти по ссылке подписки</span></button>
         </div>
@@ -396,7 +427,17 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.02em;margin:6px 0 0}
           </div>
         </div>
 
-        <div class="status-line hidden" id="statusLine"><span class="status-dot"></span><span>Ожидание подтверждения…</span></div>
+        <div class="wait hidden" id="waitPanel">
+          <div class="wait__head"><span class="wait__dot"></span><b>Ждём подтверждения</b></div>
+          <p class="wait__text">Откройте бота в Telegram и нажмите «Запустить».
+            Вернитесь на эту вкладку — вход произойдёт сам.</p>
+          <p class="wait__note hidden" id="waitNote"></p>
+          <div class="wait__row">
+            <button class="btn btn--soft" id="waitCheckBtn">Я подтвердил</button>
+            <a class="btn btn--soft" id="waitOpenBtn" href="#" target="_blank" rel="noopener">Открыть ещё раз</a>
+          </div>
+          <button class="link-btn wait__cancel" id="waitCancelBtn">Войти другим способом</button>
+        </div>
         <div id="authFailPanel" class="panel hidden">
           <p class="hint" id="authFailText"></p>
           <button id="authRetryBtn" class="btn btn--soft"><span>Попробовать снова</span></button>
@@ -439,7 +480,11 @@ document.addEventListener('DOMContentLoaded', function(){
   if(BRAND_LOGO){
     document.querySelectorAll('.brand-mark').forEach(box => {
       const img = box.querySelector('img'), fallback = box.querySelector('svg');
-      img.onload = () => { img.classList.remove('hidden'); fallback.classList.add('hidden'); };
+      img.onload = () => {
+        img.classList.remove('hidden');
+        fallback.classList.add('hidden');
+        box.classList.add('has-logo');
+      };
       img.src = BRAND_LOGO;
     });
   }
@@ -478,27 +523,71 @@ document.addEventListener('DOMContentLoaded', function(){
   const passwordInput = document.getElementById('passwordInput');
   const emailError = document.getElementById('emailError');
 
-  /* строка «ожидание подтверждения» появляется только после того, как человек
-     нажал «Войти через Telegram» — до этого ждать нечего */
-  const statusLine = document.getElementById('statusLine');
+  /* ожидание появляется только после того, как человек нажал «Войти через
+     Telegram» — до этого ждать нечего */
+  const waitPanel = document.getElementById('waitPanel');
+  const waitNote = document.getElementById('waitNote');
+  const waitCheckBtn = document.getElementById('waitCheckBtn');
+  const waitOpenBtn = document.getElementById('waitOpenBtn');
+  const waitCancelBtn = document.getElementById('waitCancelBtn');
   const authFailPanel = document.getElementById('authFailPanel');
   const authFailText = document.getElementById('authFailText');
   const authRetryBtn = document.getElementById('authRetryBtn');
   let awaitingTelegram = false;
-  authTelegramLink.addEventListener('click', () => {
+
+  /* Ссылка уводила вкладку на t.me. Telegram открывался, но страница входа
+     переставала существовать: опрос умирал, а человек, вернувшись из
+     мессенджера, оставался на t.me вместо кабинета.
+
+     Открываем отдельным окном и держим его: эта вкладка остаётся ждать, а
+     когда вход подтвердится, вкладку с t.me закрываем сами — иначе человек
+     вернётся из Telegram именно на неё. Если открыть окно не дали
+     (блокировщик), уходим по-старому: потерять вкладку лучше, чем не
+     открыть Telegram вовсе. */
+  let tgWindow = null;
+  function открытьTelegram(ev){
+    const url = ev.currentTarget.getAttribute('href');
+    if(!url || url === '#') return;
+    let w = null;
+    try{ w = window.open(url, 'tg_auth'); }catch(e){}
+    if(w){ ev.preventDefault(); tgWindow = w; try{ w.focus(); }catch(e){} }
+  }
+  function закрытьTelegram(){
+    try{ if(tgWindow && !tgWindow.closed) tgWindow.close(); }catch(e){}
+    tgWindow = null;
+  }
+
+  authTelegramLink.addEventListener('click', ev => {
+    открытьTelegram(ev);
     awaitingTelegram = true;
-    show(statusLine, 'flex');
+    hide(authMethods);
+    hide(waitNote);
+    show(waitPanel);
+  });
+  waitOpenBtn.addEventListener('click', ev => { hide(waitNote); открытьTelegram(ev); });
+  waitCancelBtn.addEventListener('click', () => {
+    awaitingTelegram = false;
+    hide(waitPanel);
+    show(authMethods, 'flex');
+  });
+  waitCheckBtn.addEventListener('click', async () => {
+    hide(waitNote);
+    const ок = await withPending(waitCheckBtn, 'Проверяем…', проверитьВход);
+    if(!ок){
+      waitNote.textContent = 'Подтверждения пока нет. Откройте чат с ботом и нажмите «Запустить» — кнопка внизу экрана.';
+      show(waitNote);
+    }
   });
 
   function goToMethods(){
     hide(emailPanel); hide(document.getElementById('subPanel')); hide(document.getElementById('resetPanel'));
     hide(document.getElementById('verifyPanel'));
-    show(authMethods, 'flex'); show(authHeader);
-    if(awaitingTelegram) show(statusLine, 'flex');
+    show(authHeader);
+    awaitingTelegram ? show(waitPanel) : show(authMethods, 'flex');
   }
 
   showEmailBtn.addEventListener('click', () => {
-    hide(authHeader); hide(authMethods); hide(statusLine); hide(authFailPanel);
+    hide(authHeader); hide(authMethods); hide(waitPanel); hide(authFailPanel);
     show(emailPanel, 'flex'); hide(emailError);
     setTimeout(() => emailInput.focus(), 60);
   });
@@ -513,7 +602,7 @@ document.addEventListener('DOMContentLoaded', function(){
   const backFromSubBtn = document.getElementById('backFromSubBtn');
 
   showSubBtn.addEventListener('click', () => {
-    hide(authHeader); hide(authMethods); hide(statusLine); hide(authFailPanel);
+    hide(authHeader); hide(authMethods); hide(waitPanel); hide(authFailPanel);
     show(subPanel, 'flex'); hide(subError);
     setTimeout(() => subUrlInput.focus(), 60);
   });
@@ -838,18 +927,25 @@ document.addEventListener('DOMContentLoaded', function(){
   if(savedToken){ window.location.href = '/?token=' + savedToken; return; }
 
   /* опрос обязан заканчиваться: раньше он крутился вечно и при любом сбое
-     человек до конца жизни смотрел на «Ожидание подтверждения…» */
-  const AUTH_POLL_TIMEOUT_MS = 120000;
+     человек до конца жизни смотрел на «Ожидание подтверждения…».
+     Счётчик считает только то время, что вкладка была на виду: человек
+     уходит подтверждать в другое приложение, и списывать эти минуты в
+     таймаут — значит объявлять неудачей как раз то, ради чего он ушёл. */
+  const AUTH_POLL_TIMEOUT_MS = 300000;
   let authPollInterval = null;
+  let authToken = null;
+  let pollStartedAt = 0, hiddenSince = null, hiddenTotal = 0;
 
   function stopAuthPolling(){
     if(authPollInterval){ clearInterval(authPollInterval); authPollInterval = null; }
+    authToken = null;
   }
 
   function showAuthFailure(msg){
     stopAuthPolling();
     hide(loader);
-    hide(statusLine);
+    hide(waitPanel);
+    hide(authMethods);
     show(authCard, 'flex');
     authFailText.textContent = msg;
     show(authFailPanel, 'flex');
@@ -857,32 +953,60 @@ document.addEventListener('DOMContentLoaded', function(){
 
   authRetryBtn.addEventListener('click', () => {
     hide(authFailPanel);
+    hide(waitPanel);
     awaitingTelegram = false;
+    /* способы входа вернуть обязательно: их прячет showAuthFailure, и без
+       этого «Попробовать снова» приводило к карточке без единой кнопки */
+    show(authMethods, 'flex');
+    show(authHeader);
     show(loader, 'flex');
     hide(authCard);
     handleExternalAuth();
   });
 
-  async function startAuthPolling(token){
-    const startedAt = Date.now();
+  /* Одна проверка. Возвращает true, если вход состоялся, — на этом же
+     ответе построена кнопка «Я подтвердил». */
+  async function проверитьВход(){
+    if(!authToken) return false;
+    try{
+      const response = await fetch('/api/auth/check-token/' + authToken);
+      const data = await response.json();
+      if(!data.authorized) return false;
+      const finalToken = data.token || authToken;
+      stopAuthPolling();
+      закрытьTelegram();
+      setAuthToken(finalToken);
+      window.location.href = '/?token=' + finalToken;
+      return true;
+    }catch(e){ return false; }
+  }
+
+  function startAuthPolling(token){
     stopAuthPolling();
+    authToken = token;
+    pollStartedAt = Date.now();
+    hiddenSince = document.hidden ? Date.now() : null;
+    hiddenTotal = 0;
     authPollInterval = setInterval(async () => {
-      if(Date.now() - startedAt > AUTH_POLL_TIMEOUT_MS){
+      if(document.hidden) return;
+      if(Date.now() - pollStartedAt - hiddenTotal > AUTH_POLL_TIMEOUT_MS){
         showAuthFailure('Подтверждение из Telegram так и не пришло. Нажмите «Войти через Telegram» ещё раз или войдите по Email.');
         return;
       }
-      try{
-        const response = await fetch('/api/auth/check-token/' + token);
-        const data = await response.json();
-        if(data.authorized){
-          stopAuthPolling();
-          const finalToken = data.token || token;
-          setAuthToken(finalToken);
-          window.location.href = '/?token=' + finalToken;
-        }
-      }catch(e){}
+      проверитьВход();
     }, 2000);
   }
+
+  /* Возврат из Telegram — самый вероятный момент, когда подтверждение уже
+     есть. Ждать очередного тика таймера здесь незачем, а на телефоне и
+     нельзя: в фоне браузер их придерживает, а страницу может и выгрузить —
+     тогда она восстановится из кэша, и pageshow будет единственным сигналом. */
+  document.addEventListener('visibilitychange', () => {
+    if(document.hidden){ hiddenSince = Date.now(); return; }
+    if(hiddenSince){ hiddenTotal += Date.now() - hiddenSince; hiddenSince = null; }
+    проверитьВход();
+  });
+  window.addEventListener('pageshow', e => { if(e.persisted) проверитьВход(); });
 
   async function handleExternalAuth(){
     /* лоадер снимаем на любом исходе, иначе страница выглядит как вечная
@@ -892,6 +1016,7 @@ document.addEventListener('DOMContentLoaded', function(){
       const data = await response.json();
       if(data && data.ok){
         authTelegramLink.href = data.auth_url;
+        waitOpenBtn.href = data.auth_url;
         hide(loader);
         show(authCard, 'flex');
         startAuthPolling(data.token);
