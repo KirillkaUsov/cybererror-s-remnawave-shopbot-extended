@@ -604,6 +604,14 @@ async def _run_speedtests_for_all_ssh_targets():
     if not targets:
         logger.debug("Scheduler: Нет SSH-целей для измерений скорости.")
         return
+    # Выключенную цель не трогаем: get_all_ssh_targets отдаёт и такие — они
+    # нужны панели, чтобы показать переключатель. Без этой проверки узел,
+    # с которого Ookla недоступна, каждые восемь часов съедал по три минуты
+    # таймаута и писал в журнал одну и ту же ошибку.
+    targets = [t for t in targets if int(t.get('is_active') or 0) != 0]
+    if not targets:
+        logger.debug("Scheduler: Все SSH-цели выключены.")
+        return
     logger.info(f"Scheduler: Запускаю SSH speedtest для {len(targets)} цел(ей)...")
     for t in targets:
         target_name = (t.get('target_name') or '').strip()
