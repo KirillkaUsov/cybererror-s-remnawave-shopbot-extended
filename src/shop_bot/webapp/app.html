@@ -140,35 +140,44 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 
 .main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
 .scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-.container{width:100%;max-width:760px;margin:0 auto;padding:16px var(--pad) 28px}
+/* сетка в одну колонку — чтобы уходящий и приходящий экраны на время
+   перехода вставали в одну и ту же ячейку. В обычном потоке они шли бы
+   друг за другом и страница на эти полкадра вырастала бы вдвое, поэтому
+   раньше переход и приходилось делать по очереди, с пустотой посередине.
+   position:fixed внутри от grid не страдает — точкой отсчёта его делает
+   только transform. */
+.container{width:100%;max-width:760px;margin:0 auto;padding:16px var(--pad) 28px;
+  display:grid;grid-template-columns:minmax(0,1fr)}
+.container > .view.is-active,.container > .view.is-leaving{grid-area:1/1}
 
-.view{display:none}
+.view{display:none;min-width:0}
 /* экран проявляется только прозрачностью: сдвиг оставил бы на .view
    transform (даже нулевой), а он делает её точкой отсчёта для панели
    оплаты с position:fixed — та уезжала бы под экран. Движение берут на
    себя карточки внутри. */
-.view.is-active{display:block;animation:view-in .19s var(--ease) both}
+.view.is-active{display:block;animation:view-in .16s var(--ease) both}
 @keyframes view-in{from{opacity:0}to{opacity:1}}
-/* Уходящий экран гаснет, и только потом на его место встаёт новый. Раньше
-   старый пропадал в тот же кадр, и переход читался как мигание: пусто —
-   и снизу подъезжает другое содержимое. Прозрачность и здесь без сдвига,
-   причина та же, что у view-in. */
-.view.is-leaving{display:block;pointer-events:none;animation:view-out .11s var(--ease) both}
+/* Уходящий и приходящий экраны лежат в одной ячейке сетки (см. .container)
+   и потому гаснут-проявляются одновременно. Раньше они шли по очереди —
+   старый гас, и только через 95 мс появлялся новый. В замерах на этот стык
+   приходилось по 3–5 кадров, в которых на экране не было ни одного экрана;
+   именно это и читалось как рывок. */
+.view.is-leaving{display:block;pointer-events:none;animation:view-out .13s var(--ease) both}
 @keyframes view-out{from{opacity:1}to{opacity:0}}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
-/* Содержимое экрана подъезжает снизу двумя-тремя ступенями. Раньше экран
-   просто проявлялся целиком, и переход читался как мигание.
+/* Содержимое экрана подъезжает снизу — одним движением, без лесенки.
+   По вкладкам ходят десятки раз за сеанс: чем короче и однороднее движение,
+   тем меньше оно похоже на задержку. Ступени между карточками добавляли
+   к переходу ещё 80 мс ряби на каждое переключение.
    Заливка именно backwards: с both на элементе навсегда остаётся transform
    (пусть и единичный), а он делает его точкой отсчёта для всего, что внутри
    с position:fixed. */
-.view.is-active > *{animation:view-rise .34s var(--ease) backwards}
-.view.is-active > *:nth-child(2){animation-delay:.045s}
-.view.is-active > *:nth-child(n+3){animation-delay:.08s}
-@keyframes view-rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+.view.is-active > *{animation:view-rise .2s var(--ease) backwards}
+@keyframes view-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 /* в каталоге внутри колонки живёт панель оплаты с position:fixed — transform
    у её предка стал бы для неё точкой отсчёта, поэтому здесь только прозрачность */
-#view-catalog.is-active > .buy-grid{animation-name:view-in;animation-duration:.28s}
+#view-catalog.is-active > .buy-grid{animation-name:view-in;animation-duration:.2s}
 
 /* мягкая подмена содержимого на месте: список перерисовывается, а не
    переключается рывком */
@@ -183,15 +192,18 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 @keyframes swap-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 
 /* списки проявляются лесенкой — только там, где содержимое перерисовывается
-   редко, иначе анимация повторялась бы на каждый клик */
-.stagger > *{animation:rise .34s var(--ease) both}
+   редко, иначе анимация повторялась бы на каждый клик.
+   Заливка backwards, а не both: с both на каждой карточке навсегда остаётся
+   transform, и любой position:fixed внутри начинает считаться от неё. */
+.stagger > *{animation:rise .24s var(--ease) backwards}
 .stagger > *:nth-child(1){animation-delay:.02s}
 .stagger > *:nth-child(2){animation-delay:.05s}
 .stagger > *:nth-child(3){animation-delay:.08s}
 .stagger > *:nth-child(4){animation-delay:.11s}
 .stagger > *:nth-child(5){animation-delay:.14s}
-.stagger > *:nth-child(6){animation-delay:.17s}
-.stagger > *:nth-child(n+7){animation-delay:.2s}
+/* дальше лесенку обрываем: к седьмой карточке задержка догоняет саму
+   анимацию, и низ списка начинает выглядеть подвисшим */
+.stagger > *:nth-child(n+6){animation-delay:.16s}
 
 .page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 16px;min-height:36px}
 .page-head h1{font-size:20px}
@@ -216,8 +228,15 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
   transition:transform .13s var(--ease),border-color .13s var(--ease)}
 .sub-card[onclick]:active,.notify[onclick]:active,[role="button"]:active,.tile[onclick]:active{
   transform:scale(.988)}
-.skeleton{min-height:150px;background:linear-gradient(90deg,rgba(255,255,255,.02),rgba(255,255,255,.055),rgba(255,255,255,.02));background-size:200% 100%;animation:shimmer 1.3s linear infinite}
-@keyframes shimmer{to{background-position:-200% 0}}
+/* Блик едет трансформацией, а не background-position. Сдвиг фона заставляет
+   браузер перерисовывать заглушку каждый кадр — и приходится это ровно на
+   загрузку данных, когда основной поток и так занят. Трансформация уходит
+   на видеокарту и загрузке не мешает. */
+.skeleton{min-height:150px;position:relative;overflow:hidden;background:rgba(255,255,255,.022)}
+.skeleton:after{content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent);
+  transform:translateX(-100%);animation:shimmer 1.3s linear infinite}
+@keyframes shimmer{to{transform:translateX(100%)}}
 
 /* пустое место рисуем такой же спокойной рамкой, как всё остальное: пунктир
    выбивался из набора и читался как незагруженный блок */
@@ -232,7 +251,25 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .notify__head b{font-size:14px}
 .notify__time{font-size:11px;color:var(--dim);white-space:nowrap}
 .notify__body{margin:0;font-size:13.5px;line-height:1.5;color:var(--dim);white-space:pre-wrap;overflow-wrap:anywhere}
+/* разметка приходит из рассылки — телеграмный набор тегов, разобранный на
+   сервере. Показываем её так же, как её видят в самом Telegram */
+.notify__body b{color:var(--text);font-weight:600}
+.notify__body a{color:var(--accent);text-decoration:none}
+.notify__body a:hover{text-decoration:underline}
+.notify__body code,.notify__body pre{font-family:var(--mono);font-size:12.5px;
+  background:var(--surface-2);border-radius:6px;padding:1px 5px}
+.notify__body pre{display:block;padding:9px 11px;margin:7px 0;overflow-x:auto;white-space:pre}
+.notify__body blockquote{margin:7px 0;padding-left:11px;border-left:2px solid var(--line-2)}
+.notify__body .tg-spoiler{background:var(--surface-3);color:transparent;border-radius:3px}
+.notify__body .tg-spoiler:hover,.notify__body .tg-spoiler:focus{color:inherit;background:none}
+.notify__media{display:block;width:100%;max-height:320px;object-fit:cover;
+  border-radius:var(--r-sm);margin-bottom:9px;background:var(--surface-2)}
+.notify__media-link{display:block}
 .notify__link{margin-top:9px}
+/* «поддержка сейчас не на связи» — над списком обращений */
+.support-closed{margin:0 0 10px;padding:11px 13px;border:1px solid var(--line);
+  border-radius:var(--r-md);background:var(--surface);color:var(--dim);
+  font-size:13px;line-height:1.5}
 .empty__icon{width:36px;height:36px;margin:0 auto 14px;color:var(--faint)}
 .empty h2{font-size:16px;margin:0 0 8px}
 .empty p{font-size:13px;line-height:1.6;color:var(--dim);margin:0 0 18px}
@@ -511,7 +548,11 @@ h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.011em}
 .theme-row{display:flex;flex-wrap:wrap;gap:10px}
 .theme-dot{position:relative;width:34px;height:34px;border-radius:50%;padding:0;
   background:var(--dot);border:2px solid transparent;transition:transform .16s var(--ease),border-color .16s var(--ease)}
-.theme-dot:hover{transform:scale(1.08)}
+/* только для мыши: на телефоне касание оставляет ложный :hover, и кружок
+   так и остаётся увеличенным после выбора темы */
+@media (hover:hover) and (pointer:fine){
+  .theme-dot:hover{transform:scale(1.08)}
+}
 .theme-dot.is-active{border-color:var(--text)}
 .theme-dot__ring{position:absolute;inset:-5px;border-radius:50%;border:1px solid transparent;transition:border-color .16s var(--ease)}
 .theme-dot.is-active .theme-dot__ring{border-color:var(--line-2)}
@@ -711,8 +752,11 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 /* колонок ровно столько, сколько пунктов: число в repeat() уже расходилось
    с NAV и оставляло лишнюю пустую колонку */
 .tabbar{flex:0 0 auto;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);padding:8px 6px var(--safe-b);min-height:calc(var(--tabbar-h) + var(--safe-b));border-top:1px solid var(--line);background:var(--bg-elev)}
-.tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--faint);font-size:11px;font-weight:500;transition:color .18s var(--ease)}
-.tab .icon{width:20px;height:20px;transition:transform .24s var(--ease)}
+/* по вкладкам ходят чаще, чем делают что-либо ещё, поэтому здесь самое
+   короткое движение в интерфейсе: 240 мс на сдвиг иконки в один пиксель —
+   это не движение, а задержка ответа на нажатие */
+.tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--faint);font-size:11px;font-weight:500;transition:color .14s var(--ease)}
+.tab .icon{width:20px;height:20px;transition:transform .14s var(--ease)}
 .tab.is-active{color:var(--accent)}
 .tab.is-active .icon{transform:translateY(-1px)}
 .tab:active .icon{transform:scale(.9)}
@@ -779,6 +823,10 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
 /* ---------- chat mode: only the message list scrolls ---------- */
 .main.is-chat .scroll{overflow:hidden;display:flex;flex-direction:column}
 .main.is-chat .container{flex:1;min-height:0;display:flex;flex-direction:column;padding-bottom:0}
+/* в режиме переписки колонка не сетка, а флекс — уходящий экран встал бы
+   не поверх нового, а под ним и растянул бы страницу. Перекрёстного
+   растворения здесь нет: чат открывается и закрывается редко */
+.main.is-chat .container > .view.is-leaving{display:none}
 .main.is-chat #view-support{flex:1;min-height:0;display:flex;flex-direction:column}
 .main.is-chat .support-layout{flex:1;min-height:0;display:flex;flex-direction:column}
 .main.is-chat .chat{flex:1}
@@ -1204,6 +1252,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
           </div>
           <div class="support-layout">
             <div id="supportListView">
+              <p class="support-closed is-hidden" id="supportClosed"></p>
               <div id="supportHistory"><div class="card skeleton"></div></div>
               <button class="btn btn--primary btn--block mt-2" id="newTicketBtn" onclick="openNewTicket()">Новое обращение</button>
             </div>
@@ -1385,7 +1434,7 @@ button.info-row:hover .info-row__copy{color:var(--text);border-color:var(--line-
     <div class="sheet__sub">Заметка для себя, подключённые устройства и ссылка</div>
 
     <label class="field-label mt-0" for="manageNote">Личная заметка</label>
-    <input class="field" id="manageNote" placeholder="Например: ноутбук жены">
+    <input class="field" id="manageNote" placeholder="Например: ноутбук жены" maxlength="20">
     <button class="btn btn--ghost btn--block mt-1" onclick="saveManageNote()">Сохранить заметку</button>
 
     <div class="divider"></div>
@@ -1437,7 +1486,7 @@ const state = {
   methods: [], balance: 0, useBalance: false, topupMethod: null,
   promoPreview: null,
   pendingPaymentId: null, pendingPaymentKind: 'order',
-  support: { tickets: [], current: null, view: 'list', mediaConfig: null },
+  support: { tickets: [], current: null, view: 'list', mediaConfig: null, closed: null },
   referral: null,
 };
 let currentScreen = 'home';
@@ -1500,6 +1549,12 @@ function swapIn(el, html){
 function fillLoaded(el, html){
   if(!el) return;
   const wasLoading = !!el.querySelector('.skeleton') || !el.childElementCount;
+  /* Ровно та же разметка, что уже стоит на месте, — не переписываем.
+     innerHTML это полный разбор и пересборка вёрстки, и приходился он на
+     каждый заход во вкладку: в замерах именно там был самый долгий кадр
+     перехода. Заодно не переигрывается лесенка появления. */
+  if(!wasLoading && el.__html === html) return;
+  el.__html = html;
   el.innerHTML = html;
   if(wasLoading && !motionOff()) swapIn(el);
 }
@@ -1751,29 +1806,28 @@ function setActiveNav(name){
    было бы странно. */
 const scrollMemory = {};
 const SCROLL_FORGET = ['catalog'];
-/* Смена экрана в два шага: старый гаснет, потом встаёт новый. Оба экрана
-   лежат в общем потоке, поэтому показать их одновременно нельзя — страница
-   выросла бы вдвое; отсюда именно очередь, а не наложение.
-   Задержка чисто зрительная: запросы уходят сразу, не дожидаясь её. */
-const VIEW_OUT_MS = 95;
+/* Смена экрана — перекрёстное растворение: новый проявляется поверх старого,
+   оба лежат в одной ячейке .container. Раньше это была очередь — старый гас,
+   и только через 95 мс появлялся новый; на стыке оставалось по 3–5 кадров с
+   пустым экраном, и переход читался рывком.
+   Уходящий экран убираем по concurrent-таймеру, а не по animationend: тот
+   не придёт, если вкладку увели в фон посреди перехода. */
+const VIEW_OUT_MS = 140;
 let viewSwapTimer = null;
 function swapView(name){
   const to = $('view-' + name);
   if(!to) return;
   clearTimeout(viewSwapTimer);
-  /* хвост незаконченного перехода: два экрана в потоке разом не оставляем */
-  document.querySelectorAll('.view.is-leaving').forEach(v => v.classList.remove('is-leaving', 'is-active'));
+  /* хвост незаконченного перехода: третий экран в ячейке никому не нужен */
+  document.querySelectorAll('.view.is-leaving').forEach(v => v.classList.remove('is-leaving'));
   const from = document.querySelector('.view.is-active');
-  const finish = () => {
-    if(from) from.classList.remove('is-leaving', 'is-active');
-    to.classList.add('is-active');
-    restoreScroll(name);
-  };
-  /* при выключенном движении меняем сразу: даже нулевая задержка оставила бы
-     кадр, в котором ни один экран не показан */
-  if(!from || from === to || motionOff()){ finish(); return; }
+  if(from !== to && from) from.classList.remove('is-active');
+  to.classList.add('is-active');
+  restoreScroll(name);
+  /* при выключенном движении просто меняем содержимое */
+  if(!from || from === to || motionOff()) return;
   from.classList.add('is-leaving');
-  viewSwapTimer = setTimeout(finish, VIEW_OUT_MS);
+  viewSwapTimer = setTimeout(() => from.classList.remove('is-leaving'), VIEW_OUT_MS);
 }
 function motionOff(){
   try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; }
@@ -2277,6 +2331,18 @@ function notifyTime(raw){
   return d.toLocaleDateString('ru-RU', {day:'numeric', month:'long'}) + ', ' + time;
 }
 
+function notifyMedia(n){
+  /* ссылка приходит своя, с этого же домена; на всякий случай не пускаем
+     ничего, кроме неё — картинка из рассылки не повод открывать чужой адрес */
+  const src = String(n.media_url || '');
+  if(!src.startsWith('/static/broadcasts/')) return '';
+  if(n.media_type === 'video'){
+    return '<video class="notify__media" src="' + esc(src) + '" controls playsinline preload="metadata"></video>';
+  }
+  return '<a class="notify__media-link" href="' + esc(src) + '" target="_blank" rel="noopener">'
+    + '<img class="notify__media" src="' + esc(src) + '" alt="Картинка из сообщения" loading="lazy"></a>';
+}
+
 function renderNotifications(){
   const box = $('notifyList');
   if(!notifyItems.length){
@@ -2287,10 +2353,15 @@ function renderNotifications(){
   box.innerHTML = notifyItems.map(n => {
     const link = n.url ? '<a class="btn btn--ghost btn--sm notify__link" href="' + esc(n.url) + '" target="_blank" rel="noopener">'
       + esc(n.url_text || 'Открыть') + '</a>' : '';
+    /* body_html уже разобран на сервере до разрешённого набора тегов —
+       здесь его экранировать нельзя, иначе жирный шрифт и ссылки снова
+       превратятся в текст «<b>» на экране */
+    const text = n.body_html || esc(n.body || '');
     return '<article class="notify' + (n.read ? '' : ' notify--new') + '">'
       + '<div class="notify__head"><b>' + esc(n.title || 'Сообщение') + '</b>'
       + '<span class="notify__time">' + esc(notifyTime(n.created_at)) + '</span></div>'
-      + '<p class="notify__body">' + esc(n.body || '') + '</p>' + link + '</article>';
+      + notifyMedia(n)
+      + (text ? '<div class="notify__body">' + text + '</div>' : '') + link + '</article>';
   }).join('');
 }
 
@@ -3441,11 +3512,28 @@ async function loadSupportHistory(){
     if(!d.ok) throw new Error(d.error || 'Обращения недоступны');
     const first = !state.support.tickets.length;
     state.support.tickets = d.tickets || [];
+    state.support.closed = d.closed || null;
+    paintSupportClosed();
     renderSupportList(first);
   }catch(e){
     root.innerHTML = errorCard('Не удалось загрузить обращения', e.message, 'loadSupportHistory()');
   }
 }
+/* Часы приёма. Кнопку «Новое обращение» не прячем, а гасим: исчезнувшая
+   кнопка выглядит поломкой, а погашенная с подписью рядом — объяснением. */
+function paintSupportClosed(){
+  const note = $('supportClosed'), text = state.support.closed;
+  if(note){
+    note.textContent = text || '';
+    toggle('supportClosed', !text);
+  }
+  document.querySelectorAll('#newTicketBtn,.page-head__desktop-only').forEach(btn => {
+    if(btn.getAttribute('onclick') !== 'openNewTicket()') return;
+    btn.disabled = !!text;
+    btn.title = text || '';
+  });
+}
+
 function statusPill(status){
   const open = status === 'open';
   return `<span class="pill ${open ? 'pill--ok' : ''}">${open ? 'Открыт' : 'Закрыт'}</span>`;

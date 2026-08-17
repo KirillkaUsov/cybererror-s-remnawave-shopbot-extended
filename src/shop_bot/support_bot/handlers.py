@@ -9,6 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest
 from shop_bot.modules import support_text
+from shop_bot.modules import support_hours
 
 from shop_bot.data_manager.remnawave_repository import (
     get_setting,
@@ -242,6 +243,25 @@ def get_support_router() -> Router:
              else:
                  await event.answer(TXT_BAN_RESTRICTED)
         
+        if state:
+            await state.clear()
+        return True
+
+    async def _check_support_hours(event: types.Message | types.CallbackQuery,
+                                   state: FSMContext = None) -> bool:
+        """Закрыта ли поддержка прямо сейчас. Проверяем только на новом обращении:
+        ответить в уже открытый тикет можно в любое время."""
+        text = support_hours.unavailable_text(get_setting)
+        if not text:
+            return False
+        if isinstance(event, types.CallbackQuery):
+            try:
+                await event.answer()
+                await event.message.answer(text, reply_markup=_user_main_reply_kb())
+            except Exception:
+                pass
+        else:
+            await event.answer(text, reply_markup=_user_main_reply_kb())
         if state:
             await state.clear()
         return True
@@ -687,6 +707,8 @@ def get_support_router() -> Router:
          if isinstance(event, types.CallbackQuery):
              await event.answer()
          if await _check_banned(event, state):
+             return
+         if await _check_support_hours(event, state):
              return
          if await _check_active_ticket(event, event.from_user.id):
              return
@@ -1266,6 +1288,12 @@ def get_support_router() -> Router:
             return
 
         if await _check_banned(message, state):
+            return
+
+        # Свободное сообщение заводит новое обращение, если открытого нет —
+        # значит здесь тоже действуют часы приёма. Продолжение уже открытой
+        # переписки через эту же ручку проходит в любое время.
+        if not _get_latest_open_ticket(user_id) and await _check_support_hours(message, state):
             return
 
         content = (message.text or message.caption or '')

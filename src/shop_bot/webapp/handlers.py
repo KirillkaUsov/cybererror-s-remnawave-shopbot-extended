@@ -1759,6 +1759,7 @@ async def api_device_addon(req: DeviceAddonRequest, auth: dict = Depends(webapp_
 @app.get("/api/notifications")
 async def api_notifications(auth: dict = Depends(webapp_user)):
     from shop_bot.data_manager import database
+    from shop_bot.modules import tg_html
     uid = session_user_id(auth)
     try:
         items = database.get_notifications(uid, limit=50)
@@ -1769,9 +1770,14 @@ async def api_notifications(auth: dict = Depends(webapp_user)):
                 {
                     "id": n["notification_id"],
                     "title": n["title"],
-                    "body": n["body"],
+                    # Текст рассылки размечен по-телеграмному. Разбираем его
+                    # здесь: браузеру достаётся только разрешённый набор тегов.
+                    "body": tg_html.to_text(n["body"]),
+                    "body_html": tg_html.sanitize(n["body"]),
                     "url": n["url"],
                     "url_text": n["url_text"],
+                    "media_url": n["media_url"],
+                    "media_type": n["media_type"],
                     "created_at": n["created_at"],
                     "read": bool(n["read_at"]),
                 }
@@ -2658,21 +2664,42 @@ async def api_key_device_delete(req: DeleteDeviceRequest, auth: dict = Depends(w
         logger.error(f"[WEBAPP] - Ошибка удаления устройства для ключа {req.key_id}: {e}")
         return {"ok": False, "error": str(e)}
 
+KEY_COMMENT_MAX = 20
+
+
+def normalize_key_comment(comment: str) -> str:
+    """Заметка к ключу. Её видит и панель Remnawave, и списки в админке.
+
+    Ограничение длины и запрет управляющих символов — оттуда же, откуда их
+    берёт бот: перевод строки или \\x00 посреди заметки ломает вывод везде,
+    где её показывают одной строкой.
+    """
+    comment = (comment or "").strip()
+    if len(comment) > KEY_COMMENT_MAX:
+        raise ValueError(f"Заметка не длиннее {KEY_COMMENT_MAX} символов")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in comment):
+        raise ValueError("В заметке есть недопустимые символы")
+    return comment
+
+
 @app.post("/api/key/comment")
 async def api_key_comment(req: CommentRequest, auth: dict = Depends(webapp_user)):
     req.user_id = session_user_id(auth)
     try:
+        comment = normalize_key_comment(req.comment)
         user = get_user(req.user_id)
         if not user or user.get('is_banned'):
             return {"ok": False, "error": "Access denied"}
-            
+
         from shop_bot.data_manager.remnawave_repository import get_key_by_id, update_key
         key = get_key_by_id(req.key_id)
         if not key or key.get("user_id") != req.user_id:
             return {"ok": False, "error": "Ключ не найден"}
-            
-        update_key(req.key_id, comment_key=req.comment)
+
+        update_key(req.key_id, comment_key=comment)
         return {"ok": True}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка обновления комментария для ключа {req.key_id}: {e}")
         return {"ok": False, "error": str(e)}
@@ -2801,7 +2828,14 @@ async def api_support_history(req: SupportHistoryRequest, auth: dict = Depends(w
                 "last_sender": (last or {}).get('sender'),
             })
 
-        return {"ok": True, "tickets": items}
+        # Закрытые часы показываем сразу, а не после нажатия «Отправить»:
+        # написать письмо и получить отказ обиднее, чем узнать заранее.
+        from shop_bot.modules import support_hours
+        from shop_bot.data_manager.remnawave_repository import get_setting as _gs
+        closed = support_hours.unavailable_text(_gs)
+
+        return {"ok": True, "tickets": items,
+                "closed": support_hours.plain(closed) if closed else None}
     except Exception as e:
         logger.error(f"[WEBAPP] - Ошибка истории обращений для {req.user_id}: {e}")
         return {"ok": False, "error": "Внутренняя ошибка сервера"}
@@ -2909,6 +2943,13 @@ async def api_support_create(req: SupportTicketCreateRequest, auth: dict = Depen
             return {"ok": False, "error": "Слишком часто. Подождите пару секунд"}
 
         from shop_bot.data_manager.remnawave_repository import get_or_create_open_ticket, add_support_message, get_setting
+
+        # Часы приёма действуют одинаково в боте и в кабинете: иначе выключенная
+        # поддержка выключена только наполовину.
+        from shop_bot.modules import support_hours
+        closed = support_hours.unavailable_text(get_setting)
+        if closed:
+            return {"ok": False, "error": support_hours.plain(closed)}
 
         subject_text = req.subject.strip()[:64]
         if not subject_text:

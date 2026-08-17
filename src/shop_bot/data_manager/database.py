@@ -313,6 +313,8 @@ def initialize_db():
                     body TEXT,
                     url TEXT,
                     url_text TEXT,
+                    media_url TEXT,
+                    media_type TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     read_at TIMESTAMP
                 )
@@ -580,6 +582,13 @@ def initialize_db():
                 "privacy_url": None,
                 "support_user": None,
                 "support_text": None,
+                # Общий рубильник поддержки и часы приёма. Держать открытым
+                # круглосуточно окно, за которым никого нет, хуже, чем честно
+                # сказать, когда придёт ответ.
+                "support_enabled": "true",
+                "support_schedule_enabled": "false",
+                "support_schedule_start": "10:00",
+                "support_schedule_end": "23:00",
                 "channel_url": None,
                 "force_subscription": "true",
                 "receipt_email": "example@example.com",
@@ -1593,6 +1602,10 @@ def run_migration():
             _ensure_username_history_table(cursor)
             _ensure_email_codes_table(cursor)
             _ensure_support_media_table(cursor)
+            # Картинка из рассылки. Телеграму хватает file_id, а кабинету нужна
+            # ссылка, по которой браузер сходит сам.
+            _ensure_table_column(cursor, "user_notifications", "media_url", "TEXT")
+            _ensure_table_column(cursor, "user_notifications", "media_type", "TEXT")
             _ensure_promo_tables(cursor)
             _ensure_webapp_settings_table(cursor)
             try:
@@ -6013,18 +6026,22 @@ def get_broadcasts(limit: int = 50) -> list[dict]:
 
 def add_notification(user_id: int, title: str, body: str,
                      url: str | None = None, url_text: str | None = None,
-                     broadcast_id: int | None = None) -> bool:
+                     broadcast_id: int | None = None,
+                     media_url: str | None = None,
+                     media_type: str | None = None) -> bool:
     cursor = _exec(
-        "INSERT INTO user_notifications (user_id, broadcast_id, title, body, url, url_text) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (int(user_id), broadcast_id, title, body, url, url_text),
+        "INSERT INTO user_notifications "
+        "(user_id, broadcast_id, title, body, url, url_text, media_url, media_type) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (int(user_id), broadcast_id, title, body, url, url_text, media_url, media_type),
         f"Не удалось создать уведомление для {user_id}")
     return cursor is not None
 
 
 def get_notifications(user_id: int, limit: int = 50) -> list[dict]:
     return _fetch_list(
-        "SELECT notification_id, title, body, url, url_text, created_at, read_at "
+        "SELECT notification_id, title, body, url, url_text, media_url, media_type, "
+        "created_at, read_at "
         "FROM user_notifications WHERE user_id = ? ORDER BY notification_id DESC LIMIT ?",
         (int(user_id), int(limit)), "")
 

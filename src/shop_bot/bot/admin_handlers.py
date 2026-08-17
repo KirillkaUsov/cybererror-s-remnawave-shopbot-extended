@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import os
 import time
 import uuid
 import re
@@ -3214,6 +3215,33 @@ def get_admin_router() -> Router:
         except Exception:
             pass
 
+    async def _keep_broadcast_media(message: types.Message, bot: Bot) -> tuple[str | None, str | None]:
+        """Забирает вложение рассылки себе, чтобы показать его в кабинете.
+
+        В Telegram уходит copy_message — ему хватает file_id. Кабинет по
+        file_id ничего не покажет, поэтому картинку скачиваем и кладём рядом
+        со статикой. Не получилось — рассылка всё равно уходит, просто без
+        картинки в ящике.
+        """
+        if message.photo:
+            file_id, kind = message.photo[-1].file_id, "photo"
+        elif message.video:
+            file_id, kind = message.video.file_id, "video"
+        elif message.animation:
+            file_id, kind = message.animation.file_id, "animation"
+        else:
+            return None, None
+        try:
+            from shop_bot.modules import broadcast_media
+            file = await bot.get_file(file_id)
+            suffix = os.path.splitext(file.file_path or "")[1] or (".jpg" if kind == "photo" else ".mp4")
+            buffer = await bot.download_file(file.file_path)
+            kept = broadcast_media.store_bytes(buffer.read(), suffix, kind)
+            return kept if kept else (None, None)
+        except Exception as e:
+            logger.warning("Не удалось сохранить вложение рассылки для кабинета: %s", e)
+            return None, None
+
     @admin_router.callback_query(F.data == "start_broadcast")
     async def start_broadcast_handler(callback: types.CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id):
@@ -3324,11 +3352,18 @@ def get_admin_router() -> Router:
         logger.info(f"Рассылка: Начинаем итерацию по {len(users)} пользователям.")
 
         # В кабинет кладём текст сообщения: copy_message умеет копировать любое
-        # вложение, а ящику уведомлений нужно что-то читаемое.
-        preview = (original_message.text or original_message.caption or "").strip()
+        # вложение, а ящику уведомлений нужно что-то читаемое. Берём именно
+        # html_text — в .text разметка не попадает, и в кабинете сообщение
+        # теряло и жирный шрифт, и ссылки.
+        try:
+            preview = (original_message.html_text or "").strip()
+        except Exception:
+            preview = (original_message.text or original_message.caption or "").strip()
         has_media = not original_message.text
+        media_url, media_type = await _keep_broadcast_media(original_message, bot)
         if not preview:
-            preview = "Сообщение с вложением — откройте бота, чтобы посмотреть."
+            preview = ("Сообщение с вложением" if media_url
+                       else "Сообщение с вложением — откройте бота, чтобы посмотреть.")
 
         broadcast_id = start_broadcast(
             admin_id=callback.from_user.id,
@@ -3351,7 +3386,8 @@ def get_admin_router() -> Router:
             # это единственный канал, остальным остаётся как история.
             add_notification(
                 user_id, "Сообщение от команды", preview,
-                url=button_url, url_text=button_text, broadcast_id=broadcast_id)
+                url=button_url, url_text=button_text, broadcast_id=broadcast_id,
+                media_url=media_url, media_type=media_type)
 
             if not user_has_telegram(user):
                 in_app_count += 1

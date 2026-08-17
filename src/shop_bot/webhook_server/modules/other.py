@@ -292,7 +292,19 @@ async def send_broadcast_async(bot, users, text, media_path=None, media_type=Non
     banned_data = get_banned_users_data()
     initial_banned_set = set(banned_data.get('id', []))
     banned_set = initial_banned_set.copy()
-    
+
+    # Загруженный файл в конце рассылки удаляется, а в кабинете сообщение
+    # остаётся навсегда — откладываем копию, пока она ещё есть.
+    kept_media_url, kept_media_type = None, None
+    if media_path and media_type:
+        try:
+            from shop_bot.modules import broadcast_media
+            kept = broadcast_media.store_file(media_path, media_type)
+            if kept:
+                kept_media_url, kept_media_type = kept
+        except Exception as e:
+            logger.warning("Не удалось сохранить медиа рассылки для кабинета: %s", e)
+
     if task_id:
         with broadcast_lock:
             broadcast_progress[task_id] = {
@@ -330,7 +342,8 @@ async def send_broadcast_async(bot, users, text, media_path=None, media_type=Non
             rw_repo.add_notification(
                 user_id, "Сообщение от команды", (text or "").strip() or "Сообщение с вложением",
                 url=first_btn.get('value') if first_btn.get('type') == 'url' else None,
-                url_text=first_btn.get('text'), broadcast_id=broadcast_id)
+                url_text=first_btn.get('text'), broadcast_id=broadcast_id,
+                media_url=kept_media_url, media_type=kept_media_type)
         except Exception:
             pass
 

@@ -94,6 +94,9 @@ ALL_SETTINGS_KEYS = [
     "telegram_bot_username", "admin_telegram_id", "admin_telegram_ids", "yookassa_shop_id",
     "support_media_enabled", "support_media_max_mb", "support_media_allowed",
     "support_media_keep_days",
+    # общий рубильник поддержки и часы приёма
+    "support_enabled", "support_schedule_enabled",
+    "support_schedule_start", "support_schedule_end",
     "yookassa_secret_key", "sbp_enabled", "receipt_email", "cryptobot_token",
     "heleket_merchant_id", "heleket_api_key", "domain", "referral_percentage",
     "referral_discount", "ton_wallet_address", "tonapi_key", "force_subscription", "trial_enabled", "trial_duration_days", "trial_host_id", "trial_internal_squad_uuid", "trial_traffic_limit_gb", "trial_hwid_limit", "enable_referrals", "minimum_withdrawal",
@@ -3606,7 +3609,7 @@ def create_webhook_app(bot_controller_instance):
                 update_setting('panel_password', request.form.get('panel_password'))
 
 
-            checkbox_keys = ['force_subscription', 'sbp_enabled', 'trial_enabled', 'enable_referrals', 'enable_fixed_referral_bonus', 'stars_enabled', 'yoomoney_enabled', 'monitoring_enabled', 'platega_enabled', 'platega_crypto_enabled', 'platega_payform_enabled', 'skip_email', 'enable_wal_mode', 'stealth_login_enabled', 'demo_mode_enabled', 'smtp_enabled', 'email_verification_required']
+            checkbox_keys = ['force_subscription', 'sbp_enabled', 'trial_enabled', 'enable_referrals', 'enable_fixed_referral_bonus', 'stars_enabled', 'yoomoney_enabled', 'monitoring_enabled', 'platega_enabled', 'platega_crypto_enabled', 'platega_payform_enabled', 'skip_email', 'enable_wal_mode', 'stealth_login_enabled', 'demo_mode_enabled', 'smtp_enabled', 'email_verification_required', 'support_enabled', 'support_schedule_enabled']
             for checkbox_key in checkbox_keys:
                 values = request.form.getlist(checkbox_key)
                 value = values[-1] if values else 'false'
@@ -5177,6 +5180,14 @@ def create_webhook_app(bot_controller_instance):
             return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+
+    # Мобильное приложение: свой JSON-blueprint с токен-авторизацией.
+    # Падение модуля не должно ронять панель — она работает и без него.
+    try:
+        from .modules.mobile_api import register_mobile_api
+        register_mobile_api(flask_app, csrf, _bot_controller, _support_bot_controller)
+    except Exception as _mobile_err:
+        logger.error("Мобильный API не зарегистрирован: %s", _mobile_err, exc_info=True)
 
     register_other_routes(flask_app, login_required, get_common_template_data)
     register_update_routes(flask_app, login_required)

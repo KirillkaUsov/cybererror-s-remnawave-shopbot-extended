@@ -17,9 +17,16 @@ ssh_sessions = {}
 ssh_sessions_lock = threading.Lock()
 
 def clean_ansi(text):
+    """Вывод сервера без управляющих последовательностей.
+
+    Три прохода вместо одного выражения: заголовок окна (OSC) закрывается не
+    только BEL, но и ESC-обратной косой, а прежний шаблон ловил лишь первое —
+    хвост такой последовательности оставался в выводе как мусор.
+    """
     if not text: return ""
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|\x1B\(B|\x1B\][0-2];[^\x07]*\x07')
-    return ansi_escape.sub('', text)
+    text = re.sub(r'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)', '', text)
+    text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
+    return re.sub(r'\x1b[()][0-9A-Za-z]', '', text)
 
 def _as_float(value, default: float = 0.0) -> float:
     """Число из вывода сервера. Мониторинг не должен падать из-за строки.
@@ -49,11 +56,13 @@ def get_ssh_server(name, server_type):
     return None, (jsonify({'ok': False, 'error': 'Неверный тип сервера'}), 400)
 
 def get_ssh_credentials(server):
-    host = server.get('ssh_host')
+    # Пробел, залетевший в поле при копировании, раньше уходил в SSH как есть
+    # и давал «authentication failed» без единой подсказки, где искать.
+    host = (server.get('ssh_host') or '').strip()
     port = server.get('ssh_port', 22)
-    username = server.get('ssh_user') or server.get('ssh_username', 'root')
-    password = server.get('ssh_password')
-    key_path = server.get('ssh_key_path')
+    username = (server.get('ssh_user') or server.get('ssh_username') or 'root').strip()
+    password = (server.get('ssh_password') or '').strip() or None
+    key_path = (server.get('ssh_key_path') or '').strip() or None
     if not host or (not password and not key_path): 
         return None, (jsonify({'ok': False, 'error': 'Параметры SSH не настроены'}), 400)
     return (host, port, username, password, key_path), None
@@ -108,7 +117,35 @@ def execute_ssh_command(host, port, username, password, command, timeout=10, key
         return {'ok': exit_status == 0, 'output': output, 'error': error, 'exit_status': exit_status}
     except Exception as e:
         logger.error(f"Ошибка команды SSH ({host}:{port}): {e}")
-        return {'ok': False, 'output': '', 'error': str(e), 'exit_status': -1}
+        return {'ok': False, 'output': '', 'error': ssh_error_message(e), 'exit_status': -1}
+
+
+def ssh_error_message(error) -> str:
+    """Из чего именно не собралось подключение — по-человечески.
+
+    В панели раньше показывалась целиком строка исключения paramiko: она
+    длинная, английская и ничего не подсказывает о том, что чинить.
+    Полный текст остаётся в журнале.
+    """
+    text = str(error or '').strip()
+    low = text.lower()
+    if any(v in low for v in ('authentication failed', 'authentication exception',
+                              'auth failed', 'permission denied')):
+        return 'Неверный логин, пароль или ключ'
+    if 'no authentication methods available' in low:
+        return 'Не задан ни пароль, ни ключ SSH'
+    if any(v in low for v in ('timed out', 'timeout')):
+        return 'Сервер не ответил вовремя'
+    if any(v in low for v in ('connection refused', 'unable to connect', 'no route to host')):
+        return 'Сервер отказал в подключении — проверьте адрес и порт'
+    if any(v in low for v in ('name or service not known', 'nodename nor servname',
+                              'getaddrinfo', 'temporary failure in name resolution')):
+        return 'Адрес сервера не разрешается'
+    if 'host key' in low:
+        return 'Не совпал ключ хоста'
+    return text or 'Не удалось подключиться по SSH'
+
+
 def format_uptime(seconds):
     days, hours, minutes = int(seconds // 86400), int((seconds % 86400) // 3600), int((seconds % 3600) // 60)
     parts = []
