@@ -3221,7 +3221,7 @@ def get_user_router() -> Router:
             await callback.answer("⏳ Загружаю тарифы…")
             return await _show_plans_for_host(callback, hosts[0]['host_name'])
 
-        await smart_edit_message(callback.message, "🌍 <b>Откуда выходить в сеть</b>\n\nВыберите страну — от неё зависит скорость и то, какие сервисы откроются. Ошибиться не страшно: локацию у готовой подписки можно поменять потом, срок при этом сохранится.", keyboards.create_host_selection_keyboard(hosts, action="new"), get_setting("buy_server_image"))
+        await smart_edit_message(callback.message, "🌍 <b>Откуда выходить в сеть</b>\n\nВыберите страну — от неё зависит скорость и то, какие сервисы откроются. Локация закрепляется за подпиской, так что выбирайте ту, которой будете пользоваться.", keyboards.create_host_selection_keyboard(hosts, action="new"), get_setting("buy_server_image"))
         logger.info(f"Покупка: Пользователь {callback.from_user.id} открыл выбор сервера для новой подписки.")
     # ===== Конец функции buy_new_key_handler =====
 
