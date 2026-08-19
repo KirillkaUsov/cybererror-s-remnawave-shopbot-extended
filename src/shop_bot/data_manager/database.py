@@ -591,6 +591,9 @@ def initialize_db():
                 "support_schedule_end": "23:00",
                 "channel_url": None,
                 "force_subscription": "true",
+                # Премиум-эмодзи в сообщениях бота. Выключатель на случай,
+                # если анимация начнёт мешать, а не помогать.
+                "premium_emoji_enabled": "true",
                 # Подписка на канал ради бесплатных дней, а не ради входа:
                 # на пороге такое требование отпугивает, перед подарком — нет.
                 "trial_requires_subscription": "false",

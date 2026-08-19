@@ -6,7 +6,8 @@ import uvicorn
 from yookassa import Configuration
 from aiogram import Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode 
+from aiogram.enums import ParseMode
+from aiogram.client.session.middlewares.base import BaseRequestMiddleware
 
 from shop_bot.data_manager import remnawave_repository as rw_repo
 from shop_bot.bot.handlers import get_user_router
@@ -21,6 +22,40 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+
+class PremiumEmojiMiddleware(BaseRequestMiddleware):
+    """Оживляет эмодзи в каждом исходящем сообщении.
+
+    Живёт на уровне сессии, а не у каждого вызова: так премиум-эмодзи
+    получают и старые тексты, и любые новые, без правки полусотни мест.
+    Кнопки не трогаем — Telegram в подписях кнопок разметку не понимает.
+    """
+
+    async def __call__(self, make_request, bot, method):
+        try:
+            from shop_bot.modules import premium_emoji
+            from shop_bot.data_manager.remnawave_repository import get_setting
+            if premium_emoji.enabled(get_setting):
+                # aiogram кладёт в parse_mode не значение, а метку «взять
+                # умолчание бота» — сравнивать её со строкой бесполезно.
+                parse_mode = getattr(method, "parse_mode", None)
+                if type(parse_mode).__name__ == "Default" or parse_mode is None:
+                    parse_mode = bot.default.parse_mode if bot.default else None
+                # Только HTML: в Markdown такой тег — просто текст, а при
+                # разметке через entities смещения поедут.
+                is_html = str(getattr(parse_mode, "value", parse_mode)).upper() == "HTML"
+                if is_html and not getattr(method, "entities", None):
+                    if getattr(method, "text", None):
+                        method.text = premium_emoji.upgrade(method.text)
+                if is_html and not getattr(method, "caption_entities", None):
+                    if getattr(method, "caption", None):
+                        method.caption = premium_emoji.upgrade(
+                            method.caption, premium_emoji.MAX_CAPTION)
+        except Exception:
+            # Украшение не повод не доставить сообщение.
+            pass
+        return await make_request(bot, method)
+
 
 class BotController:
     def __init__(self):
@@ -113,6 +148,7 @@ class BotController:
                 self._dp = None
             
             self._bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+            self._bot.session.middleware(PremiumEmojiMiddleware())
             self._dp = Dispatcher()
 
             self._dp.message.middleware(BanMiddleware())

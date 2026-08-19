@@ -99,7 +99,7 @@ ALL_SETTINGS_KEYS = [
     "support_schedule_start", "support_schedule_end",
     "yookassa_secret_key", "sbp_enabled", "receipt_email", "cryptobot_token",
     "heleket_merchant_id", "heleket_api_key", "domain", "referral_percentage",
-    "referral_discount", "ton_wallet_address", "tonapi_key", "force_subscription", "trial_requires_subscription", "trial_enabled", "trial_duration_days", "trial_host_id", "trial_internal_squad_uuid", "trial_traffic_limit_gb", "trial_hwid_limit", "enable_referrals", "minimum_withdrawal",
+    "referral_discount", "ton_wallet_address", "tonapi_key", "force_subscription", "trial_requires_subscription", "premium_emoji_enabled", "trial_enabled", "trial_duration_days", "trial_host_id", "trial_internal_squad_uuid", "trial_traffic_limit_gb", "trial_hwid_limit", "enable_referrals", "minimum_withdrawal",
 
     "enable_fixed_referral_bonus", "fixed_referral_bonus_amount",
 
@@ -3609,7 +3609,7 @@ def create_webhook_app(bot_controller_instance):
                 update_setting('panel_password', request.form.get('panel_password'))
 
 
-            checkbox_keys = ['force_subscription', 'trial_requires_subscription', 'sbp_enabled', 'trial_enabled', 'enable_referrals', 'enable_fixed_referral_bonus', 'stars_enabled', 'yoomoney_enabled', 'monitoring_enabled', 'platega_enabled', 'platega_crypto_enabled', 'platega_payform_enabled', 'skip_email', 'enable_wal_mode', 'stealth_login_enabled', 'demo_mode_enabled', 'smtp_enabled', 'email_verification_required', 'support_enabled', 'support_schedule_enabled']
+            checkbox_keys = ['force_subscription', 'trial_requires_subscription', 'premium_emoji_enabled', 'sbp_enabled', 'trial_enabled', 'enable_referrals', 'enable_fixed_referral_bonus', 'stars_enabled', 'yoomoney_enabled', 'monitoring_enabled', 'platega_enabled', 'platega_crypto_enabled', 'platega_payform_enabled', 'skip_email', 'enable_wal_mode', 'stealth_login_enabled', 'demo_mode_enabled', 'smtp_enabled', 'email_verification_required', 'support_enabled', 'support_schedule_enabled']
             for checkbox_key in checkbox_keys:
                 values = request.form.getlist(checkbox_key)
                 value = values[-1] if values else 'false'
