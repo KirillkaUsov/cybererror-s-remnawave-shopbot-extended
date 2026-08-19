@@ -72,11 +72,11 @@ async def is_member(user_id: int, bot=None) -> bool:
     own = None
     try:
         if bot is None:
-            from aiogram import Bot
+            from shop_bot.modules import premium_emoji
             token = _setting("telegram_bot_token")
             if not token:
                 return True
-            own = bot = Bot(token=token)
+            own = bot = premium_emoji.make_bot(token=token)
         member = await bot.get_chat_member(chat_id=target, user_id=int(user_id))
         ok = str(getattr(member, "status", "")).lower().split(".")[-1] in _MEMBER_STATUSES
     except Exception as e:

@@ -48,6 +48,44 @@ EMOJI: dict[str, str] = {
     "💬": "5443038326535759644",   # news
     "🎯": "5350460637182993292",
     "🔥": "5353079703945120148",   # adaptive
+
+    # Состояния и приметы интерфейса
+    "👥": "5372926953978341366",
+    "🏦": "5264895611517300926",
+    "🟢": "5416081784641168838",   # news
+    "🔴": "5411225014148014586",   # news
+    "🏁": "5411520005386806155",
+    "🖥": "5312461266218941589",   # adaptive
+    "➕": "5353047173862819510",   # adaptive
+    "⚙": "5341715473882955310",   # news
+    "🚫": "5352971208776253986",   # adaptive
+    "❗": "5274099962655816924",   # news
+    "ℹ": "5334544901428229844",   # news
+    "🚨": "5395695537687123235",   # news
+    "📌": "5397782960512444700",   # news
+    "🔗": "5422388729366992632",   # adaptive
+    "💸": "5350613821486567987",   # adaptive
+    "🪙": "5422442068565841497",   # adaptive
+    "📈": "5244837092042750681",   # news
+    "🏆": "5350371117179638844",   # adaptive
+    "✨": "5325547803936572038",   # news
+    "⌛": "5422415710351547667",   # adaptive
+    "🌍": "5399898266265475100",
+    "🎡": "5226711870492126219",
+
+    # Флаги локаций. В подписях кнопок Telegram разметку не понимает, так что
+    # там флаг остаётся обычным; оживает он в тексте сообщений — списке
+    # локаций, результатах замеров, карточке подписки.
+    "🇪🇺": "5228784522924930237",
+    "🇺🇸": "5202021044105257611",
+    "🇩🇪": "5409360418520967565",
+    "🇫🇮": "5382151560182642075",
+    "🇸🇪": "5384542551296455687",
+    "🇳🇱": "5411124743841524806",
+    "🇫🇷": "5202132623060640759",
+    "🇨🇭": "5442703336266543270",
+    "🇵🇱": "5291847690940852675",
+    "🇷🇺": "5449408995691341691",
 }
 
 VARIATION = "️"
@@ -58,13 +96,21 @@ _PROTECTED = re.compile(
     r"(<tg-emoji\b.*?</tg-emoji>|<code\b.*?</code>|<pre\b.*?</pre>|<[^>]*>)",
     re.DOTALL | re.IGNORECASE,
 )
-_TARGETS = re.compile("(" + "|".join(re.escape(k) for k in EMOJI) + ")" + VARIATION + "?")
+_TARGETS = re.compile(
+    "(" + "|".join(re.escape(k) for k in sorted(EMOJI, key=len, reverse=True)) + ")"
+    + VARIATION + "?"
+)
 
-# Разметка длиннее текста примерно на 40 символов за каждый эмодзи, а у
-# Telegram свой предел. Слишком длинное сообщение оставляем как есть —
-# лучше без анимации, чем совсем без сообщения.
-MAX_TEXT = 3500
-MAX_CAPTION = 850
+# Видимая длина сообщения от подмены не меняется — <tg-emoji> показывает тот
+# же один символ, что и был. А вот число сущностей разметки у Telegram
+# ограничено, и каждый эмодзи занимает одну. Поэтому режем не по длине, а по
+# количеству: сверх лимита эмодзи остаются обычными, сообщение уходит целым.
+MAX_ENTITIES = 40
+MAX_SOURCE = 20000
+
+# Оставлены для совместимости с вызовами, где передают лимит подписи.
+MAX_TEXT = MAX_SOURCE
+MAX_CAPTION = MAX_SOURCE
 
 
 def _swap(match: re.Match) -> str:
@@ -73,18 +119,67 @@ def _swap(match: re.Match) -> str:
     return f'<tg-emoji emoji-id="{emoji_id}">{plain}</tg-emoji>'
 
 
-def upgrade(text: str | None, limit: int = MAX_TEXT) -> str | None:
+def upgrade(text: str | None, limit: int = MAX_SOURCE) -> str | None:
     """Оживляет знакомые эмодзи. Незнакомые и любую разметку не трогает."""
     if not text or len(text) > limit or "<tg-emoji" in text:
         return text
     parts = _PROTECTED.split(text)
+    budget = MAX_ENTITIES
     # Нечётные куски — защищённые, их пропускаем нетронутыми.
     for i in range(0, len(parts), 2):
-        parts[i] = _TARGETS.sub(_swap, parts[i])
-    result = "".join(parts)
-    return result if len(result) <= 4096 else text
+        if budget <= 0:
+            break
+        parts[i], used = _TARGETS.subn(_swap, parts[i], count=budget)
+        budget -= used
+    return "".join(parts)
 
 
 def enabled(get_setting) -> bool:
     value = (get_setting("premium_emoji_enabled") or "true").strip().lower()
     return value not in ("0", "false", "off", "no")
+
+
+class Middleware:
+    """Подменяет эмодзи в каждом исходящем сообщении бота.
+
+    Живёт на уровне сессии, а не у каждого вызова: так премиум-эмодзи
+    получают и старые тексты, и любые новые, без правки полусотни мест.
+    Подписи кнопок не трогаем — Telegram в них разметку не понимает.
+    """
+
+    async def __call__(self, make_request, bot, method):
+        try:
+            from shop_bot.data_manager.remnawave_repository import get_setting
+            if enabled(get_setting):
+                # aiogram кладёт в parse_mode не значение, а метку «взять
+                # умолчание бота» — сравнивать её со строкой бесполезно.
+                parse_mode = getattr(method, "parse_mode", None)
+                if type(parse_mode).__name__ == "Default" or parse_mode is None:
+                    parse_mode = bot.default.parse_mode if bot.default else None
+                # Только HTML: в Markdown такой тег — просто текст, а при
+                # разметке через entities смещения поедут.
+                if str(getattr(parse_mode, "value", parse_mode)).upper() == "HTML":
+                    if getattr(method, "text", None) and not getattr(method, "entities", None):
+                        method.text = upgrade(method.text)
+                    if getattr(method, "caption", None) and not getattr(method, "caption_entities", None):
+                        method.caption = upgrade(method.caption)
+        except Exception:
+            # Украшение не повод не доставить сообщение.
+            pass
+        return await make_request(bot, method)
+
+
+def make_bot(token: str, **kwargs):
+    """Bot с уже подключённой подменой эмодзи.
+
+    Отдельные части приложения заводят себе бота сами — кабинет, проверка
+    подписки, ответы на оплату. Через эту обёртку им не нужно помнить про
+    middleware, а сообщения выглядят одинаково, откуда бы ни ушли.
+    """
+    from aiogram import Bot
+    bot = Bot(token=token, **kwargs)
+    try:
+        bot.session.middleware(Middleware())
+    except Exception:
+        pass
+    return bot

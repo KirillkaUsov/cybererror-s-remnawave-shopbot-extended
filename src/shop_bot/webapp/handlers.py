@@ -27,6 +27,7 @@ import uuid
 import time
 import asyncio
 from aiogram import Bot
+from shop_bot.modules import premium_emoji
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, FSInputFile, LabeledPrice
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import json
@@ -156,7 +157,7 @@ async def _send_telegram_message(user_id: int, text: str, reply_markup=None, pho
     if not token:
         logger.error("[WEBAPP] - Токен бота не найден в настройках")
         return False
-    bot = Bot(token=token)
+    bot = premium_emoji.make_bot(token=token)
     try:
         if photo:
             await bot.send_photo(chat_id=user_id, photo=photo, caption=text, reply_markup=reply_markup, parse_mode="HTML")
@@ -175,7 +176,7 @@ async def _send_invoice_stars(user_id: int, title: str, description: str, payloa
     if not token:
         logger.error("[WEBAPP] - Токен бота не найден для Stars")
         return False
-    bot = Bot(token=token)
+    bot = premium_emoji.make_bot(token=token)
     try:
         await bot.send_invoice(
             chat_id=user_id,
@@ -2281,7 +2282,7 @@ async def api_create_payment(req: CreatePaymentRequest, auth: dict = Depends(web
                 "payment_id": p_log_id
             }
             token = get_setting("telegram_bot_token")
-            bot = Bot(token=token) if token else None
+            bot = premium_emoji.make_bot(token=token) if token else None
             
             success = False
             if bot:
@@ -2965,14 +2966,14 @@ async def api_support_create(req: SupportTicketCreateRequest, auth: dict = Depen
             
         # Уведомление админов — best-effort: тикет уже создан в БД, и
         # клиент должен увидеть успех даже если бот недоступен (невалидный
-        # токен, сеть, бан бота) — раньше исключение из Bot(token=...)
+        # токен, сеть, бан бота) — раньше исключение из premium_emoji.make_bot(token=...)
         # (вне внутреннего try) улетало в общий except ниже и превращало
         # уже успешное создание тикета в ответ ok:false.
         try:
             from aiogram import Bot
             token = get_setting("support_bot_token")
             if token:
-                bot = Bot(token=token)
+                bot = premium_emoji.make_bot(token=token)
                 try:
                     try:
                         user = await bot.get_chat(req.user_id)
@@ -3182,7 +3183,7 @@ if MULTIPART_AVAILABLE:
           try:
               token = get_setting("support_bot_token")
               if token:
-                  bot = Bot(token=token)
+                  bot = premium_emoji.make_bot(token=token)
                   try:
                       path = media_store.abs_path(local)
                       sent = None
@@ -3288,7 +3289,7 @@ async def api_support_send(req: SupportMessageSendRequest, auth: dict = Depends(
             from aiogram import Bot
             token = get_setting("support_bot_token")
             if token:
-                bot = Bot(token=token)
+                bot = premium_emoji.make_bot(token=token)
                 try:
                     try:
                         user = await bot.get_chat(req.user_id)
