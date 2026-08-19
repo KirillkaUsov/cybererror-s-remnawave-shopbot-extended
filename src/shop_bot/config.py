@@ -113,14 +113,15 @@ def get_key_info_text(key_number, expiry_date, created_date, connection_string, 
     remaining = expiry_date - now
     days_left = remaining.days
     
-    status_icon = "🟢"
+    # Цветной кружок понятен не всем и не везде: рядом ставим слово.
+    status_icon, status_word = "🟢", "активна"
     remaining_str = _format_remaining_details(remaining)
 
     if days_left <= 10:
-        status_icon = "🟡"
+        status_icon, status_word = "🟡", "скоро закончится"
 
     if days_left < 0:
-        status_icon = "🔴"
+        status_icon, status_word = "🔴", "истекла"
         remaining_str = "истекла"
 
     hwid_block = ""
@@ -139,14 +140,14 @@ def get_key_info_text(key_number, expiry_date, created_date, connection_string, 
     devices_block = f"<b>Устройства:</b> {hwid_block}\n" if hwid_block else ""
 
     return (
-        f"{status_icon} <b>Подписка #{key_number}</b>\n\n"
+        f"{status_icon} <b>Подписка #{key_number}</b> — {status_word}\n\n"
         f"<b>Оформлена:</b> {created_date.strftime('%d.%m.%Y')}\n"
         f"<b>Действует до:</b> {expiry_date.strftime('%d.%m.%Y, %H:%M')}\n"
         f"<b>Осталось:</b> {remaining_str}\n"
         f"{devices_block}"
         f"\n<b>Ссылка подписки</b>\n"
         f"<tg-spoiler>{connection_string}</tg-spoiler>\n"
-        f"<i>Нажмите, чтобы открыть ссылку, и вставьте её в приложение.</i>"
+        f"<i>Нажмите, чтобы показать. Скопируйте долгим нажатием и вставьте в приложение — дальше оно подключится само.</i>"
         f"{comment_block}"
     )
 
@@ -161,5 +162,5 @@ def get_purchase_success_text(action: str, key_number: int, expiry_date, connect
         f"<b>Действует до:</b> {expiry_date.strftime('%d.%m.%Y, %H:%M')}\n\n"
         f"<b>Ссылка подписки</b>\n"
         f"<tg-spoiler>{connection_string}</tg-spoiler>\n"
-        f"<i>Нажмите, чтобы открыть ссылку, и вставьте её в приложение.</i>"
+        f"<i>Нажмите, чтобы показать. Скопируйте долгим нажатием и вставьте в приложение — дальше оно подключится само.</i>"
     )

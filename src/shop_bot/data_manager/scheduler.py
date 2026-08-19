@@ -52,10 +52,11 @@ async def send_subscription_notification(bot: Bot, user_id: int, key_id: int, ti
         expiry_str = expiry_date.strftime('%d.%m.%Y в %H:%M')
         
         message = (
-            f"⏳ <b>Подписка скоро закончится</b>\n\n"
+            f"⏳ <b>Подписка заканчивается</b>\n\n"
             f"<b>Осталось:</b> {time_text}\n"
             f"<b>Действует до:</b> {expiry_str}\n\n"
-            f"Продлите её, чтобы доступ не прервался."
+            f"Продлите заранее — ссылка и настройки останутся прежними, "
+            f"переподключать ничего не придётся."
         )
         
         builder = InlineKeyboardBuilder()

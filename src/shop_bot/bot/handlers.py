@@ -624,29 +624,47 @@ async def send_instruction_response(callback: types.CallbackQuery, os_type: str,
     
     if not instruction_text:
         defaults = {
+            # Приложения те же, что советует кабинет. Раньше бот называл одни,
+            # сайт — другие, и человек шёл ставить не то, что мы поддерживаем.
             "android": (
-                "🤖 <b>Подключение на Android</b>\n\n"
-                "1. <b>Установите V2RayTun:</b> Google Play.\n"
-                "2. <b>Скопируйте ссылку подписки:</b> В разделе «Моя подписка».\n"
-                "3. <b>Импорт:</b> В приложении нажмите «+» -> «Импорт из буфера».\n"
-                "4. <b>Подключение:</b> Нажмите кнопку подключения."
+                "🤖 <b>Android</b>\n\n"
+                "<b>1.</b> Поставьте <b>Happ</b> или <b>Incy</b> — любое из двух.\n"
+                "<b>2.</b> Вернитесь сюда, откройте «Мои подписки» и скопируйте ссылку "
+                "долгим нажатием.\n"
+                "<b>3.</b> В приложении нажмите «+» и выберите импорт из буфера обмена.\n"
+                "<b>4.</b> Выберите сервер и включите подключение.\n\n"
+                "<i>Ссылку достаточно добавить один раз — дальше приложение обновляет "
+                "список серверов само.</i>"
             ),
             "ios": (
-                "🍏 <b>Подключение на iOS</b>\n\n"
-                "1. <b>Установите V2RayTun:</b> App Store.\n"
-                "2. <b>Скопируйте ссылку подписки:</b> В боте.\n"
-                "3. <b>Импорт:</b> В приложении нажмите «+» -> «Импорт из буфера».\n"
-                "4. <b>Подключение:</b> Включите переключатель."
+                "🍏 <b>iPhone и iPad</b>\n\n"
+                "<b>1.</b> Поставьте <b>Happ</b> или <b>Incy</b> из App Store.\n"
+                "<b>2.</b> Вернитесь сюда, откройте «Мои подписки» и скопируйте ссылку "
+                "долгим нажатием.\n"
+                "<b>3.</b> В приложении нажмите «+» и выберите импорт из буфера обмена.\n"
+                "<b>4.</b> Разрешите добавить конфигурацию VPN и включите переключатель.\n\n"
+                "<i>Ссылку достаточно добавить один раз — дальше приложение обновляет "
+                "список серверов само.</i>"
             ),
             "windows": (
-                "🪟 <b>Подключение на Windows</b>\n\n"
-                "1. <b>Скачайте Nekoray:</b> GitHub.\n"
-                "2. <b>Импорт:</b> Скопируйте ссылку подписки -> Server -> Import from clipboard.\n"
-                "3. <b>Запуск:</b> Server -> Start."
+                "🪟 <b>Windows</b>\n\n"
+                "<b>1.</b> Поставьте <b>Happ</b> — версия для компьютера есть на "
+                "happ.su.\n"
+                "<b>2.</b> Скопируйте ссылку подписки в «Моих подписках».\n"
+                "<b>3.</b> В приложении добавьте подписку из буфера обмена.\n"
+                "<b>4.</b> Выберите сервер и подключитесь.\n\n"
+                "<i>Если Windows спросит разрешение на сетевой адаптер — согласитесь, "
+                "без него подключение не поднимется.</i>"
             ),
             "linux": (
-                "🐧 <b>Подключение на Linux</b>\n\n"
-                "Используйте Nekoray или любой клиент с поддержкой VLESS."
+                "🐧 <b>Linux</b>\n\n"
+                "Подойдёт любой клиент с поддержкой VLESS — например <b>Happ</b> или "
+                "<b>Nekoray</b>.\n\n"
+                "Скопируйте ссылку подписки в «Моих подписках» и добавьте её в "
+                "приложение как подписку, а не как отдельный сервер: тогда список "
+                "серверов будет обновляться сам.\n\n"
+                "<i>Не уверены, что выбрать, — напишите в поддержку, подскажем под "
+                "вашу систему.</i>"
             )
         }
         instruction_text = defaults.get(os_type, f"Инструкция для {os_type} не найдена.")
@@ -2464,7 +2482,7 @@ def get_user_router() -> Router:
     # Отображает меню контактов поддержки на основе текущих настроек (бот или прямой контакт)
     async def _show_support_selection(message: types.Message):
         support_bot, support_user = get_setting("support_bot_username"), get_setting("support_user")
-        support_text = get_setting("support_text") or "🆘 <b>Служба поддержки</b>\n\nВозникли вопросы или трудности? Наши специалисты всегда готовы помочь вам!"
+        support_text = get_setting("support_text") or "🆘 <b>Поддержка</b>\n\nОпишите, что не работает, — разберёмся и поможем настроить. Чем подробнее опишете, тем быстрее ответим."
         support_image = get_setting("support_image")
         
         if support_bot: kb = keyboards.create_support_bot_link_keyboard(support_bot)
@@ -2670,7 +2688,7 @@ def get_user_router() -> Router:
 
         hosts = get_all_hosts(visible_only=True)
         if not hosts:
-            await smart_edit_message(callback.message, "⚠️ <b>Свободных локаций нет</b>\n\nПробный период сейчас выдать не получится. Загляните позже.", keyboards.create_back_to_menu_keyboard())
+            await smart_edit_message(callback.message, "⏳ <b>Пока не получится</b>\n\nВсе локации на обслуживании — пробный период выдать не можем. Загляните через полчаса, обычно к этому времени всё поднимается.", keyboards.create_back_to_menu_keyboard())
             return
 
         forced_host = get_setting("trial_host_id")
@@ -3197,13 +3215,13 @@ def get_user_router() -> Router:
     async def buy_new_key_handler(callback: types.CallbackQuery):
         await callback.answer()
         hosts = rw_repo.get_all_hosts(visible_only=True) or []
-        if not hosts: return await smart_edit_message(callback.message, "⚠️ <b>Локаций сейчас нет</b>\n\nВсе на обслуживании. Загляните позже.", keyboards.create_back_to_menu_keyboard())
+        if not hosts: return await smart_edit_message(callback.message, "⏳ <b>Пока не получится</b>\n\nВсе локации на обслуживании. Загляните через полчаса — обычно к этому времени всё поднимается.", keyboards.create_back_to_menu_keyboard())
         
         if len(hosts) == 1:
             await callback.answer("⏳ Загружаю тарифы…")
             return await _show_plans_for_host(callback, hosts[0]['host_name'])
 
-        await smart_edit_message(callback.message, "🌍 <b>Локация</b>\n\nОткуда выходить в сеть. Сменить можно в любой момент.", keyboards.create_host_selection_keyboard(hosts, action="new"), get_setting("buy_server_image"))
+        await smart_edit_message(callback.message, "🌍 <b>Откуда выходить в сеть</b>\n\nВыберите страну — от неё зависит скорость и то, какие сервисы откроются. Ошибиться не страшно: локацию у готовой подписки можно поменять потом, срок при этом сохранится.", keyboards.create_host_selection_keyboard(hosts, action="new"), get_setting("buy_server_image"))
         logger.info(f"Покупка: Пользователь {callback.from_user.id} открыл выбор сервера для новой подписки.")
     # ===== Конец функции buy_new_key_handler =====
 
